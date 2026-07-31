@@ -34,6 +34,11 @@ ve igual en celular y en PC y tiene modo claro y oscuro.
 Ábrelos con cualquier editor de texto (Bloc de notas, TextEdit, VS Code). No los
 abras con Word.
 
+> **Los demás archivos del ZIP no se suben a Apps Script.** `build.py` es una
+> herramienta que corre en tu computadora, no en Google —Apps Script solo ejecuta
+> JavaScript, así que pegarla ahí da error—, y las carpetas `docs/` y este
+> instructivo son material de referencia. Ver *Anexo · Regenerar la página*.
+
 ---
 
 ## Paso 1 · Crear el proyecto
@@ -190,28 +195,42 @@ carpeta `apps-script/` antes de `clasp push`.
 
 ## Anexo · Regenerar la página desde el documento fuente
 
-El texto del documento vive en `docs/artifact/fulcrum-comedor.html`. Si lo
-editas, regenera la página con:
+**Esto es opcional y no forma parte de la instalación.** El `Index.html` del ZIP
+ya viene generado y listo para subir.
+
+`build.py` es un programa en Python que corre **en tu computadora**, nunca dentro
+de Apps Script. Solo lo necesitas si algún día editas el texto del documento
+—que vive en `docs/artifact/fulcrum-comedor.html`— y quieres reconstruir la
+página. En ese caso, con Python 3 instalado y una terminal abierta en la carpeta
+del proyecto:
 
 ```bash
 python3 apps-script/build.py
 ```
 
 Eso reescribe `apps-script/Index.html` agregándole el esqueleto HTML, el
-interruptor de tema y el cargador de diagramas. Editar `Index.html` a mano
-funciona hasta la próxima regeneración, que lo sobrescribe.
+interruptor de tema y el cargador de diagramas. Después copias el contenido nuevo
+al archivo `Index` de Apps Script y publicas una versión nueva (ver *Actualizar
+la página después*).
+
+Si no piensas editar el documento, puedes borrar `build.py`: nada de lo
+publicado depende de él. Y si prefieres no usar Python, editar `Index.html`
+directamente también funciona — solo ten en cuenta que una regeneración futura
+lo sobrescribiría.
 
 ---
 
 ## Contenido del paquete
 
+Solo los tres marcados con ⬆️ se suben a Apps Script.
+
 ```
 INSTALACION.md                      este instructivo
 apps-script/
-  Code.gs                           el doGet() que sirve la página
-  Index.html                        la página completa (generada)
-  appsscript.json                   manifiesto del Web App
-  build.py                          regenera Index.html
+  Code.gs                       ⬆️  el doGet() que sirve la página
+  Index.html                    ⬆️  la página completa (ya generada)
+  appsscript.json               ⬆️  manifiesto del Web App
+  build.py                          herramienta local en Python, opcional
   README.md                         referencia técnica del paquete
 docs/
   arquitectura.md                   el documento en Markdown
