@@ -524,7 +524,7 @@
       <li><a href="#datos">02 · Base de datos</a></li>
       <li><a href="#api">03 · API REST</a></li>
       <li><a href="#flujos">04 · Flujos</a></li>
-      <li><a href="#pendientes">05 · Decisiones abiertas</a></li>
+      <li><a href="#pendientes">05 · Alcance de la v1</a></li>
     </ol>
   </nav>
 
@@ -534,10 +534,10 @@
     <section id="decisiones">
       <div class="sec-head">
         <span class="sec-num">RESUMEN</span>
-        <h2>Cinco decisiones que gobiernan todo lo demás</h2>
+        <h2>Seis decisiones que gobiernan todo lo demás</h2>
       </div>
 
-      <p>Antes del stack y de las tablas, estas cinco reglas son las que hacen que el sistema sea auditable. Todo el resto del documento es consecuencia de ellas.</p>
+      <p>Antes del stack y de las tablas, estas seis reglas son las que hacen que el sistema sea auditable. Todo el resto del documento es consecuencia de ellas.</p>
 
       <div class="grid">
         <div class="card">
@@ -559,6 +559,11 @@
           <span class="tag">Omisión</span>
           <h5>"No comerá" es un registro, no un vacío</h5>
           <p>Al cerrar el día, el sistema crea el pedido en estado <code>no_meal</code> para quien no pidió. Así el reporte distingue "no comió" de "no existía".</p>
+        </div>
+        <div class="card">
+          <span class="tag">Cobro</span>
+          <h5>Se cobra lo confirmado, y el Admin puede condonar</h5>
+          <p>El importe se devenga al cerrar el corte, haya o no pasado la persona por su comida. Condonar es una excepción explícita, con motivo, que el reporte muestra marcada.</p>
         </div>
         <div class="card">
           <span class="tag">Autoridad</span>
@@ -778,7 +783,7 @@ erDiagram
             <tr><td>price_override</td><td>numeric(10,2)</td><td class="desc">Precio solo para ese día. Nulo = usa <code>base_price</code>.</td></tr>
             <tr><td>display_order</td><td>int</td><td class="desc">Orden con el que el Admin acomoda las tarjetas.</td></tr>
             <tr><td>is_available</td><td>boolean</td><td class="desc">Permite agotar un platillo a media mañana sin borrar los pedidos que ya lo eligieron.</td></tr>
-            <tr><td>stock_limit</td><td>int</td><td class="desc">Opcional. Cupo máximo; la UI lo muestra como “quedan N”.</td></tr>
+            <tr><td>stock_limit</td><td>int</td><td class="desc">Fase 2. Cupo máximo; la UI lo mostraría como “quedan N”. El campo se crea desde ya para no migrar después.</td></tr>
           </tbody>
         </table>
       </div>
@@ -799,6 +804,8 @@ erDiagram
             <tr><td>source</td><td>enum</td><td class="desc"><code>employee</code> · <code>admin_express</code> · <code>admin_edit</code> · <code>system_no_meal</code></td></tr>
             <tr><td>charged_amount</td><td>numeric(10,2)</td><td class="desc">Importe congelado al confirmar. Es lo único que suma el reporte de Nómina.</td></tr>
             <tr><td>price_breakdown</td><td>jsonb</td><td class="desc">Cómo se llegó a ese importe: tarifa base, override del día, subsidio aplicado.</td></tr>
+            <tr><td>is_waived</td><td>boolean</td><td class="desc">Condonado por el Admin. El pedido sigue existiendo y contando para producción, pero no suma en el corte.</td></tr>
+            <tr><td>waive_reason / waived_by<span class="fk">FK</span> / waived_at</td><td>text / uuid / timestamptz</td><td class="desc">Motivo obligatorio. Toda condonación va marcada en el reporte de Nómina.</td></tr>
             <tr><td>placed_at / cancelled_at / delivered_at</td><td>timestamptz</td><td class="desc">—</td></tr>
             <tr><td>created_by / updated_by<span class="fk">FK</span></td><td>uuid → users</td><td class="desc">Distinto de <code>user_id</code> cuando el Admin captura por otro.</td></tr>
           </tbody>
@@ -820,12 +827,16 @@ erDiagram
             <tr><td>dish_id<span class="fk">FK</span></td><td>uuid → dishes</td><td class="desc">Redundante a propósito: el reporte sobrevive si el menú se edita.</td></tr>
             <tr><td>dish_name_snapshot</td><td>text</td><td class="desc">El nombre tal como se llamaba ese día.</td></tr>
             <tr><td>item_role</td><td>enum</td><td class="desc"><code>main</code> · <code>complemento</code> · <code>salsa</code></td></tr>
-            <tr><td>unit_price</td><td>numeric(10,2)</td><td class="desc">Cero si el complemento va incluido en la tarifa del principal.</td></tr>
+            <tr><td>unit_price</td><td>numeric(10,2)</td><td class="desc">En v1 siempre cero para complementos y salsas: van incluidos en la tarifa del principal. El campo existe para poder cobrarlos después sin migrar datos.</td></tr>
           </tbody>
         </table>
       </div>
 
       <p>Reglas garantizadas en base de datos: exactamente <strong>un</strong> renglón con <code>item_role = 'main'</code> por pedido (índice único parcial) y <strong>máximo dos</strong> con <code>complemento</code> (trigger de conteo). Las salsas no tienen tope. Ninguna bebida existe en el catálogo.</p>
+
+      <div class="note">
+        <p><strong>Qué se cobra:</strong> el importe es el del platillo principal o base; complementos y salsas van incluidos. Un pedido suma al corte si su estado es <code>confirmed</code> o <code>delivered</code> y no está condonado. <code>cancelled</code> y <code>no_meal</code> nunca suman. Es decir: quien confirma y no pasa por su comida paga, salvo que el Admin condone.</p>
+      </div>
 
       <h3>Dinero</h3>
 
@@ -981,11 +992,12 @@ erDiagram
           <thead><tr><th>Método</th><th>Ruta</th><th>Qué hace</th><th>Rol</th></tr></thead>
           <tbody>
             <tr><td><span class="m get">GET</span></td><td>/menu/available</td><td class="desc"><strong>Endpoint principal de la app.</strong> Hoy y mañana con sus platillos, mi pedido actual, si aún puedo editar y cuánto falta para el corte.</td><td class="who">empleado</td></tr>
-            <tr><td><span class="m post">POST</span></td><td>/orders</td><td class="desc">Crea el pedido. Valida ventana, corte, reglas de armado y cupo.</td><td class="who">empleado</td></tr>
+            <tr><td><span class="m post">POST</span></td><td>/orders</td><td class="desc">Crea el pedido. Valida ventana, corte y reglas de armado.</td><td class="who">empleado</td></tr>
+            <tr><td><span class="m post">POST</span></td><td>/orders/repeat</td><td class="desc"><strong>Repetir mi último pedido.</strong> Copia el último pedido no cancelado a la fecha indicada; si algún platillo ya no está en el menú, responde <code>409</code> con el detalle para que la app precargue lo que sí queda.</td><td class="who">empleado</td></tr>
             <tr><td><span class="m get">GET</span></td><td>/orders/mine?from=&amp;to=</td><td class="desc">Mi historial con importes cobrados.</td><td class="who">empleado</td></tr>
+            <tr><td><span class="m get">GET</span></td><td>/orders/mine/summary?from=&amp;to=</td><td class="desc"><strong>Mi gasto del periodo.</strong> Comidas y acumulado del periodo de nómina en curso, más el del anterior ya cerrado.</td><td class="who">empleado</td></tr>
             <tr><td><span class="m patch">PATCH</span></td><td>/orders/:id</td><td class="desc">Edita antes del corte. Recalcula y vuelve a congelar el importe.</td><td class="who">empleado</td></tr>
             <tr><td><span class="m del">DELETE</span></td><td>/orders/:id</td><td class="desc">Cancela antes del corte.</td><td class="who">empleado</td></tr>
-            <tr><td><span class="m post">POST</span></td><td>/orders/skip</td><td class="desc">Declarar “hoy no como” explícitamente, sin esperar al corte.</td><td class="who">empleado</td></tr>
           </tbody>
         </table>
       </div>
@@ -1006,6 +1018,8 @@ erDiagram
             <tr><td><span class="m patch">PATCH</span></td><td>/admin/orders/:id</td><td class="desc">Edita cualquier pedido, incluso cerrado, salvo si su periodo de nómina ya cerró.</td><td class="who admin">admin</td></tr>
             <tr><td><span class="m del">DELETE</span></td><td>/admin/orders/:id</td><td class="desc">Elimina con motivo obligatorio.</td><td class="who admin">admin</td></tr>
             <tr><td><span class="m post">POST</span></td><td>/admin/orders/bulk-deliver</td><td class="desc">Marca entregados todos los <code>confirmed</code> de la fecha, o solo los <code>ids</code> enviados.</td><td class="who admin">admin</td></tr>
+            <tr><td><span class="m post">POST</span></td><td>/admin/orders/:id/waive</td><td class="desc">Condona el cobro con motivo obligatorio. El pedido conserva su estado; deja de sumar al corte.</td><td class="who admin">admin</td></tr>
+            <tr><td><span class="m del">DELETE</span></td><td>/admin/orders/:id/waive</td><td class="desc">Revierte la condonación mientras el periodo de nómina siga abierto.</td><td class="who admin">admin</td></tr>
             <tr><td><span class="m post">POST</span></td><td>/admin/menus/:id/close</td><td class="desc">Cierre manual anticipado del día.</td><td class="who admin">admin</td></tr>
           </tbody>
         </table>
@@ -1016,7 +1030,7 @@ erDiagram
         <table>
           <thead><tr><th>Método</th><th>Ruta</th><th>Qué hace</th><th>Rol</th></tr></thead>
           <tbody>
-            <tr><td><span class="m get">GET</span></td><td>/reports/charges?from=&amp;to=&amp;format=xlsx|csv|json</td><td class="desc">Desglose acumulado de cobros por empleado para RRHH.</td><td class="who admin">admin</td></tr>
+            <tr><td><span class="m get">GET</span></td><td>/reports/charges?from=&amp;to=&amp;format=xlsx|csv|json</td><td class="desc">Cobros para RRHH. El XLSX trae dos hojas: <em>Resumen</em> (una fila por empleado) y <em>Detalle</em> (una fila por pedido), ambas con la columna de excepciones.</td><td class="who admin">admin</td></tr>
             <tr><td><span class="m get">GET</span></td><td>/reports/production?date=&amp;format=pdf</td><td class="desc">Listado consolidado para producción y solicitud al proveedor.</td><td class="who admin">admin</td></tr>
             <tr><td><span class="m get">GET</span></td><td>/reports/dashboard?from=&amp;to=</td><td class="desc">Métricas: participación, platillo más pedido, gasto por área, cancelaciones.</td><td class="who admin">admin</td></tr>
             <tr><td><span class="m get">GET</span></td><td>/payroll/periods</td><td class="desc">Cortes generados y su estado.</td><td class="who admin">admin</td></tr>
@@ -1077,7 +1091,6 @@ erDiagram
 stateDiagram-v2
   [*] --> sin_pedido
   sin_pedido --> confirmed : empleado ordena
-  sin_pedido --> no_meal : declara que no come
   confirmed --> confirmed : edita antes del corte
   confirmed --> cancelled : cancela antes del corte
   cancelled --> confirmed : vuelve a ordenar
@@ -1093,7 +1106,8 @@ stateDiagram-v2
 
       <ol class="steps">
         <li>El empleado abre la app y ve <strong>hoy</strong> y <strong>mañana</strong>, con los principales del día arriba y los base abajo. Cada día muestra si ya pidió y cuánto falta para el corte.</li>
-        <li>Elige un principal o un base. Si ese platillo no permite complementos, el paso simplemente no aparece.</li>
+        <li>Si ya pidió antes, <strong>“Repetir lo de la última vez”</strong> arma el pedido completo en un toque y solo queda confirmar. Es el camino que usará la mayoría.</li>
+        <li>Si prefiere armarlo, elige un principal o un base. Si ese platillo no permite complementos, el paso simplemente no aparece.</li>
         <li>Agrega hasta dos complementos, las salsas que quiera y un comentario opcional. Sin bebidas.</li>
         <li>Confirma. El servidor valida en una transacción: menú publicado, corte no vencido, cupo disponible, un principal, máximo dos complementos, un solo pedido vigente ese día.</li>
         <li>Se resuelve la tarifa del empleado y se congela en el pedido. Recibe confirmación en pantalla y, si lo tiene activado, por correo.</li>
@@ -1138,10 +1152,10 @@ flowchart TD
       <ol class="steps">
         <li>El Admin elige el rango —quincena o mes— y genera el corte.</li>
         <li>El sistema suma <code>charged_amount</code> de los pedidos cobrables del rango, agrupados por empleado, y crea el corte en <code>draft</code>.</li>
-        <li>Revisa: total por persona, número de comidas, subtotales por área, y la lista de expresos y ediciones fuera de tiempo para justificar diferencias.</li>
-        <li>Si detecta un error, corrige el pedido y regenera el borrador.</li>
-        <li>Cierra el corte. Los renglones se congelan y los pedidos del rango quedan bloqueados para edición.</li>
-        <li>Descarga el XLSX —una fila por empleado con número de nómina, comidas, importe y, en otra hoja, el detalle diario— y lo envía a Nómina.</li>
+        <li>Revisa: total por persona, número de comidas y la lista de excepciones —expresos, ediciones fuera de tiempo y condonaciones— para justificar diferencias.</li>
+        <li>Si detecta un error, corrige o condona el pedido y regenera el borrador.</li>
+        <li>Cierra el corte. Los renglones se congelan y los pedidos del rango quedan bloqueados para edición y para condonación.</li>
+        <li>Descarga el XLSX y lo envía a Nómina. Hoja <strong>Resumen</strong>: número de nómina, nombre, comidas, importe y excepciones. Hoja <strong>Detalle</strong>: una fila por pedido con fecha, platillo, importe, origen y marca de condonado.</li>
         <li>El archivo queda archivado en el corte: siempre se puede reimprimir exactamente lo que se envió.</li>
       </ol>
     </section>
@@ -1150,50 +1164,56 @@ flowchart TD
     <section id="pendientes">
       <div class="sec-head">
         <span class="sec-num">05</span>
-        <h2>Decisiones abiertas</h2>
+        <h2>Alcance confirmado de la v1</h2>
       </div>
 
-      <p>Cuatro puntos donde el diseño ya está listo pero la regla de negocio la defines tú. Cada uno cambia el modelo de datos o el reporte, así que conviene cerrarlos antes de escribir código.</p>
+      <p>Las cuatro reglas de negocio que faltaban ya están definidas y el documento las incorpora. Esto es lo que entra en la primera versión y lo que queda deliberadamente fuera.</p>
 
-      <div class="grid">
-        <div class="card">
-          <span class="tag">Cobro</span>
-          <h5>¿Se cobra lo pedido o lo entregado?</h5>
-          <p>Si se cobra lo confirmado, el <code>no-show</code> paga y la cocina no pierde. Si se cobra lo entregado, el reporte suma solo <code>delivered</code> y el marcado masivo se vuelve un paso crítico.</p>
-        </div>
-        <div class="card">
-          <span class="tag">Precio</span>
-          <h5>¿Los complementos se cobran aparte?</h5>
-          <p>Si van incluidos en la tarifa del principal, <code>unit_price</code> es cero y el cobro es un solo número. Si se cobran, hay que fijarles tarifa y mostrar el total antes de confirmar.</p>
-        </div>
-        <div class="card">
-          <span class="tag">Omisión</span>
-          <h5>¿Botón explícito de “hoy no como”?</h5>
-          <p>Reduce recordatorios inútiles y le da a la cocina un número firme antes del corte. Ya está previsto en <code>POST /orders/skip</code>.</p>
-        </div>
-        <div class="card">
-          <span class="tag">Reporte</span>
-          <h5>¿Qué desglose necesita Nómina?</h5>
-          <p>Total por empleado, detalle día por día, o corte por área/centro de costos. Determina si <code>departments</code> es opcional o indispensable.</p>
-        </div>
+      <h3>Reglas de negocio cerradas</h3>
+      <div class="scroller">
+        <table>
+          <thead><tr><th>Tema</th><th>Regla</th><th>Dónde vive en el diseño</th></tr></thead>
+          <tbody>
+            <tr><td>Cobro</td><td class="desc">Se cobra lo confirmado. Quien no pasa por su comida paga, salvo que el Admin condone con motivo.</td><td class="desc"><code>orders.is_waived</code> · <code>POST /admin/orders/:id/waive</code></td></tr>
+            <tr><td>Precio</td><td class="desc">Complementos y salsas incluidos en la tarifa del principal. Un solo importe por comida.</td><td class="desc"><code>order_items.unit_price = 0</code> para no-principales</td></tr>
+            <tr><td>Reporte</td><td class="desc">XLSX con resumen por empleado, detalle día por día y marca de excepciones.</td><td class="desc"><code>GET /reports/charges</code> · flujo F</td></tr>
+            <tr><td>Experiencia</td><td class="desc">Repetir el último pedido y ver el gasto acumulado del periodo.</td><td class="desc"><code>POST /orders/repeat</code> · <code>GET /orders/mine/summary</code></td></tr>
+          </tbody>
+        </table>
       </div>
 
-      <h3>Mejoras de experiencia que recomiendo incluir desde la v1</h3>
+      <p>Como el corte de Nómina no requiere subtotales por área, <code>departments</code> queda como campo opcional: se captura si sirve para filtrar, pero ningún reporte depende de él.</p>
+
+      <h3>Fuera de la v1</h3>
       <ul>
-        <li><strong>Repetir mi último pedido</strong> en un toque. La mayoría de la gente come casi siempre lo mismo; es el atajo con mayor impacto en adopción.</li>
-        <li><strong>Cuenta regresiva visible</strong> al corte en la pantalla principal, no solo la hora. “Faltan 42 min” mueve más que “cierra a las 11:00”.</li>
-        <li><strong>Duplicar menú</strong> desde un día anterior: convierte la captura diaria del Admin en quince segundos.</li>
+        <li><strong>Botón “hoy no como”.</strong> La omisión sigue siendo automática: quien no pide antes del corte queda en <code>no_meal</code>. El endpoint <code>POST /orders/skip</code> queda diseñado por si más adelante conviene tener el número firme antes del corte.</li>
+        <li><strong>Cupo por platillo.</strong> El campo <code>stock_limit</code> se crea desde ya para no migrar después, pero la v1 no limita porciones ni muestra “quedan N”.</li>
+      </ul>
+
+      <h3>Detalles de experiencia incluidos sin costo extra</h3>
+      <ul>
+        <li><strong>Cuenta regresiva</strong> al corte en la pantalla principal: “faltan 42 min” mueve más que “cierra a las 11:00”.</li>
+        <li><strong>Duplicar menú</strong> desde un día anterior: la captura diaria del Admin baja a quince segundos.</li>
         <li><strong>Marcar agotado</strong> un platillo sin borrarlo, para que deje de ofrecerse sin afectar a quien ya lo pidió.</li>
-        <li><strong>Mi gasto del periodo</strong> visible para el empleado: evita reclamos cuando llega el descuento en nómina.</li>
         <li><strong>Vista de cocina</strong> en pantalla grande con los totales del día, para no depender del PDF impreso.</li>
       </ul>
+
+      <h3>Por dónde empezar</h3>
+      <ol class="steps">
+        <li>Migraciones y modelo de datos completo, con las restricciones de unicidad y los triggers de armado. Es la parte que más caro sale cambiar después.</li>
+        <li>Auth por invitación de punta a punta: es la puerta de entrada de todo lo demás.</li>
+        <li>Catálogo, menú y publicación, con el flujo de imágenes.</li>
+        <li>Pedido del empleado con corte y repetir último: aquí ya hay algo demostrable.</li>
+        <li>Jobs de recordatorio y cierre, más el tablero del Admin y la recepción masiva.</li>
+        <li>Reportes y corte de nómina, que es lo que justifica el sistema ante RRHH.</li>
+      </ol>
     </section>
 
   </main>
 
   <footer>
     Fulcrum · Comedor empresarial — documento de arquitectura v1 · Julio 2026<br />
-    Alcance: una sede, dos roles, pedidos para hoy y mañana. Las decisiones de la sección 05 quedan pendientes de confirmación.
+    Alcance: una sede, dos roles, pedidos para hoy y mañana. Reglas de cobro, precio, reporte y experiencia confirmadas; ver sección 05.
   </footer>
 
 </div>

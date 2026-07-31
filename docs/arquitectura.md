@@ -19,8 +19,11 @@ Zona horaria de operación: `America/Mexico_City`.
    aparece en el menú del día, pero su historial y sus cobros siguen íntegros.
 4. **"No comerá" es un registro, no un vacío.** Al cerrar el día se crea el
    pedido en estado `no_meal`. El reporte distingue "no comió" de "no existía".
-5. **El Admin rompe reglas, pero deja rastro.** Pedido expreso, edición fuera de
-   tiempo y borrado exigen motivo y quedan en `audit_log`.
+5. **Se cobra lo confirmado, y el Admin puede condonar.** El importe se devenga
+   al cerrar el corte, haya o no pasado la persona por su comida. Condonar es una
+   excepción explícita, con motivo, que el reporte muestra marcada.
+6. **El Admin rompe reglas, pero deja rastro.** Pedido expreso, edición fuera de
+   tiempo, condonación y borrado exigen motivo y quedan en `audit_log`.
 
 ---
 
@@ -142,7 +145,7 @@ revoked_at, user_agent) y **password_resets**, con la misma forma.
 | price_override | numeric(10,2) | Precio solo para ese día; nulo usa `base_price` |
 | display_order | int | Orden de las tarjetas |
 | is_available | boolean | Permite agotar sin borrar pedidos existentes |
-| stock_limit | int | Opcional; la UI muestra "quedan N" |
+| stock_limit | int | Fase 2; el campo se crea desde ya para no migrar después |
 
 ### Pedidos
 
@@ -159,6 +162,8 @@ revoked_at, user_agent) y **password_resets**, con la misma forma.
 | source | enum | `employee` \| `admin_express` \| `admin_edit` \| `system_no_meal` |
 | charged_amount | numeric(10,2) | Importe congelado al confirmar; es lo que suma Nómina |
 | price_breakdown | jsonb | Tarifa base, override del día, subsidio aplicado |
+| is_waived | boolean | Condonado por el Admin: el pedido sigue contando para producción pero no suma al corte |
+| waive_reason / waived_by (FK) / waived_at | text / uuid / timestamptz | Motivo obligatorio; va marcado en el reporte de Nómina |
 | placed_at / cancelled_at / delivered_at | timestamptz | |
 | created_by / updated_by (FK → users) | uuid | Distinto de `user_id` en capturas del Admin |
 
@@ -180,11 +185,16 @@ CREATE UNIQUE INDEX orders_one_per_day
 | dish_id (FK → dishes) | uuid | Redundante a propósito: el reporte sobrevive a ediciones del menú |
 | dish_name_snapshot | text | El nombre tal como se llamaba ese día |
 | item_role | enum | `main` \| `complemento` \| `salsa` |
-| unit_price | numeric(10,2) | Cero si el complemento va incluido en la tarifa del principal |
+| unit_price | numeric(10,2) | En v1 siempre cero para complementos y salsas: van incluidos en la tarifa del principal. El campo existe para poder cobrarlos después sin migrar |
 
 Garantizado en base de datos: exactamente **un** renglón `main` por pedido
 (índice único parcial) y **máximo dos** `complemento` (trigger de conteo). Las
 salsas no tienen tope. No existen bebidas en el catálogo.
+
+**Qué se cobra:** el importe es el del platillo principal o base; complementos y
+salsas van incluidos. Un pedido suma al corte si su estado es `confirmed` o
+`delivered` y no está condonado. `cancelled` y `no_meal` nunca suman. Quien
+confirma y no pasa por su comida paga, salvo condonación del Admin.
 
 ### Dinero
 
@@ -299,11 +309,13 @@ Base `/api/v1`. Autenticación por `Authorization: Bearer`.
 | Método | Ruta | Qué hace |
 |---|---|---|
 | GET | `/menu/available` | **Endpoint principal.** Hoy y mañana con platillos, mi pedido, si puedo editar y cuánto falta para el corte |
-| POST | `/orders` | Crea el pedido; valida ventana, corte, armado y cupo |
+| POST | `/orders` | Crea el pedido; valida ventana, corte y reglas de armado |
+| POST | `/orders/repeat` | **Repetir mi último pedido.** Copia el último pedido no cancelado a la fecha indicada; si algún platillo ya no está en el menú responde `409` con el detalle para precargar lo que sí queda |
 | GET | `/orders/mine?from=&to=` | Mi historial con importes cobrados |
+| GET | `/orders/mine/summary?from=&to=` | **Mi gasto del periodo.** Comidas e importe del periodo de nómina en curso y del anterior ya cerrado |
 | PATCH | `/orders/:id` | Edita antes del corte; recalcula y recongela el importe |
 | DELETE | `/orders/:id` | Cancela antes del corte |
-| POST | `/orders/skip` | Declarar "hoy no como" sin esperar al corte |
+| POST | `/orders/skip` | Fase 2: declarar "hoy no como" sin esperar al corte |
 
 Pasado el corte, POST/PATCH/DELETE de empleado responden
 `409 ORDER_WINDOW_CLOSED` con el `cutoff_at` en el cuerpo.
@@ -319,13 +331,15 @@ Pasado el corte, POST/PATCH/DELETE de empleado responden
 | PATCH | `/admin/orders/:id` | Edita cualquier pedido salvo si su periodo de nómina cerró |
 | DELETE | `/admin/orders/:id` | Elimina con motivo obligatorio |
 | POST | `/admin/orders/bulk-deliver` | Marca entregados todos los `confirmed` de la fecha (o los `ids` enviados) |
+| POST | `/admin/orders/:id/waive` | Condona el cobro con motivo obligatorio; el pedido conserva su estado y deja de sumar al corte |
+| DELETE | `/admin/orders/:id/waive` | Revierte la condonación mientras el periodo de nómina siga abierto |
 | POST | `/admin/menus/:id/close` | Cierre manual anticipado |
 
 ### Reportes y nómina (admin)
 
 | Método | Ruta | Qué hace |
 |---|---|---|
-| GET | `/reports/charges?from=&to=&format=xlsx\|csv\|json` | Desglose acumulado de cobros por empleado para RRHH |
+| GET | `/reports/charges?from=&to=&format=xlsx\|csv\|json` | Cobros para RRHH. El XLSX trae dos hojas: *Resumen* (una fila por empleado) y *Detalle* (una fila por pedido), ambas con columna de excepciones |
 | GET | `/reports/production?date=&format=pdf` | Listado consolidado para producción y proveedor |
 | GET | `/reports/dashboard?from=&to=` | Participación, platillo más pedido, gasto por área, cancelaciones |
 | GET | `/payroll/periods` | Cortes generados y su estado |
@@ -380,8 +394,9 @@ ejecuta el Admin.
 
 1. El empleado ve **hoy** y **mañana**: principales arriba, base abajo, con su
    estado de pedido y el tiempo restante para el corte.
-2. Elige un principal o un base. Si el platillo no permite complementos, el paso
-   no aparece.
+2. Si ya pidió antes, **"Repetir lo de la última vez"** arma el pedido completo en
+   un toque y solo queda confirmar. Si prefiere armarlo, elige un principal o un
+   base; si el platillo no permite complementos, el paso no aparece.
 3. Agrega hasta dos complementos, las salsas que quiera y un comentario. Sin
    bebidas.
 4. Confirma. El servidor valida en una transacción: menú publicado, corte no
@@ -418,33 +433,54 @@ ejecuta el Admin.
 1. El Admin elige el rango (quincena o mes) y genera el corte.
 2. El sistema suma `charged_amount` de los pedidos cobrables agrupados por
    empleado y crea el corte en `draft`.
-3. Revisa totales por persona, número de comidas, subtotales por área y la lista
-   de expresos y ediciones fuera de tiempo.
-4. Si hay error, corrige el pedido y regenera el borrador.
-5. Cierra el corte: renglones congelados y pedidos del rango bloqueados.
-6. Descarga el XLSX (una fila por empleado con número de nómina, comidas e
-   importe; segunda hoja con el detalle diario) y lo envía a Nómina.
+3. Revisa totales por persona, número de comidas y la lista de excepciones:
+   expresos, ediciones fuera de tiempo y condonaciones.
+4. Si hay error, corrige o condona el pedido y regenera el borrador.
+5. Cierra el corte: renglones congelados, pedidos del rango bloqueados para
+   edición y para condonación.
+6. Descarga el XLSX y lo envía a Nómina. Hoja **Resumen**: número de nómina,
+   nombre, comidas, importe y excepciones. Hoja **Detalle**: una fila por pedido
+   con fecha, platillo, importe, origen y marca de condonado.
 7. El archivo queda archivado en el corte y siempre puede reimprimirse.
 
 ---
 
-## 5. Decisiones abiertas
+## 5. Alcance confirmado de la v1
 
-| Tema | Pregunta | Impacto |
+### Reglas de negocio cerradas
+
+| Tema | Regla | Dónde vive en el diseño |
 |---|---|---|
-| Cobro | ¿Se cobra lo confirmado o solo lo entregado? | Si se cobra lo confirmado, el no-show paga. Si es lo entregado, el reporte suma solo `delivered` y el marcado masivo se vuelve crítico |
-| Precio | ¿Los complementos se cobran aparte? | Si van incluidos, `unit_price` = 0 y el cobro es un solo número. Si se cobran, hay que fijarles tarifa y mostrar el total antes de confirmar |
-| Omisión | ¿Botón explícito de "hoy no como"? | Reduce recordatorios inútiles y da a la cocina un número firme antes del corte (`POST /orders/skip`) |
-| Reporte | ¿Qué desglose necesita Nómina? | Total por empleado, detalle día por día, o corte por área. Determina si `departments` es opcional o indispensable |
+| Cobro | Se cobra lo confirmado. Quien no pasa por su comida paga, salvo que el Admin condone con motivo | `orders.is_waived`, `POST /admin/orders/:id/waive` |
+| Precio | Complementos y salsas incluidos en la tarifa del principal; un solo importe por comida | `order_items.unit_price = 0` para no-principales |
+| Reporte | XLSX con resumen por empleado, detalle día por día y marca de excepciones | `GET /reports/charges`, flujo F |
+| Experiencia | Repetir el último pedido y ver el gasto acumulado del periodo | `POST /orders/repeat`, `GET /orders/mine/summary` |
 
-### Mejoras de experiencia recomendadas para la v1
+Como el corte de Nómina no requiere subtotales por área, `departments` queda como
+campo opcional: se captura si sirve para filtrar, pero ningún reporte depende de él.
 
-- **Repetir mi último pedido** en un toque: el atajo con mayor impacto en adopción.
-- **Cuenta regresiva** al corte, no solo la hora: "faltan 42 min" mueve más que
-  "cierra a las 11:00".
+### Fuera de la v1
+
+- **Botón "hoy no como".** La omisión sigue siendo automática: quien no pide antes
+  del corte queda en `no_meal`. `POST /orders/skip` queda diseñado por si más
+  adelante conviene tener el número firme antes del corte.
+- **Cupo por platillo.** `stock_limit` se crea desde ya para no migrar después,
+  pero la v1 no limita porciones ni muestra "quedan N".
+
+### Detalles de experiencia incluidos sin costo extra
+
+- **Cuenta regresiva** al corte: "faltan 42 min" mueve más que "cierra a las 11:00".
 - **Duplicar menú** desde un día anterior: la captura diaria del Admin pasa a
   quince segundos.
 - **Marcar agotado** sin borrar, para no afectar a quien ya pidió.
-- **Mi gasto del periodo** visible para el empleado: evita reclamos al llegar el
-  descuento en nómina.
 - **Vista de cocina** en pantalla grande con los totales del día.
+
+### Orden de construcción sugerido
+
+1. Migraciones y modelo de datos completo, con restricciones de unicidad y
+   triggers de armado. Es lo que más caro sale cambiar después.
+2. Auth por invitación de punta a punta.
+3. Catálogo, menú y publicación, con el flujo de imágenes.
+4. Pedido del empleado con corte y repetir último: aquí ya hay algo demostrable.
+5. Jobs de recordatorio y cierre, tablero del Admin y recepción masiva.
+6. Reportes y corte de nómina, que es lo que justifica el sistema ante RRHH.
