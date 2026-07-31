@@ -1,0 +1,1409 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Fulcrum Comedor — Arquitectura y diseño técnico</title>
+<style>
+  :root {
+    color-scheme: light;
+    --ground: #F1F5F3;
+    --surface: #FFFFFF;
+    --surface-2: #E6ECE9;
+    --ink: #131C1A;
+    --ink-2: #43524D;
+    --ink-3: #6D807A;
+    --rule: #D2DCD7;
+    --rule-strong: #B7C6C0;
+    --accent: #0E6F5C;
+    --accent-soft: #D8EBE5;
+    --warn: #9C5711;
+    --warn-soft: #F5E6D0;
+    --crit: #9E332A;
+    --crit-soft: #F6DFDC;
+    --ok: #2C6E3C;
+    --ok-soft: #DCEBDF;
+
+    --display: "Helvetica Neue", system-ui, -apple-system, "Segoe UI", sans-serif;
+    --body: Georgia, "Iowan Old Style", "Source Serif 4", "Times New Roman", serif;
+    --mono: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, monospace;
+
+    --measure: 68ch;
+  }
+
+  @media (prefers-color-scheme: dark) {
+    :root {
+      color-scheme: dark;
+      --ground: #0D1312;
+      --surface: #151D1B;
+      --surface-2: #1D2725;
+      --ink: #E7EFEC;
+      --ink-2: #AEBFB9;
+      --ink-3: #7C908A;
+      --rule: #27332F;
+      --rule-strong: #38473F;
+      --accent: #4FC8A9;
+      --accent-soft: #133029;
+      --warn: #DFA84C;
+      --warn-soft: #2E2517;
+      --crit: #E08175;
+      --crit-soft: #2F1D1A;
+      --ok: #6BC07E;
+      --ok-soft: #172C1C;
+    }
+  }
+
+  :root[data-theme="dark"] {
+    color-scheme: dark;
+    --ground: #0D1312;
+    --surface: #151D1B;
+    --surface-2: #1D2725;
+    --ink: #E7EFEC;
+    --ink-2: #AEBFB9;
+    --ink-3: #7C908A;
+    --rule: #27332F;
+    --rule-strong: #38473F;
+    --accent: #4FC8A9;
+    --accent-soft: #133029;
+    --warn: #DFA84C;
+    --warn-soft: #2E2517;
+    --crit: #E08175;
+    --crit-soft: #2F1D1A;
+    --ok: #6BC07E;
+    --ok-soft: #172C1C;
+  }
+
+  :root[data-theme="light"] {
+    color-scheme: light;
+    --ground: #F1F5F3;
+    --surface: #FFFFFF;
+    --surface-2: #E6ECE9;
+    --ink: #131C1A;
+    --ink-2: #43524D;
+    --ink-3: #6D807A;
+    --rule: #D2DCD7;
+    --rule-strong: #B7C6C0;
+    --accent: #0E6F5C;
+    --accent-soft: #D8EBE5;
+    --warn: #9C5711;
+    --warn-soft: #F5E6D0;
+    --crit: #9E332A;
+    --crit-soft: #F6DFDC;
+    --ok: #2C6E3C;
+    --ok-soft: #DCEBDF;
+  }
+
+  * { box-sizing: border-box; }
+
+  body {
+    background: var(--ground);
+    color: var(--ink);
+    font-family: var(--body);
+    font-size: 17px;
+    line-height: 1.62;
+    margin: 0;
+    -webkit-font-smoothing: antialiased;
+  }
+
+  .shell {
+    max-width: 1240px;
+    margin: 0 auto;
+    padding: 0 24px 96px;
+    display: grid;
+    grid-template-columns: 1fr;
+    gap: 40px;
+  }
+
+  @media (min-width: 1080px) {
+    .shell {
+      grid-template-columns: 216px minmax(0, 1fr);
+      align-items: start;
+      gap: 56px;
+    }
+    .masthead { grid-column: 1 / -1; }
+  }
+
+  /* ---------- masthead ---------- */
+
+  .masthead {
+    border-bottom: 1px solid var(--rule-strong);
+    padding: 56px 0 28px;
+    display: flex;
+    flex-direction: column;
+    gap: 18px;
+  }
+
+  .eyebrow {
+    font-family: var(--mono);
+    font-size: 11.5px;
+    letter-spacing: 0.14em;
+    text-transform: uppercase;
+    color: var(--accent);
+    margin: 0;
+  }
+
+  h1 {
+    font-family: var(--display);
+    font-size: clamp(34px, 6vw, 52px);
+    line-height: 1.04;
+    letter-spacing: -0.028em;
+    font-weight: 700;
+    margin: 0;
+    text-wrap: balance;
+    max-width: 20ch;
+  }
+
+  .deck {
+    margin: 0;
+    max-width: var(--measure);
+    color: var(--ink-2);
+    font-size: 18px;
+  }
+
+  .facts {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 10px 28px;
+    margin: 6px 0 0;
+    padding: 0;
+    list-style: none;
+    font-family: var(--mono);
+    font-size: 12px;
+    letter-spacing: 0.03em;
+    color: var(--ink-3);
+  }
+  .facts b {
+    color: var(--ink);
+    font-weight: 500;
+  }
+
+  /* ---------- table of contents ---------- */
+
+  nav.toc {
+    display: none;
+    font-family: var(--mono);
+    font-size: 12px;
+    line-height: 1.5;
+  }
+
+  @media (min-width: 1080px) {
+    nav.toc {
+      display: block;
+      position: sticky;
+      top: 32px;
+      padding-top: 40px;
+    }
+  }
+
+  nav.toc ol {
+    list-style: none;
+    margin: 0;
+    padding: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+    border-left: 1px solid var(--rule);
+  }
+  nav.toc a {
+    display: block;
+    padding-left: 14px;
+    margin-left: -1px;
+    border-left: 1px solid transparent;
+    color: var(--ink-3);
+    text-decoration: none;
+    letter-spacing: 0.02em;
+  }
+  nav.toc a:hover,
+  nav.toc a:focus-visible {
+    color: var(--accent);
+    border-left-color: var(--accent);
+  }
+
+  /* ---------- sections ---------- */
+
+  main {
+    display: flex;
+    flex-direction: column;
+    gap: 72px;
+    padding-top: 40px;
+    min-width: 0;
+  }
+
+  section { min-width: 0; scroll-margin-top: 24px; }
+
+  .sec-head {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+    margin-bottom: 26px;
+  }
+
+  .sec-num {
+    font-family: var(--mono);
+    font-size: 11.5px;
+    letter-spacing: 0.16em;
+    color: var(--ink-3);
+  }
+
+  h2 {
+    font-family: var(--display);
+    font-size: clamp(25px, 3.4vw, 33px);
+    line-height: 1.12;
+    letter-spacing: -0.022em;
+    font-weight: 700;
+    margin: 0;
+    text-wrap: balance;
+  }
+
+  h3 {
+    font-family: var(--display);
+    font-size: 19px;
+    letter-spacing: -0.012em;
+    font-weight: 650;
+    margin: 40px 0 12px;
+    text-wrap: balance;
+  }
+
+  h4 {
+    font-family: var(--mono);
+    font-size: 12px;
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+    font-weight: 500;
+    color: var(--ink-3);
+    margin: 28px 0 10px;
+  }
+
+  p { max-width: var(--measure); margin: 0 0 16px; }
+  p:last-child { margin-bottom: 0; }
+
+  ul, ol { max-width: var(--measure); padding-left: 20px; margin: 0 0 16px; }
+  li { margin-bottom: 7px; }
+  li::marker { color: var(--ink-3); }
+
+  a { color: var(--accent); text-underline-offset: 2px; }
+  :focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; border-radius: 2px; }
+
+  code {
+    font-family: var(--mono);
+    font-size: 0.86em;
+    background: var(--surface-2);
+    padding: 1px 5px;
+    border-radius: 3px;
+    color: var(--ink);
+  }
+
+  strong { font-weight: 700; color: var(--ink); }
+
+  /* ---------- cards & panels ---------- */
+
+  .grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(230px, 1fr));
+    gap: 14px;
+    margin: 22px 0;
+  }
+
+  .card {
+    background: var(--surface);
+    border: 1px solid var(--rule);
+    border-radius: 4px;
+    padding: 18px 18px 16px;
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+  }
+  .card h5 {
+    font-family: var(--display);
+    font-size: 15.5px;
+    font-weight: 650;
+    margin: 0;
+    letter-spacing: -0.01em;
+  }
+  .card p {
+    font-size: 14.5px;
+    line-height: 1.5;
+    color: var(--ink-2);
+    margin: 0;
+  }
+  .card .tag {
+    font-family: var(--mono);
+    font-size: 10.5px;
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+    color: var(--accent);
+  }
+
+  .note {
+    border-left: 2px solid var(--accent);
+    background: var(--accent-soft);
+    padding: 14px 18px;
+    margin: 22px 0;
+    border-radius: 0 4px 4px 0;
+    max-width: var(--measure);
+  }
+  .note p { font-size: 15.5px; margin: 0; }
+  .note.warn { border-left-color: var(--warn); background: var(--warn-soft); }
+
+  /* ---------- tables ---------- */
+
+  .scroller {
+    overflow-x: auto;
+    margin: 18px 0;
+    border: 1px solid var(--rule);
+    border-radius: 4px;
+    background: var(--surface);
+  }
+
+  table {
+    border-collapse: collapse;
+    width: 100%;
+    min-width: 560px;
+    font-family: var(--mono);
+    font-size: 12.5px;
+    line-height: 1.45;
+  }
+
+  thead th {
+    text-align: left;
+    font-weight: 500;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    font-size: 10.5px;
+    color: var(--ink-3);
+    padding: 11px 14px;
+    border-bottom: 1px solid var(--rule-strong);
+    background: var(--surface-2);
+    white-space: nowrap;
+  }
+
+  tbody td {
+    padding: 10px 14px;
+    border-bottom: 1px solid var(--rule);
+    vertical-align: top;
+    color: var(--ink-2);
+  }
+  tbody tr:last-child td { border-bottom: none; }
+  tbody td:first-child { color: var(--ink); white-space: nowrap; }
+  td.desc { font-family: var(--body); font-size: 14.5px; line-height: 1.45; min-width: 240px; }
+
+  .pk, .fk, .uq {
+    font-size: 9.5px;
+    letter-spacing: 0.08em;
+    padding: 1px 5px;
+    border-radius: 2px;
+    vertical-align: 1.5px;
+    margin-left: 4px;
+  }
+  .pk { background: var(--accent-soft); color: var(--accent); }
+  .fk { background: var(--surface-2); color: var(--ink-3); }
+  .uq { background: var(--warn-soft); color: var(--warn); }
+
+  .m {
+    display: inline-block;
+    min-width: 52px;
+    text-align: center;
+    font-size: 10px;
+    letter-spacing: 0.06em;
+    padding: 2px 6px;
+    border-radius: 2px;
+    font-weight: 500;
+  }
+  .m.get { background: var(--accent-soft); color: var(--accent); }
+  .m.post { background: var(--ok-soft); color: var(--ok); }
+  .m.patch { background: var(--warn-soft); color: var(--warn); }
+  .m.put { background: var(--warn-soft); color: var(--warn); }
+  .m.del { background: var(--crit-soft); color: var(--crit); }
+
+  .who {
+    font-size: 10px;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+    color: var(--ink-3);
+    white-space: nowrap;
+  }
+  .who.admin { color: var(--warn); }
+
+  /* ---------- diagrams ---------- */
+
+  .diagram {
+    background: var(--surface);
+    border: 1px solid var(--rule);
+    border-radius: 4px;
+    padding: 20px 12px;
+    margin: 24px 0;
+    overflow-x: auto;
+  }
+  .diagram pre.mermaid {
+    margin: 0;
+    text-align: center;
+    min-width: 0;
+  }
+  .caption {
+    font-family: var(--mono);
+    font-size: 11px;
+    letter-spacing: 0.06em;
+    color: var(--ink-3);
+    margin: -12px 0 24px;
+  }
+
+  /* ---------- steps ---------- */
+
+  .steps {
+    counter-reset: step;
+    list-style: none;
+    padding: 0;
+    margin: 18px 0;
+    max-width: var(--measure);
+    display: flex;
+    flex-direction: column;
+    gap: 14px;
+  }
+  .steps li {
+    counter-increment: step;
+    position: relative;
+    padding-left: 40px;
+    margin: 0;
+    font-size: 16px;
+  }
+  .steps li::before {
+    content: counter(step, decimal-leading-zero);
+    position: absolute;
+    left: 0;
+    top: 2px;
+    font-family: var(--mono);
+    font-size: 11px;
+    letter-spacing: 0.06em;
+    color: var(--accent);
+    border: 1px solid var(--rule-strong);
+    border-radius: 2px;
+    padding: 2px 5px;
+    line-height: 1;
+  }
+
+  hr {
+    border: none;
+    border-top: 1px solid var(--rule);
+    margin: 40px 0;
+  }
+
+  footer {
+    border-top: 1px solid var(--rule-strong);
+    margin-top: 24px;
+    padding-top: 22px;
+    font-family: var(--mono);
+    font-size: 11.5px;
+    letter-spacing: 0.04em;
+    color: var(--ink-3);
+    max-width: var(--measure);
+    line-height: 1.7;
+  }
+
+  @media (max-width: 560px) {
+    body { font-size: 16px; }
+    .shell { padding: 0 18px 72px; }
+    main { gap: 56px; }
+  }
+
+  /* --- Añadidos para Apps Script: reset y ajustes fuera del visor --- */
+
+  html { background: var(--ground); }
+
+  *, *::before, *::after { box-sizing: border-box; }
+
+  img, svg { max-width: 100%; height: auto; }
+
+  #theme-toggle {
+    position: fixed;
+    top: 14px;
+    right: 14px;
+    z-index: 20;
+    display: inline-flex;
+    align-items: center;
+    gap: 7px;
+    background: var(--surface);
+    color: var(--ink-2);
+    border: 1px solid var(--rule-strong);
+    border-radius: 4px;
+    padding: 7px 11px;
+    font-family: var(--mono);
+    font-size: 11px;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    cursor: pointer;
+    transition: color 120ms ease, border-color 120ms ease;
+  }
+  #theme-toggle:hover { color: var(--accent); border-color: var(--accent); }
+
+  @media (max-width: 700px) {
+    #theme-toggle { top: 10px; right: 10px; padding: 6px 9px; font-size: 10px; }
+    .masthead { padding-top: 64px; }
+  }
+
+  /* Respaldo cuando Mermaid no carga: el código del diagrama queda legible. */
+  pre.mermaid {
+    font-family: var(--mono);
+    font-size: 12px;
+    line-height: 1.55;
+    color: var(--ink-2);
+    text-align: left;
+    white-space: pre;
+    margin: 0;
+  }
+  .diagram[data-state="pending"] pre.mermaid { visibility: hidden; }
+  .diagram[data-state="ready"] pre.mermaid { text-align: center; }
+  .diagram[data-state="failed"] pre.mermaid,
+  .diagram[data-state="pending"] pre.mermaid {
+    text-align: left;
+    padding-left: 8px;
+  }
+  .diagram .fallback-note { display: none; }
+  .diagram[data-state="failed"] .fallback-note {
+    display: block;
+    font-family: var(--mono);
+    font-size: 11px;
+    letter-spacing: 0.05em;
+    color: var(--ink-3);
+    margin-bottom: 12px;
+  }
+
+  @media print {
+    #theme-toggle { display: none; }
+    .shell { max-width: none; }
+    nav.toc { display: none; }
+    section { break-inside: avoid; }
+  }
+</style>
+</head>
+<body>
+<button id="theme-toggle" type="button" aria-live="polite">
+  <span id="theme-toggle-label">Tema</span>
+</button>
+<div class="shell">
+
+  <header class="masthead">
+    <p class="eyebrow">Documento técnico · v1</p>
+    <h1>Comedor empresarial: arquitectura y diseño técnico</h1>
+    <p class="deck">Aplicación web responsive para registrar, controlar y cobrar los pedidos del comedor de una sede. Un menú por día, una hora corte, y un cierre económico que Nómina puede leer sin pedir aclaraciones.</p>
+    <ul class="facts">
+      <li><b>Sede</b> única</li>
+      <li><b>Roles</b> Empleado · Administrador</li>
+      <li><b>Plazo</b> hoy y mañana</li>
+      <li><b>Zona horaria</b> America/Mexico_City</li>
+      <li><b>Entrega</b> PWA instalable</li>
+    </ul>
+  </header>
+
+  <nav class="toc" aria-label="Contenido">
+    <ol>
+      <li><a href="#decisiones">Decisiones que gobiernan todo</a></li>
+      <li><a href="#arquitectura">01 · Arquitectura</a></li>
+      <li><a href="#datos">02 · Base de datos</a></li>
+      <li><a href="#api">03 · API REST</a></li>
+      <li><a href="#flujos">04 · Flujos</a></li>
+      <li><a href="#pendientes">05 · Alcance de la v1</a></li>
+    </ol>
+  </nav>
+
+  <main>
+
+    <!-- ============ DECISIONES ============ -->
+    <section id="decisiones">
+      <div class="sec-head">
+        <span class="sec-num">RESUMEN</span>
+        <h2>Seis decisiones que gobiernan todo lo demás</h2>
+      </div>
+
+      <p>Antes del stack y de las tablas, estas seis reglas son las que hacen que el sistema sea auditable. Todo el resto del documento es consecuencia de ellas.</p>
+
+      <div class="grid">
+        <div class="card">
+          <span class="tag">Tiempo</span>
+          <h5>La hora corte vive en el menú, no en la configuración</h5>
+          <p>Cada día tiene su propio <code>cutoff_at</code> ya resuelto a UTC. Cambiar la hora corte por default nunca reescribe días pasados ni reabre pedidos ya cerrados.</p>
+        </div>
+        <div class="card">
+          <span class="tag">Dinero</span>
+          <h5>El precio se congela al confirmar</h5>
+          <p>El pedido guarda el importe cobrado y el desglose que lo originó. Ajustar una tarifa hoy no altera lo que ya se le cobró a alguien la semana pasada.</p>
+        </div>
+        <div class="card">
+          <span class="tag">Personas</span>
+          <h5>Baja = desactivación, nunca borrado</h5>
+          <p>El empleado inactivo no puede entrar ni aparece en el menú del día, pero su historial y sus cobros siguen íntegros y siguen exportándose.</p>
+        </div>
+        <div class="card">
+          <span class="tag">Omisión</span>
+          <h5>"No comerá" es un registro, no un vacío</h5>
+          <p>Al cerrar el día, el sistema crea el pedido en estado <code>no_meal</code> para quien no pidió. Así el reporte distingue "no comió" de "no existía".</p>
+        </div>
+        <div class="card">
+          <span class="tag">Cobro</span>
+          <h5>Se cobra lo confirmado, y el Admin puede condonar</h5>
+          <p>El importe se devenga al cerrar el corte, haya o no pasado la persona por su comida. Condonar es una excepción explícita, con motivo, que el reporte muestra marcada.</p>
+        </div>
+        <div class="card">
+          <span class="tag">Autoridad</span>
+          <h5>El Admin rompe reglas, pero deja rastro</h5>
+          <p>Pedido expreso, edición fuera de tiempo y borrado quedan en bitácora con actor, antes y después. La excepción se permite; el anonimato no.</p>
+        </div>
+      </div>
+    </section>
+
+    <!-- ============ ARQUITECTURA ============ -->
+    <section id="arquitectura">
+      <div class="sec-head">
+        <span class="sec-num">01</span>
+        <h2>Arquitectura recomendada</h2>
+      </div>
+
+      <p>El volumen real de una sola sede —decenas o pocos cientos de comidas al día, un pico de tráfico de 30 minutos antes del corte— no justifica microservicios. La recomendación es un <strong>monolito modular en TypeScript</strong> con PostgreSQL, empaquetado como PWA. Un solo lenguaje en front y back, un solo despliegue, y tipos compartidos entre ambos.</p>
+
+      <div class="diagram">
+<pre class="mermaid">
+flowchart LR
+  subgraph cliente["Cliente"]
+    PWA["PWA React + Vite<br/>mobile-first"]
+    SW["Service Worker<br/>push + offline shell"]
+  end
+
+  subgraph api["API — NestJS / Node"]
+    REST["REST + JWT<br/>RBAC empleado/admin"]
+    JOBS["Scheduler<br/>recordatorio · cierre"]
+    REP["Reportes<br/>ExcelJS · PDF"]
+  end
+
+  subgraph datos["Datos"]
+    PG[("PostgreSQL")]
+    OBJ[("Object storage<br/>fotos de platillos")]
+  end
+
+  subgraph ext["Servicios externos"]
+    MAIL["Email transaccional<br/>invitaciones · recordatorios"]
+    PUSH["Web Push VAPID"]
+    WA["WhatsApp<br/>mensaje + liga wa.me"]
+  end
+
+  PWA --> REST
+  SW --> PUSH
+  REST --> PG
+  REST --> OBJ
+  JOBS --> REST
+  JOBS --> MAIL
+  JOBS --> PUSH
+  REST --> REP
+  REP --> PG
+  REST --> WA
+</pre>
+      </div>
+      <p class="caption">Fig. 1 — Componentes y dependencias. Una sola API, un solo Postgres.</p>
+
+      <h3>Capa por capa</h3>
+
+      <div class="scroller">
+        <table>
+          <thead>
+            <tr><th>Capa</th><th>Elección</th><th>Por qué</th></tr>
+          </thead>
+          <tbody>
+            <tr><td>Frontend</td><td>React + Vite + TypeScript, Tailwind, PWA</td><td class="desc">La cocina y los empleados usan celular; el Admin usa PC. Una PWA instalable resuelve ambos y habilita notificaciones push sin publicar en tiendas.</td></tr>
+            <tr><td>Backend</td><td>Node 20 + NestJS (o Express), REST</td><td class="desc">Módulos por dominio: auth, users, catalog, menus, orders, billing, notifications. Tipos compartidos con el front vía paquete común.</td></tr>
+            <tr><td>Base de datos</td><td>PostgreSQL 15+</td><td class="desc">Restricciones reales (unicidad de un pedido por persona por día, checks de cantidad) y agregaciones para reportes. El dinero exige transacciones.</td></tr>
+            <tr><td>Auth</td><td>JWT access 15 min + refresh rotativo en cookie httpOnly</td><td class="desc">Sin registro abierto: solo invitación. Contraseñas con Argon2id.</td></tr>
+            <tr><td>Imágenes</td><td>S3-compatible (R2 / Supabase Storage) + CDN</td><td class="desc">Subida por URL firmada, conversión a WebP en 3 tamaños. Las fotos se ven en red móvil.</td></tr>
+            <tr><td>Email</td><td>Resend o SendGrid con plantillas</td><td class="desc">Invitación, reactivación, recordatorio y confirmación de pedido.</td></tr>
+            <tr><td>Push</td><td>Web Push (VAPID) desde el Service Worker</td><td class="desc">El recordatorio previo al corte llega aunque la app esté cerrada. Es el canal con mejor tasa de lectura.</td></tr>
+            <tr><td>Tareas programadas</td><td>Cron del proceso o scheduler externo → endpoints internos</td><td class="desc">Tres jobs: recordatorio T-60 min, cierre del corte, y aviso al Admin si mañana no tiene menú publicado.</td></tr>
+            <tr><td>Reportes</td><td>ExcelJS (XLSX/CSV) · Puppeteer o pdfmake (PDF)</td><td class="desc">Generación asíncrona con descarga por URL firmada cuando el rango es amplio.</td></tr>
+            <tr><td>WhatsApp</td><td>Fase 1: texto + <code>wa.me</code>. Fase 2: Cloud API</td><td class="desc">Ver nota abajo.</td></tr>
+            <tr><td>Infra</td><td>Front en Vercel · API en Railway/Fly · Postgres gestionado</td><td class="desc">Backups diarios con retención de 30 días. Sentry para errores, logs estructurados con id de correlación.</td></tr>
+          </tbody>
+        </table>
+      </div>
+
+      <div class="note warn">
+        <p><strong>Sobre WhatsApp:</strong> no existe forma legítima de publicar automáticamente en un grupo de WhatsApp. La API oficial (Cloud API) envía a números individuales con plantillas aprobadas, no a grupos. Por eso la Fase 1 es la correcta: el Admin toca <em>“Generar mensaje”</em>, el sistema arma el texto con el menú y la liga, lo copia al portapapeles o abre WhatsApp con el mensaje precargado, y el Admin lo pega en el grupo. Un toque manual, cero riesgo de bloqueo de cuenta. Las imágenes van como liga a una página pública del menú del día con vista previa (Open Graph), porque WhatsApp no acepta varias fotos incrustadas en un enlace de texto.</p>
+      </div>
+
+      <h3>Reglas transversales</h3>
+      <ul>
+        <li><strong>Tiempo:</strong> todo instante se guarda en <code>timestamptz</code> UTC; el día de servicio se guarda como <code>DATE</code> en hora local. La conversión ocurre una sola vez, al publicar el menú.</li>
+        <li><strong>Autorización:</strong> guard por rol + verificación de propiedad. Un empleado nunca resuelve un id de pedido ajeno, ni siquiera para leerlo.</li>
+        <li><strong>Idempotencia:</strong> crear un pedido acepta una clave de idempotencia; un doble tap en celular no genera dos pedidos.</li>
+        <li><strong>Bitácora:</strong> toda escritura administrativa sobre pedidos, tarifas y cuentas se registra en <code>audit_log</code>.</li>
+      </ul>
+    </section>
+
+    <!-- ============ DATOS ============ -->
+    <section id="datos">
+      <div class="sec-head">
+        <span class="sec-num">02</span>
+        <h2>Esquema de base de datos</h2>
+      </div>
+
+      <p>PostgreSQL, identificadores <code>uuid</code>, importes en <code>numeric(10,2)</code>, y <code>created_at</code> / <code>updated_at</code> en todas las tablas (omitidos abajo por brevedad).</p>
+
+      <div class="diagram">
+<pre class="mermaid">
+erDiagram
+  USERS ||--o{ ORDERS : realiza
+  USERS ||--o{ EMPLOYEE_PRICES : tiene
+  USERS ||--o{ PUSH_SUBSCRIPTIONS : registra
+  USERS ||--o{ INVITATIONS : envia
+  MENUS ||--o{ MENU_ITEMS : contiene
+  MENUS ||--o{ ORDERS : agrupa
+  DISHES ||--o{ MENU_ITEMS : aparece_en
+  DISHES ||--o{ EMPLOYEE_PRICES : tarifa_de
+  ORDERS ||--|{ ORDER_ITEMS : detalla
+  MENU_ITEMS ||--o{ ORDER_ITEMS : seleccionado
+  PAYROLL_PERIODS ||--o{ PAYROLL_LINES : consolida
+  USERS ||--o{ PAYROLL_LINES : cobra
+</pre>
+      </div>
+      <p class="caption">Fig. 2 — Relaciones principales.</p>
+
+      <h3>Identidad y acceso</h3>
+
+      <h4>users</h4>
+      <div class="scroller">
+        <table>
+          <thead><tr><th>Campo</th><th>Tipo</th><th>Notas</th></tr></thead>
+          <tbody>
+            <tr><td>id<span class="pk">PK</span></td><td>uuid</td><td class="desc">—</td></tr>
+            <tr><td>email<span class="uq">UQ</span></td><td>citext</td><td class="desc">Único e insensible a mayúsculas. Es el identificador de acceso.</td></tr>
+            <tr><td>password_hash</td><td>text</td><td class="desc">Argon2id. Nulo mientras la invitación no se acepta.</td></tr>
+            <tr><td>full_name</td><td>text</td><td class="desc">Nombre que ve la cocina en la lista de entrega.</td></tr>
+            <tr><td>employee_code</td><td>text</td><td class="desc">Número de nómina. Es la llave con la que RRHH cruza el export.</td></tr>
+            <tr><td>department_id<span class="fk">FK</span></td><td>uuid → departments</td><td class="desc">Opcional. Habilita subtotales por área o centro de costos.</td></tr>
+            <tr><td>role</td><td>enum</td><td class="desc"><code>empleado</code> · <code>admin</code></td></tr>
+            <tr><td>status</td><td>enum</td><td class="desc"><code>invited</code> · <code>active</code> · <code>inactive</code></td></tr>
+            <tr><td>deactivated_at</td><td>timestamptz</td><td class="desc">Se conserva al reactivar, para saber el periodo sin servicio.</td></tr>
+            <tr><td>last_login_at</td><td>timestamptz</td><td class="desc">Detecta invitados que nunca entraron.</td></tr>
+          </tbody>
+        </table>
+      </div>
+
+      <h4>departments</h4>
+      <div class="scroller">
+        <table>
+          <thead><tr><th>Campo</th><th>Tipo</th><th>Notas</th></tr></thead>
+          <tbody>
+            <tr><td>id<span class="pk">PK</span></td><td>uuid</td><td class="desc">—</td></tr>
+            <tr><td>name<span class="uq">UQ</span></td><td>text</td><td class="desc">Área o centro de costos.</td></tr>
+            <tr><td>cost_center</td><td>text</td><td class="desc">Clave contable para el export de Nómina.</td></tr>
+          </tbody>
+        </table>
+      </div>
+
+      <h4>invitations</h4>
+      <div class="scroller">
+        <table>
+          <thead><tr><th>Campo</th><th>Tipo</th><th>Notas</th></tr></thead>
+          <tbody>
+            <tr><td>id<span class="pk">PK</span></td><td>uuid</td><td class="desc">—</td></tr>
+            <tr><td>email</td><td>citext</td><td class="desc">Índice único parcial mientras <code>status = 'pending'</code>.</td></tr>
+            <tr><td>role</td><td>enum</td><td class="desc">Rol con el que nacerá la cuenta.</td></tr>
+            <tr><td>token_hash<span class="uq">UQ</span></td><td>text</td><td class="desc">SHA-256 del token. El token en claro solo viaja en el correo.</td></tr>
+            <tr><td>invited_by<span class="fk">FK</span></td><td>uuid → users</td><td class="desc">—</td></tr>
+            <tr><td>expires_at</td><td>timestamptz</td><td class="desc">72 horas. Reenviar genera token nuevo e invalida el anterior.</td></tr>
+            <tr><td>status</td><td>enum</td><td class="desc"><code>pending</code> · <code>accepted</code> · <code>expired</code> · <code>revoked</code></td></tr>
+          </tbody>
+        </table>
+      </div>
+
+      <p>Complementan: <code>refresh_tokens</code> (id, user_id FK, token_hash UQ, expires_at, revoked_at, user_agent) y <code>password_resets</code>, con la misma forma que <code>invitations</code>.</p>
+
+      <h3>Catálogo y menú</h3>
+
+      <h4>dishes</h4>
+      <div class="scroller">
+        <table>
+          <thead><tr><th>Campo</th><th>Tipo</th><th>Notas</th></tr></thead>
+          <tbody>
+            <tr><td>id<span class="pk">PK</span></td><td>uuid</td><td class="desc">—</td></tr>
+            <tr><td>name</td><td>text</td><td class="desc">—</td></tr>
+            <tr><td>description</td><td>text</td><td class="desc">Se muestra bajo la foto en la tarjeta del platillo.</td></tr>
+            <tr><td>image_url</td><td>text</td><td class="desc">Original; las variantes WebP se derivan por convención de nombre.</td></tr>
+            <tr><td>type</td><td>enum</td><td class="desc"><code>principal</code> · <code>base</code> · <code>complemento</code> · <code>salsa</code>. Determina en qué bloque de la pantalla aparece.</td></tr>
+            <tr><td>allows_complements</td><td>boolean</td><td class="desc">Definido al dar de alta. Si es falso, la UI oculta el paso de complementos.</td></tr>
+            <tr><td>base_price</td><td>numeric(10,2)</td><td class="desc">Tarifa por default, antes de subsidios.</td></tr>
+            <tr><td>is_active</td><td>boolean</td><td class="desc">Baja lógica: sale del catálogo, permanece en el historial.</td></tr>
+            <tr><td>is_default_base</td><td>boolean</td><td class="desc">Los <code>base</code> marcados se agregan solos a cada menú nuevo.</td></tr>
+          </tbody>
+        </table>
+      </div>
+
+      <h4>menus <span style="font-family:var(--mono);font-size:11px;color:var(--ink-3);letter-spacing:.06em">— un registro por día de servicio</span></h4>
+      <div class="scroller">
+        <table>
+          <thead><tr><th>Campo</th><th>Tipo</th><th>Notas</th></tr></thead>
+          <tbody>
+            <tr><td>id<span class="pk">PK</span></td><td>uuid</td><td class="desc">—</td></tr>
+            <tr><td>service_date<span class="uq">UQ</span></td><td>date</td><td class="desc">Día local de consumo. Único: un menú por día.</td></tr>
+            <tr><td>status</td><td>enum</td><td class="desc"><code>draft</code> · <code>published</code> · <code>closed</code>. Solo <code>published</code> acepta pedidos de empleados.</td></tr>
+            <tr><td>cutoff_at</td><td>timestamptz</td><td class="desc">Instante exacto del corte, congelado al publicar. Cambiar el default global no lo mueve.</td></tr>
+            <tr><td>published_at / published_by<span class="fk">FK</span></td><td>timestamptz / uuid</td><td class="desc">—</td></tr>
+            <tr><td>closed_at</td><td>timestamptz</td><td class="desc">Lo escribe el job de cierre. Su presencia es la prueba de que ya se generaron los <code>no_meal</code>.</td></tr>
+            <tr><td>notes</td><td>text</td><td class="desc">Aviso del día, visible en la pantalla principal y en el mensaje de WhatsApp.</td></tr>
+          </tbody>
+        </table>
+      </div>
+
+      <h4>menu_items</h4>
+      <div class="scroller">
+        <table>
+          <thead><tr><th>Campo</th><th>Tipo</th><th>Notas</th></tr></thead>
+          <tbody>
+            <tr><td>id<span class="pk">PK</span></td><td>uuid</td><td class="desc">—</td></tr>
+            <tr><td>menu_id<span class="fk">FK</span></td><td>uuid → menus</td><td class="desc"><code>UNIQUE (menu_id, dish_id)</code></td></tr>
+            <tr><td>dish_id<span class="fk">FK</span></td><td>uuid → dishes</td><td class="desc">—</td></tr>
+            <tr><td>price_override</td><td>numeric(10,2)</td><td class="desc">Precio solo para ese día. Nulo = usa <code>base_price</code>.</td></tr>
+            <tr><td>display_order</td><td>int</td><td class="desc">Orden con el que el Admin acomoda las tarjetas.</td></tr>
+            <tr><td>is_available</td><td>boolean</td><td class="desc">Permite agotar un platillo a media mañana sin borrar los pedidos que ya lo eligieron.</td></tr>
+            <tr><td>stock_limit</td><td>int</td><td class="desc">Fase 2. Cupo máximo; la UI lo mostraría como “quedan N”. El campo se crea desde ya para no migrar después.</td></tr>
+          </tbody>
+        </table>
+      </div>
+
+      <h3>Pedidos</h3>
+
+      <h4>orders</h4>
+      <div class="scroller">
+        <table>
+          <thead><tr><th>Campo</th><th>Tipo</th><th>Notas</th></tr></thead>
+          <tbody>
+            <tr><td>id<span class="pk">PK</span></td><td>uuid</td><td class="desc">—</td></tr>
+            <tr><td>user_id<span class="fk">FK</span></td><td>uuid → users</td><td class="desc">—</td></tr>
+            <tr><td>menu_id<span class="fk">FK</span></td><td>uuid → menus</td><td class="desc">—</td></tr>
+            <tr><td>service_date</td><td>date</td><td class="desc">Denormalizado para consultas e índices de reporte.</td></tr>
+            <tr><td>status</td><td>enum</td><td class="desc"><code>confirmed</code> · <code>cancelled</code> · <code>delivered</code> · <code>no_meal</code></td></tr>
+            <tr><td>comments</td><td>text</td><td class="desc">Campo libre del empleado: “sin cebolla”, “poca sal”.</td></tr>
+            <tr><td>source</td><td>enum</td><td class="desc"><code>employee</code> · <code>admin_express</code> · <code>admin_edit</code> · <code>system_no_meal</code></td></tr>
+            <tr><td>charged_amount</td><td>numeric(10,2)</td><td class="desc">Importe congelado al confirmar. Es lo único que suma el reporte de Nómina.</td></tr>
+            <tr><td>price_breakdown</td><td>jsonb</td><td class="desc">Cómo se llegó a ese importe: tarifa base, override del día, subsidio aplicado.</td></tr>
+            <tr><td>is_waived</td><td>boolean</td><td class="desc">Condonado por el Admin. El pedido sigue existiendo y contando para producción, pero no suma en el corte.</td></tr>
+            <tr><td>waive_reason / waived_by<span class="fk">FK</span> / waived_at</td><td>text / uuid / timestamptz</td><td class="desc">Motivo obligatorio. Toda condonación va marcada en el reporte de Nómina.</td></tr>
+            <tr><td>placed_at / cancelled_at / delivered_at</td><td>timestamptz</td><td class="desc">—</td></tr>
+            <tr><td>created_by / updated_by<span class="fk">FK</span></td><td>uuid → users</td><td class="desc">Distinto de <code>user_id</code> cuando el Admin captura por otro.</td></tr>
+          </tbody>
+        </table>
+      </div>
+
+      <div class="note">
+        <p><strong>Restricción clave:</strong> <code>CREATE UNIQUE INDEX ON orders (user_id, service_date) WHERE status &lt;&gt; 'cancelled'</code>. Una persona, un pedido vigente por día — garantizado por la base de datos, no por el código.</p>
+      </div>
+
+      <h4>order_items</h4>
+      <div class="scroller">
+        <table>
+          <thead><tr><th>Campo</th><th>Tipo</th><th>Notas</th></tr></thead>
+          <tbody>
+            <tr><td>id<span class="pk">PK</span></td><td>uuid</td><td class="desc">—</td></tr>
+            <tr><td>order_id<span class="fk">FK</span></td><td>uuid → orders</td><td class="desc"><code>ON DELETE CASCADE</code></td></tr>
+            <tr><td>menu_item_id<span class="fk">FK</span></td><td>uuid → menu_items</td><td class="desc">—</td></tr>
+            <tr><td>dish_id<span class="fk">FK</span></td><td>uuid → dishes</td><td class="desc">Redundante a propósito: el reporte sobrevive si el menú se edita.</td></tr>
+            <tr><td>dish_name_snapshot</td><td>text</td><td class="desc">El nombre tal como se llamaba ese día.</td></tr>
+            <tr><td>item_role</td><td>enum</td><td class="desc"><code>main</code> · <code>complemento</code> · <code>salsa</code></td></tr>
+            <tr><td>unit_price</td><td>numeric(10,2)</td><td class="desc">En v1 siempre cero para complementos y salsas: van incluidos en la tarifa del principal. El campo existe para poder cobrarlos después sin migrar datos.</td></tr>
+          </tbody>
+        </table>
+      </div>
+
+      <p>Reglas garantizadas en base de datos: exactamente <strong>un</strong> renglón con <code>item_role = 'main'</code> por pedido (índice único parcial) y <strong>máximo dos</strong> con <code>complemento</code> (trigger de conteo). Las salsas no tienen tope. Ninguna bebida existe en el catálogo.</p>
+
+      <div class="note">
+        <p><strong>Qué se cobra:</strong> el importe es el del platillo principal o base; complementos y salsas van incluidos. Un pedido suma al corte si su estado es <code>confirmed</code> o <code>delivered</code> y no está condonado. <code>cancelled</code> y <code>no_meal</code> nunca suman. Es decir: quien confirma y no pasa por su comida paga, salvo que el Admin condone.</p>
+      </div>
+
+      <h3>Dinero</h3>
+
+      <h4>employee_prices <span style="font-family:var(--mono);font-size:11px;color:var(--ink-3);letter-spacing:.06em">— tarifas personalizadas y subsidios</span></h4>
+      <div class="scroller">
+        <table>
+          <thead><tr><th>Campo</th><th>Tipo</th><th>Notas</th></tr></thead>
+          <tbody>
+            <tr><td>id<span class="pk">PK</span></td><td>uuid</td><td class="desc">—</td></tr>
+            <tr><td>user_id<span class="fk">FK</span></td><td>uuid → users</td><td class="desc">—</td></tr>
+            <tr><td>dish_id<span class="fk">FK</span></td><td>uuid → dishes</td><td class="desc"><strong>Nulo = aplica a todos los platillos</strong> para esa persona.</td></tr>
+            <tr><td>mode</td><td>enum</td><td class="desc"><code>fixed</code> (precio exacto) · <code>discount_pct</code> · <code>discount_amount</code></td></tr>
+            <tr><td>value</td><td>numeric(10,2)</td><td class="desc">Se interpreta según <code>mode</code>.</td></tr>
+            <tr><td>effective_from / effective_to</td><td>date</td><td class="desc">Vigencia. Un cambio de subsidio no toca el pasado.</td></tr>
+          </tbody>
+        </table>
+      </div>
+
+      <p><strong>Resolución de precio</strong>, en este orden: regla del empleado para ese platillo → regla general del empleado → <code>price_override</code> del día → <code>base_price</code>. El resultado se escribe en <code>orders.charged_amount</code> y ya no vuelve a calcularse.</p>
+
+      <h4>payroll_periods · payroll_lines</h4>
+      <div class="scroller">
+        <table>
+          <thead><tr><th>Campo</th><th>Tipo</th><th>Notas</th></tr></thead>
+          <tbody>
+            <tr><td>periods.id<span class="pk">PK</span></td><td>uuid</td><td class="desc">—</td></tr>
+            <tr><td>periods.period_start / period_end</td><td>date</td><td class="desc">Rango del corte. Se valida que no se traslape con otro cerrado.</td></tr>
+            <tr><td>periods.status</td><td>enum</td><td class="desc"><code>draft</code> · <code>closed</code>. Al cerrar, los pedidos del rango se bloquean para edición.</td></tr>
+            <tr><td>periods.totals</td><td>jsonb</td><td class="desc">Empleados cobrados, comidas, importe total.</td></tr>
+            <tr><td>periods.file_url</td><td>text</td><td class="desc">El XLSX exacto que se envió a Nómina.</td></tr>
+            <tr><td>lines.period_id<span class="fk">FK</span></td><td>uuid → payroll_periods</td><td class="desc"><code>UNIQUE (period_id, user_id)</code></td></tr>
+            <tr><td>lines.user_id<span class="fk">FK</span></td><td>uuid → users</td><td class="desc">—</td></tr>
+            <tr><td>lines.meals_count / total_amount</td><td>int / numeric</td><td class="desc">Copia congelada. Aunque después se corrija un pedido, el corte enviado no cambia.</td></tr>
+          </tbody>
+        </table>
+      </div>
+
+      <h3>Notificaciones y bitácora</h3>
+      <div class="scroller">
+        <table>
+          <thead><tr><th>Tabla</th><th>Campos</th><th>Propósito</th></tr></thead>
+          <tbody>
+            <tr><td>push_subscriptions</td><td>id PK, user_id FK, endpoint UQ, p256dh, auth, user_agent, last_seen_at</td><td class="desc">Un registro por navegador/dispositivo. Se purga al fallar con 410.</td></tr>
+            <tr><td>notifications</td><td>id PK, user_id FK, type, channel, payload jsonb, status, sent_at, error, dedupe_key UQ</td><td class="desc">Historial de envíos. <code>dedupe_key</code> evita mandar dos veces el recordatorio del mismo día.</td></tr>
+            <tr><td>audit_log</td><td>id PK, actor_id FK, entity_type, entity_id, action, before jsonb, after jsonb, ip, created_at</td><td class="desc">Toda escritura administrativa sobre pedidos, tarifas y cuentas.</td></tr>
+            <tr><td>settings</td><td>key PK, value jsonb, updated_by FK, updated_at</td><td class="desc">Hora corte default, minutos de anticipación del recordatorio, máximo de complementos, plantilla del mensaje de WhatsApp, días hábiles.</td></tr>
+          </tbody>
+        </table>
+      </div>
+
+      <h4>Índices que importan</h4>
+      <ul>
+        <li><code>orders (service_date, status)</code> — pantalla de producción del día.</li>
+        <li><code>orders (user_id, service_date DESC)</code> — “mis pedidos”.</li>
+        <li><code>orders (service_date) INCLUDE (user_id, charged_amount)</code> — corte de Nómina por rango.</li>
+        <li><code>menu_items (menu_id, display_order)</code> — carga de la pantalla principal.</li>
+      </ul>
+    </section>
+
+    <!-- ============ API ============ -->
+    <section id="api">
+      <div class="sec-head">
+        <span class="sec-num">03</span>
+        <h2>Endpoints REST</h2>
+      </div>
+
+      <p>Base <code>/api/v1</code>. Autenticación por <code>Authorization: Bearer</code>. La columna de la derecha indica quién puede llamar.</p>
+
+      <h3>Autenticación e invitaciones</h3>
+      <div class="scroller">
+        <table>
+          <thead><tr><th>Método</th><th>Ruta</th><th>Qué hace</th><th>Rol</th></tr></thead>
+          <tbody>
+            <tr><td><span class="m post">POST</span></td><td>/auth/login</td><td class="desc">Devuelve access token + refresh en cookie. Rechaza cuentas <code>inactive</code>.</td><td class="who">público</td></tr>
+            <tr><td><span class="m post">POST</span></td><td>/auth/refresh</td><td class="desc">Rota el refresh token.</td><td class="who">público</td></tr>
+            <tr><td><span class="m post">POST</span></td><td>/auth/logout</td><td class="desc">Revoca la sesión actual.</td><td class="who">todos</td></tr>
+            <tr><td><span class="m post">POST</span></td><td>/auth/forgot-password</td><td class="desc">Responde 204 siempre, exista o no el correo.</td><td class="who">público</td></tr>
+            <tr><td><span class="m post">POST</span></td><td>/auth/reset-password</td><td class="desc">Consume el token y revoca todas las sesiones.</td><td class="who">público</td></tr>
+            <tr><td><span class="m get">GET</span></td><td>/invitations/:token</td><td class="desc">Valida la invitación y devuelve correo y nombre precargados.</td><td class="who">público</td></tr>
+            <tr><td><span class="m post">POST</span></td><td>/invitations/:token/accept</td><td class="desc">Fija contraseña, activa la cuenta e inicia sesión.</td><td class="who">público</td></tr>
+          </tbody>
+        </table>
+      </div>
+
+      <h3>Cuenta propia</h3>
+      <div class="scroller">
+        <table>
+          <thead><tr><th>Método</th><th>Ruta</th><th>Qué hace</th><th>Rol</th></tr></thead>
+          <tbody>
+            <tr><td><span class="m get">GET</span></td><td>/me</td><td class="desc">Perfil, rol y preferencias de notificación.</td><td class="who">todos</td></tr>
+            <tr><td><span class="m patch">PATCH</span></td><td>/me</td><td class="desc">Nombre, foto, canal de recordatorio preferido.</td><td class="who">todos</td></tr>
+            <tr><td><span class="m put">PUT</span></td><td>/me/password</td><td class="desc">Requiere la contraseña actual.</td><td class="who">todos</td></tr>
+            <tr><td><span class="m post">POST</span></td><td>/me/push-subscriptions</td><td class="desc">Registra el dispositivo para push.</td><td class="who">todos</td></tr>
+            <tr><td><span class="m del">DELETE</span></td><td>/me/push-subscriptions/:id</td><td class="desc">Da de baja el dispositivo.</td><td class="who">todos</td></tr>
+          </tbody>
+        </table>
+      </div>
+
+      <h3>Empleados <span style="font-family:var(--mono);font-size:11px;color:var(--warn);letter-spacing:.06em">— admin</span></h3>
+      <div class="scroller">
+        <table>
+          <thead><tr><th>Método</th><th>Ruta</th><th>Qué hace</th><th>Rol</th></tr></thead>
+          <tbody>
+            <tr><td><span class="m get">GET</span></td><td>/users?status=&amp;q=&amp;page=</td><td class="desc">Listado con búsqueda y paginación.</td><td class="who admin">admin</td></tr>
+            <tr><td><span class="m post">POST</span></td><td>/users/invitations</td><td class="desc">Invita a uno o varios correos en la misma llamada.</td><td class="who admin">admin</td></tr>
+            <tr><td><span class="m post">POST</span></td><td>/users/invitations/:id/resend</td><td class="desc">Reenvía y renueva el token.</td><td class="who admin">admin</td></tr>
+            <tr><td><span class="m get">GET</span></td><td>/users/:id</td><td class="desc">Ficha con tarifas vigentes y consumo del mes.</td><td class="who admin">admin</td></tr>
+            <tr><td><span class="m patch">PATCH</span></td><td>/users/:id</td><td class="desc">Nombre, número de nómina, área, rol.</td><td class="who admin">admin</td></tr>
+            <tr><td><span class="m post">POST</span></td><td>/users/:id/deactivate</td><td class="desc">Baja lógica. Cancela sus pedidos futuros aún no cerrados.</td><td class="who admin">admin</td></tr>
+            <tr><td><span class="m post">POST</span></td><td>/users/:id/reactivate</td><td class="desc">Reactiva conservando historial y tarifas.</td><td class="who admin">admin</td></tr>
+            <tr><td><span class="m get">GET</span></td><td>/users/:id/prices</td><td class="desc">Tarifas personalizadas vigentes e históricas.</td><td class="who admin">admin</td></tr>
+            <tr><td><span class="m post">POST</span></td><td>/users/:id/prices</td><td class="desc">Alta de subsidio o tarifa fija, con vigencia.</td><td class="who admin">admin</td></tr>
+            <tr><td><span class="m del">DELETE</span></td><td>/users/:id/prices/:priceId</td><td class="desc">Cierra la vigencia; no borra el histórico.</td><td class="who admin">admin</td></tr>
+          </tbody>
+        </table>
+      </div>
+
+      <h3>Catálogo de platillos <span style="font-family:var(--mono);font-size:11px;color:var(--warn);letter-spacing:.06em">— admin</span></h3>
+      <div class="scroller">
+        <table>
+          <thead><tr><th>Método</th><th>Ruta</th><th>Qué hace</th><th>Rol</th></tr></thead>
+          <tbody>
+            <tr><td><span class="m get">GET</span></td><td>/dishes?type=&amp;active=</td><td class="desc">Catálogo filtrable.</td><td class="who admin">admin</td></tr>
+            <tr><td><span class="m post">POST</span></td><td>/dishes</td><td class="desc">Alta con tipo, tarifa base y <code>allows_complements</code>.</td><td class="who admin">admin</td></tr>
+            <tr><td><span class="m patch">PATCH</span></td><td>/dishes/:id</td><td class="desc">Edición. No afecta pedidos ya confirmados.</td><td class="who admin">admin</td></tr>
+            <tr><td><span class="m del">DELETE</span></td><td>/dishes/:id</td><td class="desc">Baja lógica (<code>is_active = false</code>).</td><td class="who admin">admin</td></tr>
+            <tr><td><span class="m post">POST</span></td><td>/uploads/dish-image</td><td class="desc">Devuelve URL firmada para subir directo al storage.</td><td class="who admin">admin</td></tr>
+          </tbody>
+        </table>
+      </div>
+
+      <h3>Menús <span style="font-family:var(--mono);font-size:11px;color:var(--warn);letter-spacing:.06em">— admin</span></h3>
+      <div class="scroller">
+        <table>
+          <thead><tr><th>Método</th><th>Ruta</th><th>Qué hace</th><th>Rol</th></tr></thead>
+          <tbody>
+            <tr><td><span class="m get">GET</span></td><td>/menus?from=&amp;to=</td><td class="desc">Calendario de menús con su estado.</td><td class="who admin">admin</td></tr>
+            <tr><td><span class="m post">POST</span></td><td>/menus</td><td class="desc">Crea el menú de una fecha; agrega solos los platillos base fijos.</td><td class="who admin">admin</td></tr>
+            <tr><td><span class="m post">POST</span></td><td>/menus/:id/duplicate</td><td class="desc">Copia un menú anterior a otra fecha. Ahorra la captura diaria.</td><td class="who admin">admin</td></tr>
+            <tr><td><span class="m patch">PATCH</span></td><td>/menus/:id</td><td class="desc">Hora corte del día y aviso.</td><td class="who admin">admin</td></tr>
+            <tr><td><span class="m post">POST</span></td><td>/menus/:id/items</td><td class="desc">Agrega platillo con precio del día y orden.</td><td class="who admin">admin</td></tr>
+            <tr><td><span class="m patch">PATCH</span></td><td>/menus/:id/items/:itemId</td><td class="desc">Disponibilidad, cupo, orden.</td><td class="who admin">admin</td></tr>
+            <tr><td><span class="m del">DELETE</span></td><td>/menus/:id/items/:itemId</td><td class="desc">Bloqueado si ya hay pedidos que lo eligieron.</td><td class="who admin">admin</td></tr>
+            <tr><td><span class="m post">POST</span></td><td>/menus/:id/publish</td><td class="desc">Congela <code>cutoff_at</code>, abre pedidos y dispara el aviso de menú nuevo.</td><td class="who admin">admin</td></tr>
+            <tr><td><span class="m get">GET</span></td><td>/menus/:id/broadcast</td><td class="desc">Devuelve el texto listo para WhatsApp, la liga corta y el <code>wa.me</code>.</td><td class="who admin">admin</td></tr>
+          </tbody>
+        </table>
+      </div>
+
+      <h3>Pedidos — empleado</h3>
+      <div class="scroller">
+        <table>
+          <thead><tr><th>Método</th><th>Ruta</th><th>Qué hace</th><th>Rol</th></tr></thead>
+          <tbody>
+            <tr><td><span class="m get">GET</span></td><td>/menu/available</td><td class="desc"><strong>Endpoint principal de la app.</strong> Hoy y mañana con sus platillos, mi pedido actual, si aún puedo editar y cuánto falta para el corte.</td><td class="who">empleado</td></tr>
+            <tr><td><span class="m post">POST</span></td><td>/orders</td><td class="desc">Crea el pedido. Valida ventana, corte y reglas de armado.</td><td class="who">empleado</td></tr>
+            <tr><td><span class="m post">POST</span></td><td>/orders/repeat</td><td class="desc"><strong>Repetir mi último pedido.</strong> Copia el último pedido no cancelado a la fecha indicada; si algún platillo ya no está en el menú, responde <code>409</code> con el detalle para que la app precargue lo que sí queda.</td><td class="who">empleado</td></tr>
+            <tr><td><span class="m get">GET</span></td><td>/orders/mine?from=&amp;to=</td><td class="desc">Mi historial con importes cobrados.</td><td class="who">empleado</td></tr>
+            <tr><td><span class="m get">GET</span></td><td>/orders/mine/summary?from=&amp;to=</td><td class="desc"><strong>Mi gasto del periodo.</strong> Comidas y acumulado del periodo de nómina en curso, más el del anterior ya cerrado.</td><td class="who">empleado</td></tr>
+            <tr><td><span class="m patch">PATCH</span></td><td>/orders/:id</td><td class="desc">Edita antes del corte. Recalcula y vuelve a congelar el importe.</td><td class="who">empleado</td></tr>
+            <tr><td><span class="m del">DELETE</span></td><td>/orders/:id</td><td class="desc">Cancela antes del corte.</td><td class="who">empleado</td></tr>
+          </tbody>
+        </table>
+      </div>
+
+      <div class="note warn">
+        <p>Pasado el corte, <code>POST</code>, <code>PATCH</code> y <code>DELETE</code> de empleado responden <code>409 ORDER_WINDOW_CLOSED</code> con el <code>cutoff_at</code> en el cuerpo, para que la interfaz muestre el motivo exacto y no un error genérico.</p>
+      </div>
+
+      <h3>Pedidos — administración</h3>
+      <div class="scroller">
+        <table>
+          <thead><tr><th>Método</th><th>Ruta</th><th>Qué hace</th><th>Rol</th></tr></thead>
+          <tbody>
+            <tr><td><span class="m get">GET</span></td><td>/admin/orders?date=&amp;status=&amp;userId=</td><td class="desc">Tablero del día con filtros.</td><td class="who admin">admin</td></tr>
+            <tr><td><span class="m get">GET</span></td><td>/admin/orders/pending?date=</td><td class="desc">Quién no ha pedido todavía. Alimenta el recordatorio manual.</td><td class="who admin">admin</td></tr>
+            <tr><td><span class="m get">GET</span></td><td>/admin/orders/summary?date=</td><td class="desc">Consolidado por platillo y complemento para cocina y proveedor.</td><td class="who admin">admin</td></tr>
+            <tr><td><span class="m post">POST</span></td><td>/admin/orders</td><td class="desc">Pedido expreso: ignora el corte, exige <code>reason</code> y queda en bitácora.</td><td class="who admin">admin</td></tr>
+            <tr><td><span class="m patch">PATCH</span></td><td>/admin/orders/:id</td><td class="desc">Edita cualquier pedido, incluso cerrado, salvo si su periodo de nómina ya cerró.</td><td class="who admin">admin</td></tr>
+            <tr><td><span class="m del">DELETE</span></td><td>/admin/orders/:id</td><td class="desc">Elimina con motivo obligatorio.</td><td class="who admin">admin</td></tr>
+            <tr><td><span class="m post">POST</span></td><td>/admin/orders/bulk-deliver</td><td class="desc">Marca entregados todos los <code>confirmed</code> de la fecha, o solo los <code>ids</code> enviados.</td><td class="who admin">admin</td></tr>
+            <tr><td><span class="m post">POST</span></td><td>/admin/orders/:id/waive</td><td class="desc">Condona el cobro con motivo obligatorio. El pedido conserva su estado; deja de sumar al corte.</td><td class="who admin">admin</td></tr>
+            <tr><td><span class="m del">DELETE</span></td><td>/admin/orders/:id/waive</td><td class="desc">Revierte la condonación mientras el periodo de nómina siga abierto.</td><td class="who admin">admin</td></tr>
+            <tr><td><span class="m post">POST</span></td><td>/admin/menus/:id/close</td><td class="desc">Cierre manual anticipado del día.</td><td class="who admin">admin</td></tr>
+          </tbody>
+        </table>
+      </div>
+
+      <h3>Reportes y nómina <span style="font-family:var(--mono);font-size:11px;color:var(--warn);letter-spacing:.06em">— admin</span></h3>
+      <div class="scroller">
+        <table>
+          <thead><tr><th>Método</th><th>Ruta</th><th>Qué hace</th><th>Rol</th></tr></thead>
+          <tbody>
+            <tr><td><span class="m get">GET</span></td><td>/reports/charges?from=&amp;to=&amp;format=xlsx|csv|json</td><td class="desc">Cobros para RRHH. El XLSX trae dos hojas: <em>Resumen</em> (una fila por empleado) y <em>Detalle</em> (una fila por pedido), ambas con la columna de excepciones.</td><td class="who admin">admin</td></tr>
+            <tr><td><span class="m get">GET</span></td><td>/reports/production?date=&amp;format=pdf</td><td class="desc">Listado consolidado para producción y solicitud al proveedor.</td><td class="who admin">admin</td></tr>
+            <tr><td><span class="m get">GET</span></td><td>/reports/dashboard?from=&amp;to=</td><td class="desc">Métricas: participación, platillo más pedido, gasto por área, cancelaciones.</td><td class="who admin">admin</td></tr>
+            <tr><td><span class="m get">GET</span></td><td>/payroll/periods</td><td class="desc">Cortes generados y su estado.</td><td class="who admin">admin</td></tr>
+            <tr><td><span class="m post">POST</span></td><td>/payroll/periods</td><td class="desc">Genera el corte del rango en <code>draft</code> con sus renglones.</td><td class="who admin">admin</td></tr>
+            <tr><td><span class="m post">POST</span></td><td>/payroll/periods/:id/close</td><td class="desc">Cierra, congela renglones y bloquea edición de esos pedidos.</td><td class="who admin">admin</td></tr>
+            <tr><td><span class="m get">GET</span></td><td>/payroll/periods/:id/export</td><td class="desc">Descarga el archivo exacto que se envió a Nómina.</td><td class="who admin">admin</td></tr>
+            <tr><td><span class="m get">GET</span></td><td>/settings</td><td class="desc">Hora corte default, anticipación del recordatorio, máximo de complementos, plantilla de WhatsApp.</td><td class="who admin">admin</td></tr>
+            <tr><td><span class="m patch">PATCH</span></td><td>/settings</td><td class="desc">Actualiza. No afecta menús ya publicados.</td><td class="who admin">admin</td></tr>
+          </tbody>
+        </table>
+      </div>
+
+      <h4>Internos — solo scheduler</h4>
+      <div class="scroller">
+        <table>
+          <thead><tr><th>Método</th><th>Ruta</th><th>Qué hace</th><th>Rol</th></tr></thead>
+          <tbody>
+            <tr><td><span class="m post">POST</span></td><td>/internal/jobs/reminders</td><td class="desc">Cada 5 min: notifica a quien no ha pedido y falta menos de la anticipación configurada.</td><td class="who">secreto</td></tr>
+            <tr><td><span class="m post">POST</span></td><td>/internal/jobs/close-cutoff</td><td class="desc">Cada 5 min: cierra menús vencidos y genera los <code>no_meal</code>.</td><td class="who">secreto</td></tr>
+            <tr><td><span class="m post">POST</span></td><td>/internal/jobs/menu-watch</td><td class="desc">Diario: avisa al Admin si mañana no tiene menú publicado.</td><td class="who">secreto</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </section>
+
+    <!-- ============ FLUJOS ============ -->
+    <section id="flujos">
+      <div class="sec-head">
+        <span class="sec-num">04</span>
+        <h2>Flujos principales</h2>
+      </div>
+
+      <h3>A · Alta de empleado por invitación</h3>
+      <ol class="steps">
+        <li>El Admin captura correo, nombre y número de nómina. Puede pegar varios correos de golpe.</li>
+        <li>El sistema crea la cuenta en estado <code>invited</code> y una invitación con token de 72 horas; solo guarda el hash.</li>
+        <li>Sale el correo con la liga. Si ya existía una invitación pendiente, la anterior se revoca.</li>
+        <li>El empleado abre la liga: la app valida el token y muestra su correo ya precargado.</li>
+        <li>Fija contraseña; la cuenta pasa a <code>active</code>, la invitación a <code>accepted</code> y queda con sesión iniciada.</li>
+        <li>El navegador pide permiso de notificaciones y registra el dispositivo para los recordatorios.</li>
+        <li><strong>Baja:</strong> el Admin desactiva; se revocan sus sesiones y se cancelan sus pedidos futuros aún abiertos. Historial y cobros intactos. <strong>Reactivación:</strong> vuelve a <code>active</code> con sus tarifas personalizadas tal como estaban.</li>
+      </ol>
+
+      <h3>B · Publicación del menú y difusión</h3>
+      <ol class="steps">
+        <li>El Admin crea el menú del día siguiente —o duplica el de un día anterior— y acomoda principales; los platillos base se agregan solos.</li>
+        <li>Ajusta la hora corte si ese día es distinta, y escribe el aviso si lo hay.</li>
+        <li>Publica. Se congela <code>cutoff_at</code>, el menú queda visible y sale el aviso “ya está el menú” a quien lo tenga activado.</li>
+        <li>Toca <em>Generar mensaje de WhatsApp</em>: el sistema arma el texto con platillos, aviso, hora corte y liga corta.</li>
+        <li>El Admin copia o abre WhatsApp con el mensaje precargado y lo pega en el grupo.</li>
+        <li>Quien abre la liga entra directo a la pantalla de pedido; si no tiene sesión, hace login y aterriza en el mismo lugar.</li>
+      </ol>
+
+      <h3>C · Pedido, edición y corte</h3>
+
+      <div class="diagram">
+<pre class="mermaid">
+stateDiagram-v2
+  [*] --> sin_pedido
+  sin_pedido --> confirmed : empleado ordena
+  confirmed --> confirmed : edita antes del corte
+  confirmed --> cancelled : cancela antes del corte
+  cancelled --> confirmed : vuelve a ordenar
+  sin_pedido --> no_meal : cierre automatico
+  confirmed --> delivered : recepcion masiva
+  sin_pedido --> confirmed : pedido expreso del admin
+  no_meal --> confirmed : pedido expreso del admin
+  delivered --> [*]
+  no_meal --> [*]
+</pre>
+      </div>
+      <p class="caption">Fig. 3 — Estados del pedido. Las transiciones tras el corte solo las ejecuta el Admin.</p>
+
+      <ol class="steps">
+        <li>El empleado abre la app y ve <strong>hoy</strong> y <strong>mañana</strong>, con los principales del día arriba y los base abajo. Cada día muestra si ya pidió y cuánto falta para el corte.</li>
+        <li>Si ya pidió antes, <strong>“Repetir lo de la última vez”</strong> arma el pedido completo en un toque y solo queda confirmar. Es el camino que usará la mayoría.</li>
+        <li>Si prefiere armarlo, elige un principal o un base. Si ese platillo no permite complementos, el paso simplemente no aparece.</li>
+        <li>Agrega hasta dos complementos, las salsas que quiera y un comentario opcional. Sin bebidas.</li>
+        <li>Confirma. El servidor valida en una transacción: menú publicado, corte no vencido, cupo disponible, un principal, máximo dos complementos, un solo pedido vigente ese día.</li>
+        <li>Se resuelve la tarifa del empleado y se congela en el pedido. Recibe confirmación en pantalla y, si lo tiene activado, por correo.</li>
+        <li>Puede editar o cancelar cuantas veces quiera hasta el corte; cada cambio recalcula y vuelve a congelar el importe.</li>
+        <li>Al llegar el corte, el job cierra el menú, bloquea la edición del empleado y crea <code>no_meal</code> para cada empleado activo que no pidió.</li>
+        <li>Después del corte, solo el Admin puede registrar un expreso, editar o eliminar, siempre con motivo y bitácora.</li>
+        <li>A la entrega, el Admin marca la recepción masiva del día; los <code>confirmed</code> pasan a <code>delivered</code>.</li>
+      </ol>
+
+      <h3>D · Notificaciones</h3>
+
+      <div class="diagram">
+<pre class="mermaid">
+flowchart TD
+  A["Cron cada 5 min"] --> B{"Menu publicado<br/>para hoy o manana?"}
+  B -- No --> Z["Fin"]
+  B -- Si --> C{"Faltan menos de<br/>N min para el corte?"}
+  C -- No --> Z
+  C -- Si --> D["Empleados activos<br/>sin pedido ni no_meal"]
+  D --> E{"Ya se le envio<br/>hoy? dedupe_key"}
+  E -- Si --> Z
+  E -- No --> F["Push si hay dispositivo<br/>si no, correo"]
+  F --> G["Registrar en notifications"]
+  H["Cron de corte"] --> I["Cerrar menu vencido"]
+  I --> J["Crear no_meal a los omisos"]
+  J --> K["Avisar al admin:<br/>resumen del dia listo"]
+</pre>
+      </div>
+      <p class="caption">Fig. 4 — Recordatorio previo al corte y cierre automático.</p>
+
+      <p>La anticipación es configurable (por defecto 60 minutos). El canal preferido es push por su tasa de lectura; el correo es respaldo para quien no dio permiso de notificaciones. La <code>dedupe_key</code> —usuario + fecha + tipo— garantiza un solo recordatorio por día aunque el cron corra doce veces por hora.</p>
+
+      <h3>E · Producción y entrega</h3>
+      <ol class="steps">
+        <li>Cerrado el corte, el Admin abre el consolidado del día: totales por platillo, por complemento y por salsa.</li>
+        <li>Exporta el PDF de producción —resumen arriba, detalle por persona abajo con sus comentarios— y lo manda al proveedor o a la cocina.</li>
+        <li>Durante el servicio puede consultar la lista nominal para verificar entregas puntuales.</li>
+        <li>Al terminar, marca la recepción masiva del día en un toque.</li>
+      </ol>
+
+      <h3>F · Corte de nómina</h3>
+      <ol class="steps">
+        <li>El Admin elige el rango —quincena o mes— y genera el corte.</li>
+        <li>El sistema suma <code>charged_amount</code> de los pedidos cobrables del rango, agrupados por empleado, y crea el corte en <code>draft</code>.</li>
+        <li>Revisa: total por persona, número de comidas y la lista de excepciones —expresos, ediciones fuera de tiempo y condonaciones— para justificar diferencias.</li>
+        <li>Si detecta un error, corrige o condona el pedido y regenera el borrador.</li>
+        <li>Cierra el corte. Los renglones se congelan y los pedidos del rango quedan bloqueados para edición y para condonación.</li>
+        <li>Descarga el XLSX y lo envía a Nómina. Hoja <strong>Resumen</strong>: número de nómina, nombre, comidas, importe y excepciones. Hoja <strong>Detalle</strong>: una fila por pedido con fecha, platillo, importe, origen y marca de condonado.</li>
+        <li>El archivo queda archivado en el corte: siempre se puede reimprimir exactamente lo que se envió.</li>
+      </ol>
+    </section>
+
+    <!-- ============ PENDIENTES ============ -->
+    <section id="pendientes">
+      <div class="sec-head">
+        <span class="sec-num">05</span>
+        <h2>Alcance confirmado de la v1</h2>
+      </div>
+
+      <p>Las cuatro reglas de negocio que faltaban ya están definidas y el documento las incorpora. Esto es lo que entra en la primera versión y lo que queda deliberadamente fuera.</p>
+
+      <h3>Reglas de negocio cerradas</h3>
+      <div class="scroller">
+        <table>
+          <thead><tr><th>Tema</th><th>Regla</th><th>Dónde vive en el diseño</th></tr></thead>
+          <tbody>
+            <tr><td>Cobro</td><td class="desc">Se cobra lo confirmado. Quien no pasa por su comida paga, salvo que el Admin condone con motivo.</td><td class="desc"><code>orders.is_waived</code> · <code>POST /admin/orders/:id/waive</code></td></tr>
+            <tr><td>Precio</td><td class="desc">Complementos y salsas incluidos en la tarifa del principal. Un solo importe por comida.</td><td class="desc"><code>order_items.unit_price = 0</code> para no-principales</td></tr>
+            <tr><td>Reporte</td><td class="desc">XLSX con resumen por empleado, detalle día por día y marca de excepciones.</td><td class="desc"><code>GET /reports/charges</code> · flujo F</td></tr>
+            <tr><td>Experiencia</td><td class="desc">Repetir el último pedido y ver el gasto acumulado del periodo.</td><td class="desc"><code>POST /orders/repeat</code> · <code>GET /orders/mine/summary</code></td></tr>
+          </tbody>
+        </table>
+      </div>
+
+      <p>Como el corte de Nómina no requiere subtotales por área, <code>departments</code> queda como campo opcional: se captura si sirve para filtrar, pero ningún reporte depende de él.</p>
+
+      <h3>Fuera de la v1</h3>
+      <ul>
+        <li><strong>Botón “hoy no como”.</strong> La omisión sigue siendo automática: quien no pide antes del corte queda en <code>no_meal</code>. El endpoint <code>POST /orders/skip</code> queda diseñado por si más adelante conviene tener el número firme antes del corte.</li>
+        <li><strong>Cupo por platillo.</strong> El campo <code>stock_limit</code> se crea desde ya para no migrar después, pero la v1 no limita porciones ni muestra “quedan N”.</li>
+      </ul>
+
+      <h3>Detalles de experiencia incluidos sin costo extra</h3>
+      <ul>
+        <li><strong>Cuenta regresiva</strong> al corte en la pantalla principal: “faltan 42 min” mueve más que “cierra a las 11:00”.</li>
+        <li><strong>Duplicar menú</strong> desde un día anterior: la captura diaria del Admin baja a quince segundos.</li>
+        <li><strong>Marcar agotado</strong> un platillo sin borrarlo, para que deje de ofrecerse sin afectar a quien ya lo pidió.</li>
+        <li><strong>Vista de cocina</strong> en pantalla grande con los totales del día, para no depender del PDF impreso.</li>
+      </ul>
+
+      <h3>Por dónde empezar</h3>
+      <ol class="steps">
+        <li>Migraciones y modelo de datos completo, con las restricciones de unicidad y los triggers de armado. Es la parte que más caro sale cambiar después.</li>
+        <li>Auth por invitación de punta a punta: es la puerta de entrada de todo lo demás.</li>
+        <li>Catálogo, menú y publicación, con el flujo de imágenes.</li>
+        <li>Pedido del empleado con corte y repetir último: aquí ya hay algo demostrable.</li>
+        <li>Jobs de recordatorio y cierre, más el tablero del Admin y la recepción masiva.</li>
+        <li>Reportes y corte de nómina, que es lo que justifica el sistema ante RRHH.</li>
+      </ol>
+    </section>
+
+  </main>
+
+  <footer>
+    Fulcrum · Comedor empresarial — documento de arquitectura v1 · Julio 2026<br />
+    Alcance: una sede, dos roles, pedidos para hoy y mañana. Reglas de cobro, precio, reporte y experiencia confirmadas; ver sección 05.
+  </footer>
+
+</div>
+<script>
+  (function () {
+    var root = document.documentElement;
+    var KEY = 'fulcrum-comedor-theme';
+
+    function stored() {
+      try { return window.localStorage.getItem(KEY); } catch (e) { return null; }
+    }
+    function remember(value) {
+      try { window.localStorage.setItem(KEY, value); } catch (e) { /* modo privado */ }
+    }
+    function systemTheme() {
+      return window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches
+        ? 'dark' : 'light';
+    }
+    function current() {
+      return root.getAttribute('data-theme') || systemTheme();
+    }
+
+    var label = document.getElementById('theme-toggle-label');
+    function paint(theme) {
+      root.setAttribute('data-theme', theme);
+      label.textContent = theme === 'dark' ? 'Modo claro' : 'Modo oscuro';
+      document.dispatchEvent(new CustomEvent('themechange', { detail: theme }));
+    }
+
+    paint(stored() || systemTheme());
+
+    document.getElementById('theme-toggle').addEventListener('click', function () {
+      var next = current() === 'dark' ? 'light' : 'dark';
+      remember(next);
+      paint(next);
+    });
+
+    // El índice lateral: desplazamiento suave sin tocar la URL del contenedor.
+    var reduced = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+    document.querySelectorAll('nav.toc a[href^="#"]').forEach(function (link) {
+      link.addEventListener('click', function (event) {
+        var target = document.getElementById(link.getAttribute('href').slice(1));
+        if (!target) { return; }
+        event.preventDefault();
+        target.scrollIntoView({ behavior: reduced ? 'auto' : 'smooth', block: 'start' });
+      });
+    });
+  })();
+</script>
+
+<script type="module">
+  // Apps Script sí permite scripts externos. Si la red los bloquea, cada
+  // diagrama muestra su propio código Mermaid, que sigue siendo legible.
+  const blocks = Array.from(document.querySelectorAll('pre.mermaid'));
+  blocks.forEach((block, i) => {
+    block.dataset.source = block.textContent;
+    block.id = block.id || 'mermaid-' + i;
+    const box = block.closest('.diagram');
+    if (box) {
+      box.dataset.state = 'pending';
+      const note = document.createElement('p');
+      note.className = 'fallback-note';
+      note.textContent = 'Diagrama en notación Mermaid — no se pudo cargar el visor.';
+      box.insertBefore(note, block);
+    }
+  });
+
+  const fail = () => blocks.forEach(b => {
+    const box = b.closest('.diagram');
+    if (box) { box.dataset.state = 'failed'; }
+  });
+
+  let mermaid;
+  try {
+    // Con timeout: si el CDN no responde ni falla, los diagramas no se
+    // quedan invisibles esperando para siempre.
+    const timeout = new Promise((_, reject) =>
+      setTimeout(() => reject(new Error('timeout')), 8000));
+    const loaded = await Promise.race([
+      import('https://cdn.jsdelivr.net/npm/mermaid@11/dist/mermaid.esm.min.mjs'),
+      timeout
+    ]);
+    mermaid = loaded.default;
+  } catch (error) {
+    fail();
+  }
+
+  if (mermaid) {
+    const draw = async () => {
+      const dark = (document.documentElement.getAttribute('data-theme') ||
+        (window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light')) === 'dark';
+      mermaid.initialize({
+        startOnLoad: false,
+        theme: dark ? 'dark' : 'neutral',
+        securityLevel: 'strict',
+        fontFamily: 'ui-monospace, SFMono-Regular, Menlo, Consolas, monospace'
+      });
+      for (const block of blocks) {
+        const box = block.closest('.diagram');
+        try {
+          const { svg } = await mermaid.render(block.id + '-svg', block.dataset.source);
+          block.innerHTML = svg;
+          if (box) { box.dataset.state = 'ready'; }
+        } catch (error) {
+          block.textContent = block.dataset.source;
+          if (box) { box.dataset.state = 'failed'; }
+        }
+      }
+    };
+
+    await draw();
+    document.addEventListener('themechange', draw);
+  }
+</script>
+</body>
+</html>
