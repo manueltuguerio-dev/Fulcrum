@@ -1,5 +1,5 @@
 /**
- * Fulcrum · Comedor empresarial
+ * TLTERMINALS · Comedor empresarial (proyecto Fulcrum)
  * Publica el documento de arquitectura como Web App de Google Apps Script.
  *
  * El contenido vive en Index.html, que se genera con apps-script/build.py a
@@ -7,7 +7,7 @@
  * edita el documento fuente y vuelve a generarlo.
  */
 
-var PAGE_TITLE = 'Fulcrum · Comedor empresarial — Arquitectura';
+var PAGE_TITLE = 'TLTERMINALS · Comedor empresarial — Arquitectura';
 
 /**
  * Punto de entrada del Web App.

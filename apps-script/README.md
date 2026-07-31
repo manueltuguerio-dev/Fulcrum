@@ -33,7 +33,7 @@ editar → Nueva versión**. La URL `/exec` no cambia.
 ```bash
 npm install -g @google/clasp
 clasp login
-clasp create --type webapp --title "Fulcrum Comedor — Arquitectura" --rootDir apps-script
+clasp create --type webapp --title "TLTERMINALS Comedor — Arquitectura" --rootDir apps-script
 clasp push
 clasp deploy --description "v1"
 ```

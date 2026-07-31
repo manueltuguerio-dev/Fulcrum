@@ -1,8 +1,9 @@
-# Comedor empresarial — Arquitectura y diseño técnico (v1)
+# TLTERMINALS · Comedor empresarial — Arquitectura y diseño técnico (v1)
 
 Aplicación web responsive para registrar, controlar y cobrar los pedidos del
-comedor de una sola sede. Alcance: dos roles (Empleado, Administrador), un menú
-por día, una hora corte diaria, pedidos para hoy y mañana.
+comedor de TLTERMINALS, en una sola sede. Alcance: dos roles (Empleado,
+Administrador), un menú por día, una hora corte diaria, pedidos para hoy y
+mañana.
 
 Zona horaria de operación: `America/Mexico_City`.
 
