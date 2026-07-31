@@ -100,6 +100,25 @@ Antes de guardar, revisa la línea `"access"` y déjala como necesites:
 
 ---
 
+## Paso 4.5 · Comprobar antes de publicar
+
+Esto tarda diez segundos y te ahorra publicar algo roto.
+
+1. En la barra de arriba del editor, en el menú desplegable de funciones, elige
+   **`verificar`**.
+2. Clic en **▷ Ejecutar**. La primera vez pide autorización: acéptala igual que
+   en el paso 5.
+3. Abajo se abre el **Registro de ejecución**. Debe decir:
+
+   ```
+   OK — el archivo HTML se encontró. Ya puedes implementar.
+   ```
+
+Si en vez de eso dice `FALTA EL ARCHIVO HTML`, el archivo del paso 3 no quedó
+bien: revisa que se llame `Index` y vuelve a ejecutar `verificar`.
+
+---
+
 ## Paso 5 · Publicar
 
 1. Botón azul **Implementar**, arriba a la derecha → **Nueva implementación**.
@@ -165,11 +184,16 @@ cambio, o acabarás con varias ligas distintas circulando.
 
 | Qué ves | Por qué | Cómo se arregla |
 |---|---|---|
-| `Script function not found: doGet` | El código quedó en un archivo con otro nombre, o no se guardó | Verifica que `Code.gs` tenga la función `doGet` y guarda |
-| Página en blanco o error de archivo | El archivo HTML no se llama `Index` | Renómbralo: clic derecho sobre él → *Cambiar nombre* → `Index` |
+| `Script function not found: doGet` | El código del servidor no está en el proyecto: se pegó dentro del archivo HTML, o quedó sin guardar | Abre `Código.gs` —el archivo con ícono `<>`, no el HTML— y confirma que ahí está `function doGet(e)`. Guarda con `Ctrl+S` y **publica versión nueva** |
+| `No HTML file named Index was found` | El archivo HTML tiene otro nombre | Ya no debería ocurrir: el código acepta `Index`, `index` e `Index.html`. Si aun así sale, clic derecho sobre el archivo → *Cambiar nombre* → `Index` |
+| La página dice **"Falta el archivo HTML de la página"** | El código funcionó, pero no hay ningún archivo HTML | Es la página de diagnóstico: trae los pasos a seguir. Haz el paso 3 y publica versión nueva |
+| `No se encontró el archivo. Es posible que se haya movido o eliminado` al abrir la liga | Casi siempre es tener **varias cuentas de Google** abiertas en el mismo navegador: la liga se abre con la cuenta equivocada | Ábrela en una ventana de incógnito. Si ahí funciona, era eso: deja una sola sesión, o usa la liga con `/u/0/` |
+| `Se requiere autorización` | Quedó a medias la autorización del paso 5 | Ejecuta `verificar` desde el editor y completa el permiso |
+| Página en blanco | El `Index.html` se pegó incompleto | Vuelve a pegarlo entero, hasta el `</html>` final |
 | Se ve diminuta en el celular | Falta el meta viewport | Ya viene en `Code.gs`; revisa que lo hayas pegado completo |
 | Los diagramas salen como texto | La red bloqueó el CDN que dibuja los diagramas | No rompe nada: el texto es el código del diagrama y sigue siendo legible. En una red sin bloqueos se dibujan solos |
 | Los cambios no se ven | Se publicó, pero no una versión nueva | *Administrar implementaciones* → ✏️ → **Versión nueva** |
+| La liga del editor no abre la página | Se copió la URL del editor (`/edit`) en lugar de la de la implementación | La liga buena termina en **`/exec`** y sale al implementar, o en *Administrar implementaciones* |
 | *"Google no ha verificado esta aplicación"* | El script es tuyo y no pasó por revisión de Google | *Configuración avanzada* → *Ir a … (no seguro)* → *Permitir* |
 | A otra persona le pide iniciar sesión | El acceso está en `ANYONE` o `DOMAIN` | Cambia `"access"` en `appsscript.json` y publica versión nueva |
 | El texto se corta a la derecha | Un `Ctrl+V` incompleto del `Index.html` | Vuelve a pegarlo completo, hasta el `</html>` final |
