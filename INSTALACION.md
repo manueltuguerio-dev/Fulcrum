@@ -34,6 +34,19 @@ ve igual en celular y en PC y tiene modo claro y oscuro.
 Ábrelos con cualquier editor de texto (Bloc de notas, TextEdit, VS Code). No los
 abras con Word.
 
+### Cómo no confundir los dos archivos
+
+Es el error más común de esta instalación. Cada uno va en un tipo de archivo
+distinto y **no son intercambiables**:
+
+| Archivo del ZIP | Su primera línea | Dónde va |
+|---|---|---|
+| `Code.gs` | `/**` | En `Código.gs`, el archivo con ícono `<>`. Solo acepta JavaScript |
+| `Index.html` | `<!DOCTYPE html>` | En un archivo **HTML** nuevo llamado `Index` |
+
+Si al pegar ves el error `SyntaxError: Unexpected token '<', línea 1`, es que el
+HTML se pegó en `Código.gs`. Bórralo de ahí y pon cada uno en su lugar.
+
 > **Los demás archivos del ZIP no se suben a Apps Script.** `build.py` es una
 > herramienta que corre en tu computadora, no en Google —Apps Script solo ejecuta
 > JavaScript, así que pegarla ahí da error—, y las carpetas `docs/` y este
@@ -56,6 +69,8 @@ abras con Word.
    Haz clic en él.
 2. Selecciona todo lo que tiene dentro y bórralo.
 3. Abre `apps-script/Code.gs` del ZIP, copia **todo** su contenido y pégalo ahí.
+   La primera línea debe quedar `/**`. Si empieza con `<`, pegaste el archivo
+   equivocado: ese es el HTML y va en el paso 3.
 4. Guarda con el ícono 💾 o `Ctrl+S` / `Cmd+S`.
 
 ---
@@ -184,6 +199,7 @@ cambio, o acabarás con varias ligas distintas circulando.
 
 | Qué ves | Por qué | Cómo se arregla |
 |---|---|---|
+| `SyntaxError: Unexpected token '<', línea 1, archivo Código.gs` | En `Código.gs` se pegó el contenido del HTML. Ese archivo solo acepta JavaScript, y el `<` de `<!DOCTYPE html>` lo rompe | Borra todo el contenido de `Código.gs` y pega el de `Code.gs`, que empieza con `/**`. El HTML va en el archivo `Index` del paso 3 |
 | `Script function not found: doGet` | El código del servidor no está en el proyecto: se pegó dentro del archivo HTML, o quedó sin guardar | Abre `Código.gs` —el archivo con ícono `<>`, no el HTML— y confirma que ahí está `function doGet(e)`. Guarda con `Ctrl+S` y **publica versión nueva** |
 | `No HTML file named Index was found` | El archivo HTML tiene otro nombre | Ya no debería ocurrir: el código acepta `Index`, `index` e `Index.html`. Si aun así sale, clic derecho sobre el archivo → *Cambiar nombre* → `Index` |
 | La página dice **"Falta el archivo HTML de la página"** | El código funcionó, pero no hay ningún archivo HTML | Es la página de diagnóstico: trae los pasos a seguir. Haz el paso 3 y publica versión nueva |
