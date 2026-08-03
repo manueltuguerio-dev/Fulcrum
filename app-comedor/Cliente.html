@@ -1,0 +1,1013 @@
+<script>
+var estado = { inicial: null, admin: null, vista: 'pedir', borrador: null, cacheAdmin: {} };
+
+function $(id) { return document.getElementById(id); }
+
+function esc(texto) {
+  return String(texto === null || texto === undefined ? '' : texto)
+    .replace(/&/g, '&amp;').replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+}
+
+function dinero(n) {
+  return '$' + (Math.round((Number(n) || 0) * 100) / 100).toFixed(2);
+}
+
+function llamar(nombre, args) {
+  return new Promise(function (resolver, rechazar) {
+    var corredor = google.script.run
+      .withSuccessHandler(resolver)
+      .withFailureHandler(rechazar);
+    if (typeof corredor[nombre] !== 'function') {
+      rechazar(new Error('No existe la función ' + nombre + ' en el servidor.'));
+      return;
+    }
+    corredor[nombre].apply(corredor, args || []);
+  });
+}
+
+var temporizadorAviso = null;
+function avisar(mensaje, malo) {
+  var caja = $('aviso');
+  caja.textContent = mensaje;
+  caja.className = malo ? 'malo' : '';
+  clearTimeout(temporizadorAviso);
+  temporizadorAviso = setTimeout(function () { caja.classList.add('oculto'); }, malo ? 7000 : 3500);
+  caja.classList.remove('oculto');
+}
+
+function fallo(err) {
+  avisar(err && err.message ? err.message : 'Algo salió mal.', true);
+}
+
+function hoyISO() {
+  var d = new Date();
+  return d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0')
+    + '-' + String(d.getDate()).padStart(2, '0');
+}
+
+function fechaBonita(iso) {
+  var dias = ['domingo', 'lunes', 'martes', 'miércoles', 'jueves', 'viernes', 'sábado'];
+  var meses = ['enero', 'febrero', 'marzo', 'abril', 'mayo', 'junio', 'julio',
+               'agosto', 'septiembre', 'octubre', 'noviembre', 'diciembre'];
+  var p = String(iso).split('-');
+  var d = new Date(Number(p[0]), Number(p[1]) - 1, Number(p[2]));
+  return dias[d.getDay()] + ' ' + d.getDate() + ' de ' + meses[d.getMonth()];
+}
+
+function enlazar(selector, evento, manejador) {
+  var nodos = document.querySelectorAll(selector);
+  for (var i = nodos.length - 1; i >= 0; i--) {
+    nodos[i].addEventListener(evento, manejador);
+  }
+}
+
+/* ------------------------------- arranque --------------------------------- */
+
+function arrancar() {
+  llamar('apiEstadoInicial').then(function (datos) {
+    estado.inicial = datos;
+    $('cargando').classList.add('oculto');
+    $('app').classList.remove('oculto');
+
+    if (!datos.sesion) {
+      $('vista').innerHTML = '<h2 class="titulo">No pude identificar tu cuenta</h2>'
+        + '<div class="nota malo">Google no me está diciendo quién eres.</div>'
+        + '<p class="sub">Si eres empleado: abre la liga en una ventana donde ya tengas '
+        + 'iniciada tu sesión de Google, o pruébala en modo incógnito con una sola cuenta.</p>'
+        + '<p class="sub">Si eres quien administra: esto pasa cuando la aplicación se publicó '
+        + 'con acceso <b>Cualquier usuario</b> en lugar de <b>Usuarios de TLTERMINALS</b>. '
+        + 'Google solo revela el correo de quien entra cuando es del mismo dominio de '
+        + 'Workspace que la cuenta que publicó. Revisa el paso 5 del instructivo.</p>';
+      return;
+    }
+    if (!datos.registrado) {
+      $('vista').innerHTML = '<h2 class="titulo">Aún no estás dado de alta</h2>'
+        + '<p class="sub">Tu correo <b>' + esc(datos.email) + '</b> no está registrado en el comedor.</p>'
+        + '<div class="nota">Pídele al administrador que te agregue con ese mismo correo. '
+        + 'En cuanto lo haga, vuelve a abrir esta liga.</div>';
+      return;
+    }
+    if (datos.activo === false) {
+      $('vista').innerHTML = '<div class="nota aviso">Tu cuenta del comedor está desactivada. '
+        + 'Habla con el administrador.</div>';
+      return;
+    }
+    pintarBarra();
+    pintar();
+  }).catch(function (err) {
+    $('cargando').classList.add('oculto');
+    $('app').classList.remove('oculto');
+    $('vista').innerHTML = '<div class="nota malo">' + esc(err.message || err) + '</div>';
+  });
+}
+
+function pintarBarra() {
+  var u = estado.inicial.usuario;
+  var empresa = (estado.inicial.config && estado.inicial.config.empresa) || 'Comedor';
+  $('barra').innerHTML = '<h1>Comedor ' + esc(empresa) + '</h1>'
+    + '<div class="quien">' + esc(u.nombre)
+    + (u.rol === 'admin' ? '<span class="insignia">admin</span>' : '') + '</div>';
+
+  var pestanas = [['pedir', 'Pedir'], ['mios', 'Mis pedidos']];
+  if (u.rol === 'admin') {
+    pestanas = pestanas.concat([['hoy', 'Del día'], ['menu', 'Menú'],
+      ['platillos', 'Platillos'], ['empleados', 'Empleados'],
+      ['reportes', 'Reportes'], ['ajustes', 'Ajustes']]);
+  }
+  $('tabs').innerHTML = pestanas.map(function (p) {
+    return '<button data-vista="' + p[0] + '"'
+      + (estado.vista === p[0] ? ' class="activo"' : '') + '>' + p[1] + '</button>';
+  }).join('');
+  enlazar('#tabs button', 'click', function () {
+    estado.vista = this.getAttribute('data-vista');
+    estado.borrador = null;
+    pintarBarra();
+    pintar();
+  });
+}
+
+function pintar() {
+  var mapa = {
+    pedir: vistaPedir, mios: vistaMisPedidos, hoy: vistaAdminDia, menu: vistaAdminMenu,
+    platillos: vistaAdminPlatillos, empleados: vistaAdminEmpleados,
+    reportes: vistaAdminReportes, ajustes: vistaAdminAjustes
+  };
+  (mapa[estado.vista] || vistaPedir)();
+}
+
+function recargarInicial() {
+  return llamar('apiEstadoInicial').then(function (datos) {
+    estado.inicial = datos;
+    return datos;
+  });
+}
+
+/* ----------------------------- vista: pedir -------------------------------- */
+
+function vistaPedir() {
+  var dias = estado.inicial.dias || [];
+  var html = '<h2 class="titulo">Tu comida</h2>'
+    + '<p class="sub">Puedes pedir para hoy y para mañana, siempre antes de la hora corte.</p>';
+
+  html += dias.map(tarjetaDia).join('');
+  $('vista').innerHTML = html;
+
+  enlazar('[data-pedir]', 'click', function () {
+    abrirFormulario(this.getAttribute('data-pedir'));
+  });
+  enlazar('[data-cancelar]', 'click', function () {
+    if (!confirm('¿Cancelar tu pedido de ese día?')) { return; }
+    var boton = this;
+    boton.disabled = true;
+    llamar('apiCancelarPedido', [boton.getAttribute('data-cancelar')])
+      .then(recargarInicial).then(function () {
+        avisar('Pedido cancelado.');
+        vistaPedir();
+      }).catch(function (e) { boton.disabled = false; fallo(e); });
+  });
+  enlazar('[data-repetir]', 'click', function () {
+    repetirUltimo(this.getAttribute('data-repetir'));
+  });
+}
+
+function tarjetaDia(dia) {
+  var cab = '<div class="tarjeta-cab"><h3>' + esc(fechaBonita(dia.fecha)) + '</h3>';
+
+  if (!dia.existe || dia.estado === 'borrador') {
+    cab += '<span class="etiqueta">sin menú publicado</span></div>';
+    return '<div class="tarjeta">' + cab
+      + '<p class="vacio">Todavía no publican el menú de este día.</p></div>';
+  }
+  if (!dia.abierto) {
+    cab += '<span class="etiqueta malo">cerrado a las ' + esc(dia.horaCorte) + '</span></div>';
+  } else if (dia.minutosRestantes <= 60) {
+    cab += '<span class="etiqueta aviso">faltan ' + dia.minutosRestantes + ' min</span></div>';
+  } else {
+    cab += '<span class="etiqueta ok">cierra a las ' + esc(dia.horaCorte) + '</span></div>';
+  }
+
+  var cuerpo = '';
+  if (dia.aviso) {
+    cuerpo += '<div class="nota">' + esc(dia.aviso) + '</div>';
+  }
+
+  if (dia.miPedido) {
+    var nombres = {};
+    dia.platillos.forEach(function (p) { nombres[p.platilloId] = p.nombre; });
+    var extras = dia.miPedido.complementos.concat(dia.miPedido.salsas)
+      .map(function (id) { return nombres[id] || id; });
+    cuerpo += '<p><b>' + esc(nombres[dia.miPedido.principalId] || 'Tu platillo') + '</b>'
+      + (extras.length ? '<br><span style="color:var(--ink-3)">con ' + esc(extras.join(', ')) + '</span>' : '')
+      + (dia.miPedido.comentarios ? '<br><span style="color:var(--ink-3)">Nota: '
+          + esc(dia.miPedido.comentarios) + '</span>' : '')
+      + '<br><span class="etiqueta acento" style="margin-top:6px;display:inline-block">'
+      + dinero(dia.miPedido.importe) + '</span></p>';
+    if (dia.abierto) {
+      cuerpo += '<div class="botones">'
+        + '<button class="suave" data-pedir="' + dia.fecha + '">Cambiar mi pedido</button>'
+        + '<button class="suave peligro" data-cancelar="' + dia.miPedido.id + '">Cancelar</button>'
+        + '</div>';
+    } else {
+      cuerpo += '<p class="vacio">Ya cerró la hora corte. Si necesitas un cambio, habla con el administrador.</p>';
+    }
+  } else if (dia.abierto) {
+    cuerpo += '<div class="botones">'
+      + '<button class="accion" data-pedir="' + dia.fecha + '">Elegir mi comida</button>'
+      + (estado.inicial.ultimoPedido
+          ? '<button class="suave" data-repetir="' + dia.fecha + '">Repetir lo de la última vez</button>'
+          : '')
+      + '</div>';
+  } else {
+    cuerpo += '<div class="nota aviso">No pediste antes de la hora corte, '
+      + 'así que quedas registrado como que no comes este día.</div>';
+  }
+
+  return '<div class="tarjeta">' + cab + cuerpo + '</div>';
+}
+
+function diaPorFecha(fecha) {
+  var encontrado = null;
+  (estado.inicial.dias || []).forEach(function (d) {
+    if (d.fecha === fecha) { encontrado = d; }
+  });
+  return encontrado;
+}
+
+function repetirUltimo(fecha) {
+  var ultimo = estado.inicial.ultimoPedido;
+  var dia = diaPorFecha(fecha);
+  if (!ultimo || !dia) { return; }
+
+  var hay = {};
+  dia.platillos.forEach(function (p) { if (p.disponible) { hay[p.platilloId] = true; } });
+  if (!hay[ultimo.principalId]) {
+    avisar('Tu platillo de la última vez no está hoy en el menú. Elige otro.', true);
+    abrirFormulario(fecha);
+    return;
+  }
+  guardarPedido({
+    fecha: fecha,
+    principalId: ultimo.principalId,
+    complementos: ultimo.complementos.filter(function (id) { return hay[id]; }),
+    salsas: ultimo.salsas.filter(function (id) { return hay[id]; }),
+    comentarios: ultimo.comentarios
+  });
+}
+
+function abrirFormulario(fecha) {
+  var dia = diaPorFecha(fecha);
+  if (!dia) { return; }
+  var previo = dia.miPedido;
+  estado.borrador = {
+    fecha: fecha,
+    principalId: previo ? previo.principalId : '',
+    complementos: previo ? previo.complementos.slice() : [],
+    salsas: previo ? previo.salsas.slice() : [],
+    comentarios: previo ? previo.comentarios : ''
+  };
+  pintarFormulario();
+}
+
+function pintarFormulario() {
+  var b = estado.borrador;
+  var dia = diaPorFecha(b.fecha);
+  var maximo = Number((estado.inicial.config || {}).maxComplementos) || 2;
+
+  var principales = dia.platillos.filter(function (p) { return p.tipo === 'principal'; });
+  var bases = dia.platillos.filter(function (p) { return p.tipo === 'base'; });
+  var complementos = dia.platillos.filter(function (p) { return p.tipo === 'complemento'; });
+  var salsas = dia.platillos.filter(function (p) { return p.tipo === 'salsa'; });
+
+  var elegido = null;
+  dia.platillos.forEach(function (p) { if (p.platilloId === b.principalId) { elegido = p; } });
+  var permite = elegido ? elegido.permiteComplementos : true;
+
+  var html = '<h2 class="titulo">' + esc(fechaBonita(b.fecha)) + '</h2>'
+    + '<p class="sub">Elige un platillo, hasta ' + maximo + ' complementos y las salsas que quieras.</p>';
+
+  if (principales.length) {
+    html += '<h3>Platillos del día</h3><div class="platillos">'
+      + principales.map(tarjetaPlatillo).join('') + '</div>';
+  }
+  if (bases.length) {
+    html += '<h3>Siempre disponibles</h3><div class="platillos">'
+      + bases.map(tarjetaPlatillo).join('') + '</div>';
+  }
+
+  if (complementos.length) {
+    html += '<h3>Complementos <span class="etiqueta">' + b.complementos.length + ' de ' + maximo + '</span></h3>';
+    if (elegido && !permite) {
+      html += '<p class="vacio">El platillo que elegiste no lleva complementos.</p>';
+    } else {
+      html += '<div class="fichas">' + complementos.map(function (p) {
+        var puesto = b.complementos.indexOf(p.platilloId) !== -1;
+        var lleno = !puesto && b.complementos.length >= maximo;
+        return '<button class="ficha' + (puesto ? ' elegido' : '') + '" data-comp="'
+          + p.platilloId + '"' + ((!p.disponible || lleno) ? ' disabled' : '') + '>'
+          + esc(p.nombre) + '</button>';
+      }).join('') + '</div>';
+    }
+  }
+
+  if (salsas.length) {
+    html += '<h3>Salsas y aderezos</h3><div class="fichas">' + salsas.map(function (p) {
+      var puesto = b.salsas.indexOf(p.platilloId) !== -1;
+      return '<button class="ficha' + (puesto ? ' elegido' : '') + '" data-salsa="'
+        + p.platilloId + '"' + (p.disponible ? '' : ' disabled') + '>'
+        + esc(p.nombre) + '</button>';
+    }).join('') + '</div>';
+  }
+
+  html += '<label class="campo">Comentarios para la cocina'
+    + '<textarea id="comentarios" maxlength="300" placeholder="Sin cebolla, poca sal…">'
+    + esc(b.comentarios) + '</textarea></label>'
+    + '<div class="botones">'
+    + '<button class="accion" id="guardar"' + (b.principalId ? '' : ' disabled') + '>Confirmar pedido</button>'
+    + '<button class="suave" id="volver">Volver</button></div>';
+
+  $('vista').innerHTML = html;
+
+  enlazar('[data-platillo]', 'click', function () {
+    if (this.classList.contains('agotado')) { return; }
+    b.principalId = this.getAttribute('data-platillo');
+    var nuevo = null;
+    dia.platillos.forEach(function (p) { if (p.platilloId === b.principalId) { nuevo = p; } });
+    if (nuevo && !nuevo.permiteComplementos) { b.complementos = []; }
+    b.comentarios = $('comentarios').value;
+    pintarFormulario();
+  });
+  enlazar('[data-comp]', 'click', function () {
+    var id = this.getAttribute('data-comp');
+    var i = b.complementos.indexOf(id);
+    if (i === -1) { b.complementos.push(id); } else { b.complementos.splice(i, 1); }
+    b.comentarios = $('comentarios').value;
+    pintarFormulario();
+  });
+  enlazar('[data-salsa]', 'click', function () {
+    var id = this.getAttribute('data-salsa');
+    var i = b.salsas.indexOf(id);
+    if (i === -1) { b.salsas.push(id); } else { b.salsas.splice(i, 1); }
+    b.comentarios = $('comentarios').value;
+    pintarFormulario();
+  });
+  $('volver').addEventListener('click', function () {
+    estado.borrador = null;
+    vistaPedir();
+  });
+  $('guardar').addEventListener('click', function () {
+    b.comentarios = $('comentarios').value;
+    this.disabled = true;
+    guardarPedido(b);
+  });
+}
+
+function tarjetaPlatillo(p) {
+  var b = estado.borrador;
+  var clases = 'platillo' + (b && b.principalId === p.platilloId ? ' elegido' : '')
+    + (p.disponible ? '' : ' agotado');
+  return '<button class="' + clases + '" data-platillo="' + p.platilloId + '">'
+    + (p.imagen ? '<img src="' + esc(p.imagen) + '" alt="">' : '')
+    + '<span class="cuerpo"><b>' + esc(p.nombre) + '</b>'
+    + (p.descripcion ? '<span>' + esc(p.descripcion) + '</span>' : '')
+    + (p.disponible ? '' : '<span>Agotado</span>')
+    + '</span></button>';
+}
+
+function guardarPedido(datos) {
+  llamar('apiGuardarPedido', [datos])
+    .then(recargarInicial)
+    .then(function () {
+      estado.borrador = null;
+      avisar('Listo, tu pedido quedó registrado.');
+      vistaPedir();
+    })
+    .catch(function (e) {
+      fallo(e);
+      if (estado.borrador) { pintarFormulario(); }
+    });
+}
+
+/* --------------------------- vista: mis pedidos ---------------------------- */
+
+function vistaMisPedidos() {
+  var hasta = hoyISO();
+  var desde = hasta.substring(0, 8) + '01';
+  $('vista').innerHTML = '<h2 class="titulo">Mis pedidos</h2>'
+    + '<p class="sub">Lo que llevas acumulado en el periodo.</p>'
+    + '<div class="fila-campos">'
+    + '<label class="campo">Desde<input type="date" id="desde" value="' + desde + '"></label>'
+    + '<label class="campo">Hasta<input type="date" id="hasta" value="' + hasta + '"></label>'
+    + '</div><div class="botones"><button class="suave" id="consultar">Consultar</button></div>'
+    + '<div id="resultado"></div>';
+
+  $('consultar').addEventListener('click', cargarMisPedidos);
+  cargarMisPedidos();
+}
+
+function cargarMisPedidos() {
+  $('resultado').innerHTML = '<p class="vacio">Consultando…</p>';
+  llamar('apiMisPedidos', [$('desde').value, $('hasta').value]).then(function (r) {
+    if (!r.filas.length) {
+      $('resultado').innerHTML = '<p class="vacio">No hay pedidos en ese rango.</p>';
+      return;
+    }
+    $('resultado').innerHTML = '<div class="cifras">'
+      + '<div class="cifra"><b>' + r.filas.filter(function (f) { return f.cobrado; }).length
+      + '</b><span>Comidas cobradas</span></div>'
+      + '<div class="cifra"><b>' + dinero(r.total) + '</b><span>Total del periodo</span></div>'
+      + '</div><div class="tabla-envoltura"><table><thead><tr>'
+      + '<th>Fecha</th><th>Platillo</th><th>Estado</th><th class="num">Importe</th>'
+      + '</tr></thead><tbody>'
+      + r.filas.map(function (f) {
+        return '<tr><td>' + esc(f.fecha) + '</td><td>' + esc(f.platillo) + '</td>'
+          + '<td>' + esc(f.estado) + (f.condonado ? ' (condonado)' : '') + '</td>'
+          + '<td class="num">' + (f.cobrado ? dinero(f.importe) : '—') + '</td></tr>';
+      }).join('') + '</tbody></table></div>';
+  }).catch(fallo);
+}
+
+/* ------------------------------ admin: del día ----------------------------- */
+
+function vistaAdminDia() {
+  var fecha = estado.cacheAdmin.fechaDia || hoyISO();
+  estado.cacheAdmin.fechaDia = fecha;
+  $('vista').innerHTML = '<h2 class="titulo">Pedidos del día</h2>'
+    + '<p class="sub">Consolidado para la cocina, faltantes y entrega.</p>'
+    + '<label class="campo" style="max-width:220px">Fecha'
+    + '<input type="date" id="fecha" value="' + fecha + '"></label>'
+    + '<div id="contenido"><p class="vacio">Cargando…</p></div>';
+
+  $('fecha').addEventListener('change', function () {
+    estado.cacheAdmin.fechaDia = this.value;
+    cargarDia();
+  });
+  cargarDia();
+}
+
+function cargarDia() {
+  var fecha = estado.cacheAdmin.fechaDia;
+  $('contenido').innerHTML = '<p class="vacio">Cargando…</p>';
+  Promise.all([llamar('apiPedidosDelDia', [fecha]), llamar('apiResumenProduccion', [fecha])])
+    .then(function (r) {
+      var dia = r[0];
+      var resumen = r[1];
+      var activos = dia.pedidos.filter(function (p) {
+        return p.estado === 'confirmado' || p.estado === 'entregado';
+      });
+
+      var html = '<div class="cifras">'
+        + '<div class="cifra"><b>' + resumen.totalComidas + '</b><span>Comidas</span></div>'
+        + '<div class="cifra"><b>' + dia.faltantes.length + '</b><span>Sin pedir</span></div>'
+        + '<div class="cifra"><b>' + dia.pedidos.filter(function (p) {
+            return p.estado === 'entregado'; }).length
+        + '</b><span>Entregadas</span></div>'
+        + '<div class="cifra"><b>' + esc(dia.menu.estado) + '</b><span>Menú</span></div></div>';
+
+      html += '<div class="botones">'
+        + '<button class="accion" id="entregar">Marcar todo como entregado</button>'
+        + '<button class="suave" id="whatsapp">Mensaje de WhatsApp</button></div>'
+        + '<div id="mensajeWa"></div>';
+
+      html += '<h3>Para la cocina</h3>';
+      if (!resumen.principales.length) {
+        html += '<p class="vacio">Todavía no hay pedidos.</p>';
+      } else {
+        html += '<div class="tabla-envoltura"><table><thead><tr><th>Platillo</th>'
+          + '<th class="num">Cantidad</th></tr></thead><tbody>'
+          + resumen.principales.concat(resumen.complementos).concat(resumen.salsas)
+              .map(function (c) {
+                return '<tr><td>' + esc(c.nombre) + '</td><td class="num">' + c.cantidad + '</td></tr>';
+              }).join('')
+          + '</tbody></table></div>';
+      }
+
+      html += '<h3>Pedidos (' + activos.length + ')</h3>';
+      if (!dia.pedidos.length) {
+        html += '<p class="vacio">Nadie ha pedido todavía.</p>';
+      } else {
+        html += '<div class="tabla-envoltura"><table><thead><tr><th>Persona</th>'
+          + '<th>Platillo</th><th>Estado</th><th class="num">Importe</th><th></th>'
+          + '</tr></thead><tbody>'
+          + dia.pedidos.map(function (p) {
+            var extras = p.complementos.concat(p.salsas);
+            return '<tr><td>' + esc(p.nombre) + '</td>'
+              + '<td>' + esc(p.platillo)
+              + (extras.length ? '<br><span style="color:var(--ink-3);font-size:12.5px">'
+                  + esc(extras.join(', ')) + '</span>' : '')
+              + (p.comentarios ? '<br><span style="color:var(--alerta);font-size:12.5px">'
+                  + esc(p.comentarios) + '</span>' : '')
+              + '</td>'
+              + '<td>' + esc(p.estado) + (p.condonado ? '<br><span class="etiqueta">condonado</span>' : '')
+              + (p.origen === 'admin_expreso' ? '<br><span class="etiqueta aviso">expreso</span>' : '')
+              + '</td>'
+              + '<td class="num">' + dinero(p.importe) + '</td>'
+              + '<td><button class="suave" data-condonar="' + p.id + '" data-valor="'
+              + (p.condonado ? '0' : '1') + '">' + (p.condonado ? 'Cobrar' : 'Condonar') + '</button> '
+              + '<button class="suave peligro" data-borrar="' + p.id + '">Eliminar</button></td></tr>';
+          }).join('') + '</tbody></table></div>';
+      }
+
+      html += '<h3>No han pedido (' + dia.faltantes.length + ')</h3>';
+      if (!dia.faltantes.length) {
+        html += '<p class="vacio">Todos registraron algo.</p>';
+      } else {
+        html += '<div class="tabla-envoltura"><table><thead><tr><th>Persona</th><th></th>'
+          + '</tr></thead><tbody>'
+          + dia.faltantes.map(function (f) {
+            return '<tr><td>' + esc(f.nombre) + '<br><span style="color:var(--ink-3);font-size:12.5px">'
+              + esc(f.email) + '</span></td>'
+              + '<td><button class="suave" data-expreso="' + f.id + '">Pedido expreso</button></td></tr>';
+          }).join('') + '</tbody></table></div>';
+      }
+
+      $('contenido').innerHTML = html;
+
+      $('entregar').addEventListener('click', function () {
+        if (!confirm('¿Marcar como entregados todos los pedidos confirmados del día?')) { return; }
+        llamar('apiMarcarEntregados', [fecha]).then(function (n) {
+          avisar(n + ' pedidos marcados como entregados.');
+          cargarDia();
+        }).catch(fallo);
+      });
+      $('whatsapp').addEventListener('click', function () {
+        llamar('apiMensajeWhatsApp', [fecha]).then(function (m) {
+          $('mensajeWa').innerHTML = '<pre class="mensaje">' + esc(m.texto) + '</pre>'
+            + '<div class="botones"><button class="suave" id="copiar">Copiar mensaje</button>'
+            + '<a class="suave" style="text-decoration:none;display:inline-block" '
+            + 'href="' + esc(m.ligaWhatsApp) + '" target="_blank">Abrir WhatsApp</a></div>';
+          $('copiar').addEventListener('click', function () {
+            navigator.clipboard.writeText(m.texto).then(function () {
+              avisar('Mensaje copiado. Pégalo en el grupo.');
+            });
+          });
+        }).catch(fallo);
+      });
+      enlazar('[data-condonar]', 'click', function () {
+        var id = this.getAttribute('data-condonar');
+        var poner = this.getAttribute('data-valor') === '1';
+        var motivo = poner ? prompt('Motivo de la condonación:') : '';
+        if (poner && !motivo) { return; }
+        llamar('apiCondonar', [id, motivo, poner]).then(function () {
+          avisar(poner ? 'Pedido condonado.' : 'Se volverá a cobrar.');
+          cargarDia();
+        }).catch(fallo);
+      });
+      enlazar('[data-borrar]', 'click', function () {
+        var motivo = prompt('Motivo para eliminar el pedido:');
+        if (!motivo) { return; }
+        llamar('apiEliminarPedido', [this.getAttribute('data-borrar'), motivo])
+          .then(function () { avisar('Pedido eliminado.'); cargarDia(); }).catch(fallo);
+      });
+      enlazar('[data-expreso]', 'click', function () {
+        pedidoExpreso(this.getAttribute('data-expreso'), dia);
+      });
+    }).catch(fallo);
+}
+
+function pedidoExpreso(empleadoId, dia) {
+  var opciones = dia.menu.platillos.filter(function (p) {
+    return p.tipo === 'principal' || p.tipo === 'base';
+  });
+  if (!opciones.length) {
+    avisar('Ese día no tiene platillos en el menú.', true);
+    return;
+  }
+  var texto = opciones.map(function (p, i) { return (i + 1) + '. ' + p.nombre; }).join('\n');
+  var elegido = prompt('¿Qué platillo lleva?\n' + texto);
+  var indice = Number(elegido) - 1;
+  if (!(indice >= 0 && indice < opciones.length)) { return; }
+  llamar('apiPedidoExpreso', [empleadoId, {
+    fecha: dia.fecha, principalId: opciones[indice].platilloId,
+    complementos: [], salsas: [], comentarios: 'Registrado fuera de horario'
+  }]).then(function () {
+    avisar('Pedido expreso registrado.');
+    cargarDia();
+  }).catch(fallo);
+}
+
+/* ------------------------------- admin: menú ------------------------------- */
+
+function vistaAdminMenu() {
+  var fecha = estado.cacheAdmin.fechaMenu || hoyISO();
+  estado.cacheAdmin.fechaMenu = fecha;
+  $('vista').innerHTML = '<h2 class="titulo">Menú del día</h2>'
+    + '<p class="sub">Arma el menú, ponle hora corte y publícalo.</p>'
+    + '<label class="campo" style="max-width:220px">Fecha'
+    + '<input type="date" id="fecha" value="' + fecha + '"></label>'
+    + '<div id="contenido"><p class="vacio">Cargando…</p></div>';
+  $('fecha').addEventListener('change', function () {
+    estado.cacheAdmin.fechaMenu = this.value;
+    cargarMenuAdmin();
+  });
+  cargarMenuAdmin();
+}
+
+function cargarMenuAdmin() {
+  var fecha = estado.cacheAdmin.fechaMenu;
+  $('contenido').innerHTML = '<p class="vacio">Cargando…</p>';
+  Promise.all([llamar('apiMenuAdmin', [fecha]), cargarAdmin()]).then(function (r) {
+    var menu = r[0];
+    var catalogo = r[1].platillos.filter(function (p) { return p.activo; });
+
+    if (!menu.existe) {
+      $('contenido').innerHTML = '<div class="nota">Este día no tiene menú.</div>'
+        + '<div class="botones"><button class="accion" id="crear">Crear menú vacío</button>'
+        + '<button class="suave" id="duplicar">Duplicar el de otro día</button></div>';
+      $('crear').addEventListener('click', function () {
+        llamar('apiCrearMenu', [fecha]).then(function () {
+          avisar('Menú creado.'); cargarMenuAdmin();
+        }).catch(fallo);
+      });
+      $('duplicar').addEventListener('click', function () {
+        var origen = prompt('¿De qué fecha lo copio? Formato aaaa-mm-dd', hoyISO());
+        if (!origen) { return; }
+        llamar('apiDuplicarMenu', [origen, fecha]).then(function () {
+          avisar('Menú duplicado.'); cargarMenuAdmin();
+        }).catch(fallo);
+      });
+      return;
+    }
+
+    var enMenu = {};
+    menu.platillos.forEach(function (p) { enMenu[p.platilloId] = true; });
+
+    var html = '<div class="tarjeta"><div class="tarjeta-cab">'
+      + '<h3>' + esc(fechaBonita(fecha)) + '</h3>'
+      + '<span class="etiqueta ' + (menu.estado === 'publicado' ? 'ok' : '') + '">'
+      + esc(menu.estado) + '</span></div>'
+      + '<div class="fila-campos">'
+      + '<label class="campo">Hora corte<input type="time" id="horaCorte" value="'
+      + esc(menu.horaCorte) + '"></label>'
+      + '<label class="campo">Aviso del día<input type="text" id="aviso" value="'
+      + esc(menu.aviso) + '" placeholder="Opcional"></label></div>'
+      + '<div class="botones"><button class="suave" id="guardarMenu">Guardar</button>'
+      + (menu.estado === 'publicado' ? ''
+          : '<button class="accion" id="publicar">Publicar</button>')
+      + '</div></div>';
+
+    html += '<h3>En el menú (' + menu.platillos.length + ')</h3>';
+    if (!menu.platillos.length) {
+      html += '<p class="vacio">Vacío. Agrega platillos abajo.</p>';
+    } else {
+      html += '<div class="tabla-envoltura"><table><thead><tr><th>Platillo</th><th>Tipo</th>'
+        + '<th class="num">Precio</th><th></th></tr></thead><tbody>'
+        + menu.platillos.map(function (p) {
+          return '<tr><td>' + esc(p.nombre) + '</td><td>' + esc(p.tipo) + '</td>'
+            + '<td class="num">' + dinero(p.precio) + '</td>'
+            + '<td><button class="suave" data-disp="' + p.itemId + '" data-valor="'
+            + (p.disponible ? '0' : '1') + '">'
+            + (p.disponible ? 'Marcar agotado' : 'Reactivar') + '</button> '
+            + '<button class="suave peligro" data-quitar="' + p.itemId + '">Quitar</button></td></tr>';
+        }).join('') + '</tbody></table></div>';
+    }
+
+    var disponibles = catalogo.filter(function (p) { return !enMenu[p.id]; });
+    html += '<h3>Agregar del catálogo</h3>';
+    html += disponibles.length
+      ? '<div class="fichas">' + disponibles.map(function (p) {
+          return '<button class="ficha" data-agregar="' + p.id + '">' + esc(p.nombre)
+            + ' <span style="color:var(--ink-3)">' + esc(p.tipo) + '</span></button>';
+        }).join('') + '</div>'
+      : '<p class="vacio">Ya están todos los platillos activos del catálogo.</p>';
+
+    $('contenido').innerHTML = html;
+
+    $('guardarMenu').addEventListener('click', function () {
+      llamar('apiActualizarMenu', [fecha, $('horaCorte').value, $('aviso').value])
+        .then(function () { avisar('Menú actualizado.'); cargarMenuAdmin(); }).catch(fallo);
+    });
+    if ($('publicar')) {
+      $('publicar').addEventListener('click', function () {
+        llamar('apiPublicarMenu', [fecha]).then(function () {
+          avisar('Menú publicado. Ya pueden pedir.'); cargarMenuAdmin();
+        }).catch(fallo);
+      });
+    }
+    enlazar('[data-agregar]', 'click', function () {
+      llamar('apiAgregarAlMenu', [fecha, this.getAttribute('data-agregar'), ''])
+        .then(function () { cargarMenuAdmin(); }).catch(fallo);
+    });
+    enlazar('[data-quitar]', 'click', function () {
+      llamar('apiQuitarDelMenu', [this.getAttribute('data-quitar')])
+        .then(function () { cargarMenuAdmin(); }).catch(fallo);
+    });
+    enlazar('[data-disp]', 'click', function () {
+      llamar('apiCambiarDisponible', [this.getAttribute('data-disp'),
+        this.getAttribute('data-valor') === '1'])
+        .then(function () { cargarMenuAdmin(); }).catch(fallo);
+    });
+  }).catch(fallo);
+}
+
+function cargarAdmin(forzar) {
+  if (estado.admin && !forzar) {
+    return Promise.resolve(estado.admin);
+  }
+  return llamar('apiAdminEstado').then(function (d) {
+    estado.admin = d;
+    return d;
+  });
+}
+
+/* ----------------------------- admin: platillos ---------------------------- */
+
+function vistaAdminPlatillos() {
+  $('vista').innerHTML = '<h2 class="titulo">Catálogo de platillos</h2>'
+    + '<p class="sub">Aquí defines qué existe, cuánto cuesta y si lleva complementos.</p>'
+    + '<div id="contenido"><p class="vacio">Cargando…</p></div>';
+  cargarAdmin(true).then(function (d) {
+    var html = '<div class="tarjeta"><h3 id="tituloForm">Nuevo platillo</h3>'
+      + '<input type="hidden" id="pid" value="">'
+      + '<div class="fila-campos">'
+      + '<label class="campo">Nombre<input type="text" id="pnombre"></label>'
+      + '<label class="campo">Tipo<select id="ptipo">'
+      + '<option value="principal">Principal del día</option>'
+      + '<option value="base">Base, siempre disponible</option>'
+      + '<option value="complemento">Complemento</option>'
+      + '<option value="salsa">Salsa o aderezo</option></select></label>'
+      + '<label class="campo">Precio<input type="number" id="pprecio" step="0.5" value="0"></label>'
+      + '</div>'
+      + '<label class="campo">Descripción<input type="text" id="pdesc"></label>'
+      + '<label class="campo">Liga de la foto<input type="text" id="pimg" '
+      + 'placeholder="https://…"></label>'
+      + '<label class="checkbox"><input type="checkbox" id="pcomp" checked> Permite complementos</label>'
+      + '<label class="checkbox"><input type="checkbox" id="pfijo"> Se agrega solo a cada menú nuevo</label>'
+      + '<label class="checkbox"><input type="checkbox" id="pactivo" checked> Activo</label>'
+      + '<div class="botones"><button class="accion" id="guardarPlatillo">Guardar</button>'
+      + '<button class="suave" id="limpiar">Limpiar</button></div></div>';
+
+    html += '<h3>Catálogo (' + d.platillos.length + ')</h3>';
+    html += d.platillos.length
+      ? '<div class="tabla-envoltura"><table><thead><tr><th>Platillo</th><th>Tipo</th>'
+        + '<th class="num">Precio</th><th>Estado</th><th></th></tr></thead><tbody>'
+        + d.platillos.map(function (p) {
+          return '<tr><td>' + esc(p.nombre)
+            + (p.descripcion ? '<br><span style="color:var(--ink-3);font-size:12.5px">'
+                + esc(p.descripcion) + '</span>' : '') + '</td>'
+            + '<td>' + esc(p.tipo) + (p.fijo ? '<br><span class="etiqueta">fijo</span>' : '') + '</td>'
+            + '<td class="num">' + dinero(p.precio) + '</td>'
+            + '<td>' + (p.activo ? '<span class="etiqueta ok">activo</span>'
+                : '<span class="etiqueta">inactivo</span>') + '</td>'
+            + '<td><button class="suave" data-editar="' + p.id + '">Editar</button></td></tr>';
+        }).join('') + '</tbody></table></div>'
+      : '<p class="vacio">Todavía no hay platillos.</p>';
+
+    $('contenido').innerHTML = html;
+
+    $('guardarPlatillo').addEventListener('click', function () {
+      llamar('apiGuardarPlatillo', [{
+        id: $('pid').value, nombre: $('pnombre').value, tipo: $('ptipo').value,
+        precio: $('pprecio').value, descripcion: $('pdesc').value, imagen: $('pimg').value,
+        permiteComplementos: $('pcomp').checked, fijo: $('pfijo').checked,
+        activo: $('pactivo').checked
+      }]).then(function () {
+        avisar('Platillo guardado.');
+        vistaAdminPlatillos();
+      }).catch(fallo);
+    });
+    $('limpiar').addEventListener('click', vistaAdminPlatillos);
+    enlazar('[data-editar]', 'click', function () {
+      var id = this.getAttribute('data-editar');
+      d.platillos.forEach(function (p) {
+        if (p.id !== id) { return; }
+        $('tituloForm').textContent = 'Editando: ' + p.nombre;
+        $('pid').value = p.id;
+        $('pnombre').value = p.nombre;
+        $('ptipo').value = p.tipo;
+        $('pprecio').value = p.precio;
+        $('pdesc').value = p.descripcion;
+        $('pimg').value = p.imagen;
+        $('pcomp').checked = p.permiteComplementos;
+        $('pfijo').checked = p.fijo;
+        $('pactivo').checked = p.activo;
+        window.scrollTo({ top: 0, behavior: 'smooth' });
+      });
+    });
+  }).catch(fallo);
+}
+
+/* ---------------------------- admin: empleados ----------------------------- */
+
+function vistaAdminEmpleados() {
+  $('vista').innerHTML = '<h2 class="titulo">Empleados</h2>'
+    + '<p class="sub">Se identifican con su cuenta de Google, así que el correo debe ser exacto.</p>'
+    + '<div id="contenido"><p class="vacio">Cargando…</p></div>';
+  cargarAdmin(true).then(function (d) {
+    var html = '<div class="tarjeta"><h3 id="tituloForm">Nuevo empleado</h3>'
+      + '<input type="hidden" id="eid" value="">'
+      + '<div class="fila-campos">'
+      + '<label class="campo">Correo de Google<input type="email" id="eemail"></label>'
+      + '<label class="campo">Nombre<input type="text" id="enombre"></label>'
+      + '<label class="campo">Número de nómina<input type="text" id="enomina"></label>'
+      + '<label class="campo">Área<input type="text" id="earea"></label>'
+      + '<label class="campo">Rol<select id="erol">'
+      + '<option value="empleado">Empleado</option><option value="admin">Administrador</option>'
+      + '</select></label></div>'
+      + '<div class="botones"><button class="accion" id="guardarEmpleado">Guardar</button>'
+      + '<button class="suave" id="limpiar">Limpiar</button></div></div>';
+
+    html += '<h3>Registrados (' + d.empleados.length + ')</h3>'
+      + '<div class="tabla-envoltura"><table><thead><tr><th>Persona</th><th>Nómina</th>'
+      + '<th>Rol</th><th>Estado</th><th></th></tr></thead><tbody>'
+      + d.empleados.map(function (e) {
+        return '<tr><td>' + esc(e.nombre)
+          + '<br><span style="color:var(--ink-3);font-size:12.5px">' + esc(e.email) + '</span></td>'
+          + '<td>' + esc(e.numeroNomina) + '</td>'
+          + '<td>' + esc(e.rol) + '</td>'
+          + '<td>' + (e.estado === 'activo' ? '<span class="etiqueta ok">activo</span>'
+              : '<span class="etiqueta malo">inactivo</span>') + '</td>'
+          + '<td><button class="suave" data-editar="' + e.id + '">Editar</button> '
+          + '<button class="suave" data-tarifa="' + e.id + '">Tarifa</button> '
+          + '<button class="suave" data-invitar="' + e.id + '">Invitar</button> '
+          + '<button class="suave' + (e.estado === 'activo' ? ' peligro' : '') + '" data-estado="'
+          + e.id + '" data-valor="' + (e.estado === 'activo' ? 'inactivo' : 'activo') + '">'
+          + (e.estado === 'activo' ? 'Dar de baja' : 'Reactivar') + '</button></td></tr>';
+      }).join('') + '</tbody></table></div><div id="panelTarifa"></div>';
+
+    $('contenido').innerHTML = html;
+
+    $('guardarEmpleado').addEventListener('click', function () {
+      llamar('apiGuardarEmpleado', [{
+        id: $('eid').value, email: $('eemail').value, nombre: $('enombre').value,
+        numeroNomina: $('enomina').value, area: $('earea').value, rol: $('erol').value
+      }]).then(function () { avisar('Empleado guardado.'); vistaAdminEmpleados(); }).catch(fallo);
+    });
+    $('limpiar').addEventListener('click', vistaAdminEmpleados);
+
+    enlazar('[data-editar]', 'click', function () {
+      var id = this.getAttribute('data-editar');
+      d.empleados.forEach(function (e) {
+        if (e.id !== id) { return; }
+        $('tituloForm').textContent = 'Editando: ' + e.nombre;
+        $('eid').value = e.id;
+        $('eemail').value = e.email;
+        $('enombre').value = e.nombre;
+        $('enomina').value = e.numeroNomina;
+        $('earea').value = e.area;
+        $('erol').value = e.rol;
+        window.scrollTo({ top: 0, behavior: 'smooth' });
+      });
+    });
+    enlazar('[data-estado]', 'click', function () {
+      var valor = this.getAttribute('data-valor');
+      if (valor === 'inactivo' && !confirm('Se cancelarán sus pedidos futuros. Su historial se conserva. ¿Continuar?')) {
+        return;
+      }
+      llamar('apiCambiarEstadoEmpleado', [this.getAttribute('data-estado'), valor])
+        .then(function () { avisar('Listo.'); vistaAdminEmpleados(); }).catch(fallo);
+    });
+    enlazar('[data-invitar]', 'click', function () {
+      llamar('apiInvitar', [this.getAttribute('data-invitar')])
+        .then(function () { avisar('Invitación enviada por correo.'); }).catch(fallo);
+    });
+    enlazar('[data-tarifa]', 'click', function () {
+      panelTarifas(this.getAttribute('data-tarifa'), d);
+    });
+  }).catch(fallo);
+}
+
+function panelTarifas(empleadoId, d) {
+  var empleado = null;
+  d.empleados.forEach(function (e) { if (e.id === empleadoId) { empleado = e; } });
+  llamar('apiTarifasDe', [empleadoId]).then(function (tarifas) {
+    var nombres = {};
+    d.platillos.forEach(function (p) { nombres[p.id] = p.nombre; });
+    var html = '<div class="tarjeta"><h3>Tarifas de ' + esc(empleado.nombre) + '</h3>'
+      + '<p class="sub">Sin platillo, la tarifa aplica a todo lo que pida.</p>'
+      + '<div class="fila-campos">'
+      + '<label class="campo">Platillo<select id="tplatillo">'
+      + '<option value="">Todos los platillos</option>'
+      + d.platillos.map(function (p) {
+          return '<option value="' + p.id + '">' + esc(p.nombre) + '</option>';
+        }).join('') + '</select></label>'
+      + '<label class="campo">Modo<select id="tmodo">'
+      + '<option value="fijo">Precio fijo</option>'
+      + '<option value="descuento_pct">Descuento en porcentaje</option>'
+      + '<option value="descuento_monto">Descuento en pesos</option></select></label>'
+      + '<label class="campo">Valor<input type="number" id="tvalor" step="0.5" value="0"></label>'
+      + '<label class="campo">Desde<input type="date" id="tdesde" value="' + hoyISO() + '"></label>'
+      + '</div><div class="botones"><button class="accion" id="guardarTarifa">Agregar tarifa</button>'
+      + '<button class="suave" id="cerrarTarifa">Cerrar</button></div>';
+
+    html += tarifas.length
+      ? '<div class="tabla-envoltura" style="margin-top:14px"><table><thead><tr>'
+        + '<th>Aplica a</th><th>Modo</th><th class="num">Valor</th><th>Desde</th><th></th>'
+        + '</tr></thead><tbody>'
+        + tarifas.map(function (t) {
+          return '<tr><td>' + esc(t.platilloId ? (nombres[t.platilloId] || t.platilloId) : 'Todos')
+            + '</td><td>' + esc(t.modo) + '</td><td class="num">' + t.valor + '</td>'
+            + '<td>' + esc(t.desde) + '</td>'
+            + '<td><button class="suave peligro" data-quitarTarifa="' + t.id + '">Quitar</button></td></tr>';
+        }).join('') + '</tbody></table></div>'
+      : '<p class="vacio">Sin tarifas propias: paga el precio de lista.</p>';
+
+    $('panelTarifa').innerHTML = html + '</div>';
+    $('panelTarifa').scrollIntoView({ behavior: 'smooth', block: 'start' });
+
+    $('guardarTarifa').addEventListener('click', function () {
+      llamar('apiGuardarTarifa', [{
+        empleadoId: empleadoId, platilloId: $('tplatillo').value, modo: $('tmodo').value,
+        valor: $('tvalor').value, desde: $('tdesde').value
+      }]).then(function () { avisar('Tarifa guardada.'); panelTarifas(empleadoId, d); }).catch(fallo);
+    });
+    $('cerrarTarifa').addEventListener('click', function () {
+      $('panelTarifa').innerHTML = '';
+    });
+    enlazar('[data-quitarTarifa]', 'click', function () {
+      llamar('apiBorrarTarifa', [this.getAttribute('data-quitarTarifa')])
+        .then(function () { panelTarifas(empleadoId, d); }).catch(fallo);
+    });
+  }).catch(fallo);
+}
+
+/* ----------------------------- admin: reportes ----------------------------- */
+
+function vistaAdminReportes() {
+  var hasta = hoyISO();
+  var desde = hasta.substring(0, 8) + '01';
+  $('vista').innerHTML = '<h2 class="titulo">Reportes</h2>'
+    + '<p class="sub">Cobros acumulados para Nómina, con su detalle diario.</p>'
+    + '<div class="fila-campos">'
+    + '<label class="campo">Desde<input type="date" id="desde" value="' + desde + '"></label>'
+    + '<label class="campo">Hasta<input type="date" id="hasta" value="' + hasta + '"></label></div>'
+    + '<div class="botones"><button class="suave" id="consultar">Consultar</button>'
+    + '<button class="accion" id="exportar">Exportar a hoja de cálculo</button></div>'
+    + '<div id="resultado"></div>';
+
+  $('consultar').addEventListener('click', cargarReporte);
+  $('exportar').addEventListener('click', function () {
+    var boton = this;
+    boton.disabled = true;
+    boton.textContent = 'Generando…';
+    llamar('apiExportarCobros', [$('desde').value, $('hasta').value]).then(function (r) {
+      boton.disabled = false;
+      boton.textContent = 'Exportar a hoja de cálculo';
+      $('resultado').insertAdjacentHTML('afterbegin',
+        '<div class="nota">Listo: <a href="' + esc(r.url) + '" target="_blank">'
+        + esc(r.nombre) + '</a></div>');
+    }).catch(function (e) {
+      boton.disabled = false;
+      boton.textContent = 'Exportar a hoja de cálculo';
+      fallo(e);
+    });
+  });
+  cargarReporte();
+}
+
+function cargarReporte() {
+  $('resultado').innerHTML = '<p class="vacio">Consultando…</p>';
+  llamar('apiReporteCobros', [$('desde').value, $('hasta').value]).then(function (r) {
+    if (!r.resumen.length) {
+      $('resultado').innerHTML = '<p class="vacio">No hay pedidos en ese rango.</p>';
+      return;
+    }
+    $('resultado').innerHTML = '<div class="cifras">'
+      + '<div class="cifra"><b>' + dinero(r.total) + '</b><span>Total del periodo</span></div>'
+      + '<div class="cifra"><b>' + r.empleados + '</b><span>Empleados</span></div>'
+      + '<div class="cifra"><b>' + r.excepciones + '</b><span>Excepciones</span></div></div>'
+      + '<div class="tabla-envoltura"><table><thead><tr><th>Nómina</th><th>Empleado</th>'
+      + '<th class="num">Comidas</th><th class="num">Importe</th><th class="num">Excep.</th>'
+      + '</tr></thead><tbody>'
+      + r.resumen.map(function (e) {
+        return '<tr><td>' + esc(e.numeroNomina) + '</td><td>' + esc(e.nombre) + '</td>'
+          + '<td class="num">' + e.comidas + '</td><td class="num">' + dinero(e.importe) + '</td>'
+          + '<td class="num">' + e.excepciones + '</td></tr>';
+      }).join('') + '</tbody></table></div>';
+  }).catch(fallo);
+}
+
+/* ------------------------------ admin: ajustes ----------------------------- */
+
+function vistaAdminAjustes() {
+  cargarAdmin(true).then(function (d) {
+    var c = d.config || {};
+    $('vista').innerHTML = '<h2 class="titulo">Ajustes</h2>'
+      + '<p class="sub">Valores por default. Cambiarlos no afecta menús ya publicados.</p>'
+      + '<div class="tarjeta"><div class="fila-campos">'
+      + '<label class="campo">Empresa<input type="text" id="cempresa" value="'
+      + esc(c.empresa || '') + '"></label>'
+      + '<label class="campo">Hora corte por default<input type="time" id="chora" value="'
+      + esc(c.horaCorte || '11:00') + '"></label>'
+      + '<label class="campo">Minutos de anticipación del recordatorio'
+      + '<input type="number" id="cmin" value="' + esc(c.minutosRecordatorio || '60') + '"></label>'
+      + '<label class="campo">Máximo de complementos<input type="number" id="cmax" value="'
+      + esc(c.maxComplementos || '2') + '"></label></div>'
+      + '<div class="botones"><button class="accion" id="guardarConfig">Guardar</button></div></div>'
+      + (d.ligaApp ? '<div class="nota">Liga de la aplicación, la que se comparte:<br>'
+          + '<span style="font-family:var(--mono);font-size:12px">' + esc(d.ligaApp) + '</span></div>' : '');
+
+    $('guardarConfig').addEventListener('click', function () {
+      llamar('apiGuardarConfig', [{
+        empresa: $('cempresa').value, horaCorte: $('chora').value,
+        minutosRecordatorio: $('cmin').value, maxComplementos: $('cmax').value
+      }]).then(function () {
+        avisar('Ajustes guardados.');
+        return recargarInicial();
+      }).then(pintarBarra).catch(fallo);
+    });
+  }).catch(fallo);
+}
+
+window.addEventListener('load', arrancar);
+</script>
