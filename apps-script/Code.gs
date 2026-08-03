@@ -42,15 +42,49 @@ function doGet(e) {
 function verificar() {
   var pagina = construirPagina_();
   if (pagina) {
-    Logger.log('OK — el archivo HTML se encontró. Ya puedes implementar.');
+    Logger.log('OK — el archivo HTML se cargó. Ya puedes implementar.');
     Logger.log('Siguiente paso: Implementar > Nueva implementación > Aplicación web.');
     return true;
   }
-  Logger.log('FALTA EL ARCHIVO HTML.');
-  Logger.log('Crea un archivo con el signo + junto a "Archivos", tipo HTML,');
-  Logger.log('nómbralo exactamente Index (sin escribir .html) y pega ahí el');
-  Logger.log('contenido de Index.html. Luego vuelve a ejecutar "verificar".');
+  Logger.log('NO SE PUDO CARGAR EL ARCHIVO HTML.');
+  Logger.log('Ojo: esto no significa forzosamente que falte. También pasa cuando el');
+  Logger.log('archivo existe pero Apps Script rechaza su contenido. El detalle real');
+  Logger.log('es el que sigue:');
+  Logger.log('');
+  diagnosticar();
   return false;
+}
+
+/**
+ * Diagnóstico detallado: prueba nombre por nombre y registra el error exacto
+ * que devuelve Google en cada caso. Úsala cuando "verificar" dice que falta el
+ * archivo pero en la lista de archivos sí aparece.
+ */
+function diagnosticar() {
+  var nombres = [
+    'Index', 'index', 'INDEX', 'Index.html', 'index.html',
+    'Index.html.html', 'Índex', 'Pagina', 'Página', 'Codigo', 'Código'
+  ];
+  Logger.log('Probando nombres de archivo, uno por uno:');
+  var encontrados = 0;
+  for (var i = 0; i < nombres.length; i++) {
+    try {
+      var salida = HtmlService.createHtmlOutputFromFile(nombres[i]);
+      var largo = salida.getContent().length;
+      Logger.log('  ENCONTRADO -> "' + nombres[i] + '"  (' + largo + ' caracteres)');
+      if (largo < 1000) {
+        Logger.log('    OJO: el archivo existe pero está casi vacío. Pega el Index.html completo.');
+      }
+      encontrados++;
+    } catch (err) {
+      Logger.log('  no existe  -> "' + nombres[i] + '"  (' + err.message + ')');
+    }
+  }
+  if (encontrados === 0) {
+    Logger.log('Ninguno existe. Guarda con Ctrl+S y vuelve a ejecutar: Apps Script');
+    Logger.log('ejecuta la ultima version guardada, no lo que ves en pantalla.');
+  }
+  return encontrados;
 }
 
 /**
