@@ -107,8 +107,12 @@ function paginaDeDiagnostico_() {
     '<li>Guarda, y en el editor ejecuta la función <code>verificar</code> para confirmar.</li>',
     '<li>Publica de nuevo: <strong>Implementar → Administrar implementaciones → ✏️ → Versión nueva</strong>.</li>',
     '</ol></div>',
-    '<p>Si ya existe el archivo y aun así ves esto, revisa su nombre: ',
-    '<code>Index.html.html</code> y <code>Índex</code> son errores comunes.</p>',
+    '<p><strong>¿Ya creaste el archivo y aun así ves esto?</strong> Entonces esta liga ',
+    'está sirviendo una versión publicada <em>antes</em> de que lo agregaras: las ',
+    'implementaciones son fotos congeladas del código y no se actualizan solas. ',
+    'Ve a <strong>Implementar → Administrar implementaciones → ✏️ → Versión nueva</strong>.</p>',
+    '<p>Si tampoco es eso, revisa el nombre del archivo: <code>Index.html.html</code> ',
+    'y <code>Índex</code> son errores comunes.</p>',
     '</body></html>'
   ].join('\n');
 }
