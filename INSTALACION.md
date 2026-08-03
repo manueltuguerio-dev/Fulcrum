@@ -171,8 +171,7 @@ Abre la liga `/exec` en el celular y en la computadora, y confirma:
       a cada sección.
 - [ ] Las tablas anchas (base de datos, endpoints) se deslizan hacia los lados
       **dentro de su propio recuadro**.
-- [ ] Los cuatro diagramas se ven como dibujos, no como texto. Si salen como
-      texto, ve a *Solución de problemas*.
+- [ ] Los cuatro diagramas se ven armados, con sus recuadros y flechas.
 
 ---
 
@@ -207,7 +206,7 @@ cambio, o acabarás con varias ligas distintas circulando.
 | `Se requiere autorización` | Quedó a medias la autorización del paso 5 | Ejecuta `verificar` desde el editor y completa el permiso |
 | Página en blanco | El `Index.html` se pegó incompleto | Vuelve a pegarlo entero, hasta el `</html>` final |
 | Se ve diminuta en el celular | Falta el meta viewport | Ya viene en `Code.gs`; revisa que lo hayas pegado completo |
-| Los diagramas salen como texto | La red bloqueó el CDN que dibuja los diagramas | No rompe nada: el texto es el código del diagrama y sigue siendo legible. En una red sin bloqueos se dibujan solos |
+| `Malformed HTML content` | El `Index.html` se pegó incompleto, o es una versión vieja del archivo | Usa el `Index.html` de este paquete y pégalo entero. La versión actual no lleva comentarios HTML ni scripts externos, que era lo que provocaba este error |
 | Los cambios no se ven | Se publicó, pero no una versión nueva | *Administrar implementaciones* → ✏️ → **Versión nueva** |
 | La liga del editor no abre la página | Se copió la URL del editor (`/edit`) en lugar de la de la implementación | La liga buena termina en **`/exec`** y sale al implementar, o en *Administrar implementaciones* |
 | *"Google no ha verificado esta aplicación"* | El script es tuyo y no pasó por revisión de Google | *Configuración avanzada* → *Ir a … (no seguro)* → *Permitir* |

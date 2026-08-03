@@ -75,13 +75,28 @@ versión las resuelve por su cuenta:
 - **Interruptor de tema propio**, arriba a la derecha, con la preferencia
   guardada en `localStorage`. La página sigue respetando el modo del sistema
   mientras no se toque el botón.
-- **Mermaid desde CDN** (`cdn.jsdelivr.net`) en lugar del renderizado nativo. Si
-  el CDN no carga —red bloqueada o sin respuesta en 8 segundos— cada diagrama
-  muestra su propio código Mermaid, que sigue siendo legible.
 - **Meta viewport desde `Code.gs`**, porque `HtmlService` descarta los `<meta>`
   del archivo HTML.
 - **Sin `<base target="_top">`**, a propósito: rompería los enlaces del índice
   lateral dentro del iframe. El desplazamiento se maneja con JavaScript.
+
+## Por qué el HTML es tan conservador
+
+`HtmlService` sanea lo que sirve y rechaza el archivo entero con *Malformed HTML
+content* ante cosas que cualquier navegador tolera. La primera versión de este
+paquete fallaba por tres de ellas a la vez, y `build.py` ahora las impide:
+
+| Se evita | Por qué |
+|---|---|
+| Comentarios `<!-- -->` | Convivían con flechas `-->` sueltas en el texto de los diagramas; el parser cerraba donde no debía |
+| Diagramas Mermaid | Traían esas flechas y además dependían de un CDN. Ahora son HTML y CSS puros |
+| `<script type="module">`, `await` de nivel superior, `import()` | HtmlService los maltrata |
+| Peticiones a servidores externos | Innecesarias, y fallan en redes cerradas |
+| `&` sin escapar y `<` que no abre etiqueta | Ambiguos para un parser estricto |
+
+`build.py` verifica las seis condiciones y **se niega a escribir el archivo** si
+alguna se incumple, así que una edición futura del documento no puede volver a
+romper el despliegue en silencio.
 
 Verificado en Chromium a 520 px y 1280 px de ancho, en modo claro y oscuro: la
 página no genera desplazamiento horizontal, y las tablas anchas se desplazan

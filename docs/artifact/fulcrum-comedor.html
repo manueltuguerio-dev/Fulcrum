@@ -291,7 +291,7 @@
 
   strong { font-weight: 700; color: var(--ink); }
 
-  /* ---------- cards & panels ---------- */
+  /* ---------- tarjetas y paneles ---------- */
 
   .grid {
     display: grid;
@@ -430,11 +430,102 @@
     margin: 24px 0;
     overflow-x: auto;
   }
-  .diagram pre.mermaid {
-    margin: 0;
-    text-align: center;
-    min-width: 0;
+  .dgm {
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+    min-width: 460px;
   }
+  .dgm-row {
+    display: grid;
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+    gap: 10px;
+    align-items: start;
+  }
+  .dgm-group {
+    border: 1px solid var(--rule);
+    border-radius: 4px;
+    background: var(--surface-2);
+    padding: 11px 11px 12px;
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+  }
+  .dgm-group h6 {
+    font-family: var(--mono);
+    font-size: 10px;
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+    color: var(--ink-3);
+    margin: 0;
+    font-weight: 500;
+  }
+  .node {
+    background: var(--surface);
+    border: 1px solid var(--rule-strong);
+    border-radius: 3px;
+    padding: 7px 9px;
+    font-family: var(--mono);
+    font-size: 11px;
+    line-height: 1.4;
+    color: var(--ink);
+  }
+  .node b { display: block; font-weight: 600; }
+  .node i { font-style: normal; color: var(--ink-3); font-size: 10px; }
+  .node.store { border-style: dashed; }
+  .wires {
+    font-family: var(--mono);
+    font-size: 10.5px;
+    line-height: 1.75;
+    color: var(--ink-3);
+    letter-spacing: 0.03em;
+    border-top: 1px solid var(--rule);
+    padding-top: 10px;
+    margin: 0;
+  }
+  .wires b { color: var(--ink-2); font-weight: 500; }
+  .chain {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 7px;
+    font-family: var(--mono);
+    font-size: 11px;
+  }
+  .chip {
+    border: 1px solid var(--rule-strong);
+    border-radius: 3px;
+    background: var(--surface);
+    padding: 5px 9px;
+    color: var(--ink);
+  }
+  .chip.start { border-style: dashed; color: var(--ink-3); }
+  .chip.on { border-color: var(--accent); color: var(--accent); }
+  .chip.off { border-color: var(--warn); color: var(--warn); }
+  .arrow { color: var(--ink-3); }
+  .arrow i { font-style: normal; font-size: 10px; }
+  .steps-flow {
+    display: flex;
+    flex-direction: column;
+    gap: 9px;
+    font-family: var(--mono);
+    font-size: 11.5px;
+    line-height: 1.5;
+    min-width: 400px;
+  }
+  .steps-flow div {
+    display: grid;
+    grid-template-columns: 74px minmax(0, 1fr);
+    gap: 12px;
+    align-items: baseline;
+  }
+  .steps-flow span {
+    color: var(--accent);
+    font-size: 10px;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+  }
+  .steps-flow em { font-style: normal; color: var(--ink-3); }
   .caption {
     font-family: var(--mono);
     font-size: 11px;
@@ -530,7 +621,6 @@
 
   <main>
 
-    <!-- ============ DECISIONES ============ -->
     <section id="decisiones">
       <div class="sec-head">
         <span class="sec-num">RESUMEN</span>
@@ -573,7 +663,6 @@
       </div>
     </section>
 
-    <!-- ============ ARQUITECTURA ============ -->
     <section id="arquitectura">
       <div class="sec-head">
         <span class="sec-num">01</span>
@@ -583,41 +672,33 @@
       <p>El volumen real de una sola sede —decenas o pocos cientos de comidas al día, un pico de tráfico de 30 minutos antes del corte— no justifica microservicios. La recomendación es un <strong>monolito modular en TypeScript</strong> con PostgreSQL, empaquetado como PWA. Un solo lenguaje en front y back, un solo despliegue, y tipos compartidos entre ambos.</p>
 
       <div class="diagram">
-<pre class="mermaid">
-flowchart LR
-  subgraph cliente["Cliente"]
-    PWA["PWA React + Vite<br/>mobile-first"]
-    SW["Service Worker<br/>push + offline shell"]
-  end
-
-  subgraph api["API — NestJS / Node"]
-    REST["REST + JWT<br/>RBAC empleado/admin"]
-    JOBS["Scheduler<br/>recordatorio · cierre"]
-    REP["Reportes<br/>ExcelJS · PDF"]
-  end
-
-  subgraph datos["Datos"]
-    PG[("PostgreSQL")]
-    OBJ[("Object storage<br/>fotos de platillos")]
-  end
-
-  subgraph ext["Servicios externos"]
-    MAIL["Email transaccional<br/>invitaciones · recordatorios"]
-    PUSH["Web Push VAPID"]
-    WA["WhatsApp<br/>mensaje + liga wa.me"]
-  end
-
-  PWA --> REST
-  SW --> PUSH
-  REST --> PG
-  REST --> OBJ
-  JOBS --> REST
-  JOBS --> MAIL
-  JOBS --> PUSH
-  REST --> REP
-  REP --> PG
-  REST --> WA
-</pre>
+<div class="dgm">
+  <div class="dgm-row">
+    <div class="dgm-group"><h6>Cliente</h6>
+      <div class="node"><b>PWA React + Vite</b><i>mobile-first, instalable</i></div>
+      <div class="node"><b>Service Worker</b><i>push y shell sin conexión</i></div>
+    </div>
+    <div class="dgm-group"><h6>API · NestJS</h6>
+      <div class="node"><b>REST + JWT</b><i>roles empleado y admin</i></div>
+      <div class="node"><b>Scheduler</b><i>recordatorio y cierre</i></div>
+      <div class="node"><b>Reportes</b><i>ExcelJS y PDF</i></div>
+    </div>
+    <div class="dgm-group"><h6>Datos</h6>
+      <div class="node store"><b>PostgreSQL</b><i>fuente de verdad</i></div>
+      <div class="node store"><b>Object storage</b><i>fotos de platillos</i></div>
+    </div>
+    <div class="dgm-group"><h6>Servicios externos</h6>
+      <div class="node"><b>Email</b><i>invitaciones y recordatorios</i></div>
+      <div class="node"><b>Web Push VAPID</b><i>aviso antes del corte</i></div>
+      <div class="node"><b>WhatsApp</b><i>mensaje y liga wa.me</i></div>
+    </div>
+  </div>
+  <p class="wires">
+    <b>PWA</b> → API REST → <b>PostgreSQL</b>, storage y reportes<br />
+    <b>Scheduler</b> → API REST → email y Web Push → <b>Service Worker</b><br />
+    <b>Admin</b> → genera el mensaje → lo pega él mismo en <b>WhatsApp</b>
+  </p>
+</div>
       </div>
       <p class="caption">Fig. 1 — Componentes y dependencias. Una sola API, un solo Postgres.</p>
 
@@ -657,7 +738,6 @@ flowchart LR
       </ul>
     </section>
 
-    <!-- ============ DATOS ============ -->
     <section id="datos">
       <div class="sec-head">
         <span class="sec-num">02</span>
@@ -667,21 +747,23 @@ flowchart LR
       <p>PostgreSQL, identificadores <code>uuid</code>, importes en <code>numeric(10,2)</code>, y <code>created_at</code> / <code>updated_at</code> en todas las tablas (omitidos abajo por brevedad).</p>
 
       <div class="diagram">
-<pre class="mermaid">
-erDiagram
-  USERS ||--o{ ORDERS : realiza
-  USERS ||--o{ EMPLOYEE_PRICES : tiene
-  USERS ||--o{ PUSH_SUBSCRIPTIONS : registra
-  USERS ||--o{ INVITATIONS : envia
-  MENUS ||--o{ MENU_ITEMS : contiene
-  MENUS ||--o{ ORDERS : agrupa
-  DISHES ||--o{ MENU_ITEMS : aparece_en
-  DISHES ||--o{ EMPLOYEE_PRICES : tarifa_de
-  ORDERS ||--|{ ORDER_ITEMS : detalla
-  MENU_ITEMS ||--o{ ORDER_ITEMS : seleccionado
-  PAYROLL_PERIODS ||--o{ PAYROLL_LINES : consolida
-  USERS ||--o{ PAYROLL_LINES : cobra
-</pre>
+<table>
+  <thead><tr><th>Tabla</th><th>Relación</th><th>Tabla</th></tr></thead>
+  <tbody>
+    <tr><td>users</td><td>1 → N</td><td>orders</td></tr>
+    <tr><td>users</td><td>1 → N</td><td>employee_prices</td></tr>
+    <tr><td>users</td><td>1 → N</td><td>push_subscriptions</td></tr>
+    <tr><td>users</td><td>1 → N</td><td>invitations (las que envía)</td></tr>
+    <tr><td>users</td><td>1 → N</td><td>payroll_lines</td></tr>
+    <tr><td>menus</td><td>1 → N</td><td>menu_items</td></tr>
+    <tr><td>menus</td><td>1 → N</td><td>orders</td></tr>
+    <tr><td>dishes</td><td>1 → N</td><td>menu_items</td></tr>
+    <tr><td>dishes</td><td>1 → N</td><td>employee_prices</td></tr>
+    <tr><td>orders</td><td>1 → N</td><td>order_items (mínimo uno)</td></tr>
+    <tr><td>menu_items</td><td>1 → N</td><td>order_items</td></tr>
+    <tr><td>payroll_periods</td><td>1 → N</td><td>payroll_lines</td></tr>
+  </tbody>
+</table>
       </div>
       <p class="caption">Fig. 2 — Relaciones principales.</p>
 
@@ -896,7 +978,6 @@ erDiagram
       </ul>
     </section>
 
-    <!-- ============ API ============ -->
     <section id="api">
       <div class="sec-head">
         <span class="sec-num">03</span>
@@ -1056,7 +1137,6 @@ erDiagram
       </div>
     </section>
 
-    <!-- ============ FLUJOS ============ -->
     <section id="flujos">
       <div class="sec-head">
         <span class="sec-num">04</span>
@@ -1087,20 +1167,36 @@ erDiagram
       <h3>C · Pedido, edición y corte</h3>
 
       <div class="diagram">
-<pre class="mermaid">
-stateDiagram-v2
-  [*] --> sin_pedido
-  sin_pedido --> confirmed : empleado ordena
-  confirmed --> confirmed : edita antes del corte
-  confirmed --> cancelled : cancela antes del corte
-  cancelled --> confirmed : vuelve a ordenar
-  sin_pedido --> no_meal : cierre automatico
-  confirmed --> delivered : recepcion masiva
-  sin_pedido --> confirmed : pedido expreso del admin
-  no_meal --> confirmed : pedido expreso del admin
-  delivered --> [*]
-  no_meal --> [*]
-</pre>
+<div class="dgm">
+  <div class="chain">
+    <span class="chip start">sin pedido</span>
+    <span class="arrow">→ <i>el empleado ordena</i> →</span>
+    <span class="chip on">confirmed</span>
+    <span class="arrow">→ <i>recepción masiva</i> →</span>
+    <span class="chip">delivered</span>
+  </div>
+  <div class="chain">
+    <span class="chip on">confirmed</span>
+    <span class="arrow">→ <i>cancela antes del corte</i> →</span>
+    <span class="chip">cancelled</span>
+    <span class="arrow">→ <i>vuelve a ordenar</i> →</span>
+    <span class="chip on">confirmed</span>
+  </div>
+  <div class="chain">
+    <span class="chip start">sin pedido</span>
+    <span class="arrow">→ <i>llega la hora corte</i> →</span>
+    <span class="chip off">no_meal</span>
+  </div>
+  <div class="chain">
+    <span class="chip start">sin pedido</span>
+    <span class="arrow">o</span>
+    <span class="chip off">no_meal</span>
+    <span class="arrow">→ <i>pedido expreso del admin, fuera de tiempo</i> →</span>
+    <span class="chip on">confirmed</span>
+  </div>
+  <p class="wires">Editar y cancelar solo antes del corte. Después, cualquier
+    transición la ejecuta el Admin, con motivo y bitácora.</p>
+</div>
       </div>
       <p class="caption">Fig. 3 — Estados del pedido. Las transiciones tras el corte solo las ejecuta el Admin.</p>
 
@@ -1120,21 +1216,14 @@ stateDiagram-v2
       <h3>D · Notificaciones</h3>
 
       <div class="diagram">
-<pre class="mermaid">
-flowchart TD
-  A["Cron cada 5 min"] --> B{"Menu publicado<br/>para hoy o manana?"}
-  B -- No --> Z["Fin"]
-  B -- Si --> C{"Faltan menos de<br/>N min para el corte?"}
-  C -- No --> Z
-  C -- Si --> D["Empleados activos<br/>sin pedido ni no_meal"]
-  D --> E{"Ya se le envio<br/>hoy? dedupe_key"}
-  E -- Si --> Z
-  E -- No --> F["Push si hay dispositivo<br/>si no, correo"]
-  F --> G["Registrar en notifications"]
-  H["Cron de corte"] --> I["Cerrar menu vencido"]
-  I --> J["Crear no_meal a los omisos"]
-  J --> K["Avisar al admin:<br/>resumen del dia listo"]
-</pre>
+<div class="steps-flow">
+  <div><span>Cada 5 min</span><em>Se revisa si hay menú publicado para hoy o mañana, y cuánto falta para su hora corte.</em></div>
+  <div><span>Falta más</span><em>No se hace nada. Se vuelve a revisar en cinco minutos.</em></div>
+  <div><span>Falta menos</span><em>Se listan los empleados activos que no tienen pedido ni no_meal ese día.</em></div>
+  <div><span>Ya avisados</span><em>Se descartan por dedupe_key, que es usuario más fecha más tipo de aviso.</em></div>
+  <div><span>Sin avisar</span><em>Push si tienen dispositivo registrado; correo si no. Queda asentado en notifications.</em></div>
+  <div><span>Al corte</span><em>Se cierra el menú, se crean los no_meal de los omisos y se avisa al Admin que el resumen del día está listo.</em></div>
+</div>
       </div>
       <p class="caption">Fig. 4 — Recordatorio previo al corte y cierre automático.</p>
 
@@ -1160,7 +1249,6 @@ flowchart TD
       </ol>
     </section>
 
-    <!-- ============ PENDIENTES ============ -->
     <section id="pendientes">
       <div class="sec-head">
         <span class="sec-num">05</span>
