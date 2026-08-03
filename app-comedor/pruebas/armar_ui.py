@@ -61,11 +61,14 @@ RESPUESTAS = {
     "apiAdminEstado": {
         "empleados": [
             {"id": "u1", "email": "manuel@tlterminals.com", "nombre": "Manuel Tuguerio",
-             "numeroNomina": "1001", "area": "Dirección", "rol": "admin", "estado": "activo"},
+             "numeroNomina": "1001", "area": "Dirección", "rol": "admin", "estado": "activo",
+             "liga": "https://script.google.com/macros/s/EJEMPLO/exec?t=abc123"},
             {"id": "u2", "email": "ana@tlterminals.com", "nombre": "Ana Ruiz",
-             "numeroNomina": "1024", "area": "Operación", "rol": "empleado", "estado": "activo"},
+             "numeroNomina": "1024", "area": "Operación", "rol": "empleado", "estado": "activo",
+             "liga": "https://script.google.com/macros/s/EJEMPLO/exec?t=def456"},
             {"id": "u3", "email": "beto@tlterminals.com", "nombre": "Beto Lara",
-             "numeroNomina": "1025", "area": "Patio", "rol": "empleado", "estado": "inactivo"},
+             "numeroNomina": "1025", "area": "Patio", "rol": "empleado", "estado": "inactivo",
+             "liga": ""},
         ],
         "platillos": [
             {"id": "p1", "nombre": "Milanesa de res", "descripcion": "Empanizada",
@@ -126,7 +129,7 @@ NOMBRES = [
     "apiAgregarAlMenu", "apiQuitarDelMenu", "apiCambiarDisponible", "apiGuardarPlatillo",
     "apiGuardarEmpleado", "apiCambiarEstadoEmpleado", "apiInvitar", "apiTarifasDe",
     "apiGuardarTarifa", "apiBorrarTarifa", "apiReporteCobros", "apiExportarCobros",
-    "apiGuardarConfig",
+    "apiGuardarConfig", "apiRegenerarLiga", "apiSubirFoto",
 ]
 
 MOCK = """
@@ -138,13 +141,14 @@ var NOMBRES = __NOMBRES__;
 function Corredor() { this.__ok = null; this.__mal = null; }
 Corredor.prototype.withSuccessHandler = function (f) { this.__ok = f; return this; };
 Corredor.prototype.withFailureHandler = function (f) { this.__mal = f; return this; };
-NOMBRES.forEach(function (nombre) {
-  Corredor.prototype[nombre] = function () {
-    var self = this;
-    var datos = RESPUESTAS.hasOwnProperty(nombre) ? RESPUESTAS[nombre] : true;
-    setTimeout(function () { self.__ok(JSON.parse(JSON.stringify(datos))); }, 0);
-  };
-});
+Corredor.prototype.ejecutar = function (token, nombre, args) {
+  var self = this;
+  if (NOMBRES.indexOf(nombre) === -1) {
+    window.__errores.push('funcion no declarada en el despachador: ' + nombre);
+  }
+  var datos = RESPUESTAS.hasOwnProperty(nombre) ? RESPUESTAS[nombre] : true;
+  setTimeout(function () { self.__ok(JSON.parse(JSON.stringify(datos))); }, 0);
+};
 window.google = { script: {} };
 Object.defineProperty(window.google.script, 'run', {
   get: function () { return new Corredor(); }
@@ -161,6 +165,7 @@ def armar(con_sonda):
                             (RAIZ / "Cliente.html").read_text(encoding="utf-8"))
     mock = MOCK.replace("__DATOS__", json.dumps(RESPUESTAS, ensure_ascii=False))
     mock = mock.replace("__NOMBRES__", json.dumps(NOMBRES))
+    pagina = pagina.replace("<?= tokenInicial ?>", "TOKEN-DE-PRUEBA")
     pagina = pagina.replace("<body>", "<body>" + mock, 1)
 
     if con_sonda:

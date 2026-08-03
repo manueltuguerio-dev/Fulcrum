@@ -9,30 +9,47 @@ Tiempo estimado: 20 minutos.
 
 ## Antes de empezar: dos cosas que debes saber
 
-### 1. La identificación es con cuenta de Google, no con contraseña
+### 1. Se entra con una liga personal, no con contraseña
 
-No hay registro con correo y contraseña. Cada quien entra con su cuenta de
-Google y la aplicación lo reconoce por su correo. Guardar contraseñas en una
-hoja de cálculo sería inseguro, y Apps Script ya trae identificación integrada.
+Cada empleado recibe por correo **su propia liga**, que termina en `?t=` seguido
+de una clave larga y única. Esa liga es su identificación.
 
-En la práctica: **el Admin da de alta el correo, la persona entra con Google.**
+**Funciona con cualquier correo:** del trabajo, Gmail, Hotmail, Yahoo, el que
+sea. No hace falta que tengan cuenta de Google ni que la empresa tenga Workspace.
 
-### 2. Necesitas Google Workspace con dominio propio
+Por qué así y no con contraseña: guardar contraseñas en una hoja de cálculo sería
+inseguro, y Apps Script no puede revelar el correo de visitantes externos. La
+liga personal resuelve las dos cosas.
 
-Esta es la limitación importante. Apps Script solo revela el correo de quien
-entra si esa persona pertenece **al mismo dominio de Workspace** que la cuenta
-que publicó la aplicación.
+Cómo se ve en la práctica:
 
-| Situación | ¿Funciona? |
+1. El Admin da de alta a la persona con su correo.
+2. Toca **Invitar** y le llega el correo con su liga.
+3. La persona abre la liga una vez; **el navegador la recuerda** y en adelante
+   entra directo. Puede guardarla en favoritos o instalarla en el teléfono.
+
+Lo que hay que cuidar: **quien tenga la liga puede pedir a nombre de esa
+persona.** Es el mismo nivel de cuidado que una liga de reunión. Para una
+aplicación de comedor es un intercambio razonable; si alguien la comparte por
+error, el Admin genera una liga nueva con **Liga nueva** y la anterior deja de
+servir al instante.
+
+Extra sin costo: si la empresa sí tiene Workspace y la persona entra con sesión
+de Google del mismo dominio, la app la reconoce sola, sin liga.
+
+### 2. Todo se guarda en tu Google Drive
+
+Al instalar se crea en tu Drive una carpeta **Comedor TLTERMINALS** que contiene:
+
+| Qué | Dónde |
 |---|---|
-| Todos con correo `@tlterminals.com` en Workspace | Sí, sin nada extra |
-| Cuentas personales de Gmail | No: la app no puede saber quién entró |
+| Base de datos, con las nueve tablas | Hoja de cálculo dentro de la carpeta |
+| Fotos de los platillos | Subcarpeta `Fotos` |
+| Reportes exportados para Nómina | Misma carpeta, una hoja por corte |
 
-Si el personal usa Gmail personal, la aplicación mostrará "no pude identificar
-tu cuenta". No es un error de instalación: es cómo funciona Apps Script. En ese
-caso hay dos caminos: contratar Workspace, o construir el sistema sobre la
-arquitectura con PostgreSQL del documento de diseño, que sí maneja contraseñas
-propias.
+Es tu Drive: puedes abrir la hoja cuando quieras, filtrar, hacer tablas
+dinámicas o respaldarla. Solo evita cambiar los encabezados de las columnas o
+borrar pestañas, porque la aplicación las busca por nombre.
 
 ---
 
@@ -42,7 +59,7 @@ Ocho archivos, en `app-comedor/`:
 
 | Archivo | Tipo en Apps Script | Qué es |
 |---|---|---|
-| `Code.gs` | Secuencia de comandos | Entrada, instalación y verificación |
+| `Code.gs` | Secuencia de comandos | Entrada, despachador, instalación y verificación |
 | `Db.gs` | Secuencia de comandos | La hoja de cálculo como base de datos |
 | `Api.gs` | Secuencia de comandos | Menú, pedidos y reglas de negocio |
 | `Admin.gs` | Secuencia de comandos | Empleados, platillos, menús, cobros |
@@ -103,10 +120,11 @@ platillos de muestra. Solo funciona si el catálogo está vacío.
 1. **Implementar** → **Nueva implementación** → ⚙️ → **Aplicación web**.
 2. Configura así, y esto importa:
    - **Ejecutar como:** *Yo*
-   - **Quién tiene acceso:** *Usuarios de TLTERMINALS* (tu dominio de Workspace)
+   - **Quién tiene acceso:** *Cualquier usuario, incluso anónimo*
 
-   Con *Cualquier usuario* la aplicación **no puede saber quién entró** y nadie
-   podrá pedir. Tiene que ser la opción del dominio.
+   Tiene que ser esa opción para que entren correos externos. No deja el sistema
+   abierto: quien llegue sin liga personal solo ve un aviso de que necesita su
+   liga. Toda la información está detrás del token.
 3. **Implementar** y copia la URL que termina en `/exec`. Esa es la liga del
    comedor.
 
@@ -132,10 +150,13 @@ conteo de empleados, platillos y pedidos, y la liga de la aplicación.
 1. Abre la liga `/exec`. Entras como administrador.
 2. **Platillos** — da de alta lo que se sirve. En cada uno defines tipo
    (principal, base, complemento, salsa), precio, si permite complementos, y si
-   se agrega solo a cada menú nuevo. La foto se pone con una liga; sirve
-   cualquier imagen pública.
-3. **Empleados** — registra a la gente con su correo de Google exacto. El botón
-   *Invitar* les manda un correo con la liga.
+   se agrega solo a cada menú nuevo. La foto se sube desde tu computadora o
+   teléfono: queda guardada en la subcarpeta `Fotos` de tu Drive. También puedes
+   pegar la liga de una imagen que ya esté publicada en otro lado.
+3. **Empleados** — registra a la gente con su correo, el que usen. Al guardarlos
+   se les genera su liga personal. El botón *Invitar* se las manda por correo;
+   *Copiar liga* te la deja en el portapapeles por si prefieres pasarla tú, y
+   *Liga nueva* cancela la anterior y genera otra.
 4. **Menú** — elige la fecha, agrega platillos, pon la hora corte y **Publicar**.
    Hasta que no publiques, nadie puede pedir.
 5. **Del día** — pásale el mensaje de WhatsApp al grupo, revisa quién no ha
@@ -180,8 +201,11 @@ un correo por persona y día, así que el límite práctico es el de correos.
 
 | Qué ves | Por qué | Cómo se arregla |
 |---|---|---|
-| "No pude identificar tu cuenta" | Se publicó con acceso *Cualquier usuario*, o la persona no es del dominio | Vuelve a implementar con acceso del dominio. Ver el punto 2 del inicio |
-| "Tu correo no está dado de alta" | El correo con el que entró no coincide con el registrado | Revisa en **Empleados** que el correo esté escrito exacto |
+| "Necesitas tu liga personal" | Se abrió la liga general, sin el `?t=` | Que abra la liga que le llegó por correo, completa |
+| "Tu liga ya no sirve" | Se generó una liga nueva para esa persona | **Empleados** → *Invitar*, para reenviarle la actual |
+| "Aún no estás dado de alta" | La persona no está registrada | Agrégala en **Empleados** y tócale *Invitar* |
+| No llegan los correos de invitación | Se agotó la cuota diaria, o cayeron en spam | Usa *Copiar liga* y pásasela por WhatsApp. Ver la tabla de cuotas |
+| Las fotos no se ven | Google cambió la forma de servir imágenes de Drive | Pega en su lugar la liga de una imagen publicada en otro lado |
 | `SyntaxError: Unexpected token '<'` | Un archivo HTML se pegó en uno de secuencia de comandos | Los `.gs` empiezan con `/**`, los `.html` con `<` |
 | `No HTML file named Index` | Falta un archivo HTML o tiene otro nombre | Deben existir `Index`, `Estilos` y `Cliente`, sin la extensión en el nombre |
 | Nadie recibe recordatorios | Faltan los disparadores | Ejecuta `instalarDisparadores` |
@@ -193,10 +217,12 @@ un correo por persona y día, así que el límite práctico es el de correos.
 ## Cómo se probó
 
 La lógica del servidor corre contra un simulador del entorno de Apps Script con
-**61 pruebas automáticas**, que cubren instalación, alta de empleados, armado
+**81 pruebas automáticas**, que cubren instalación, alta de empleados, armado
 del menú, hora corte, reglas del pedido, tarifas con descuento, cancelación,
 pedido expreso, entrega masiva, condonación, baja y reactivación, permisos por
-rol, cierre automático, mensaje de WhatsApp y exportación a hoja de cálculo.
+rol, cierre automático, mensaje de WhatsApp, exportación a hoja de cálculo,
+acceso con correos externos mediante liga personal, invalidación de ligas
+regeneradas, bloqueo de funciones no expuestas, y organización en Drive.
 
 La interfaz se ejercitó en Chromium recorriendo sus ocho vistas más el
 formulario de pedido, verificando que ninguna produzca errores de JavaScript.

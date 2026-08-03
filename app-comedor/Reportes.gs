@@ -175,6 +175,12 @@ function apiExportarCobros(desde, hasta) {
   hojaDetalle.setFrozenRows(1);
   hojaDetalle.autoResizeColumns(1, 8);
 
+  try {
+    DriveApp.getFileById(libro.getId()).moveTo(carpeta_());
+  } catch (err) {
+    Logger.log('No pude mover el reporte a la carpeta: ' + err.message);
+  }
+
   bitacora_('reporte_exportado', datos.desde + '..' + datos.hasta,
             { total: datos.total, url: libro.getUrl() });
   return { url: libro.getUrl(), nombre: titulo };

@@ -5,22 +5,54 @@
 
 /* -------------------------------- sesión ---------------------------------- */
 
+/**
+ * Token de la persona que hizo esta llamada. Lo fija ejecutar() al inicio de
+ * cada petición; en Apps Script las variables globales viven solo lo que dura
+ * una ejecución, así que no se mezclan entre usuarios.
+ */
+var SESION_TOKEN = '';
+
+/**
+ * Identifica a quien está usando la aplicación, por dos caminos:
+ *
+ *   1. Su liga personal, que trae un token. Es lo que permite entrar con
+ *      correos externos: Gmail, Hotmail o el que sea.
+ *   2. Su sesión de Google, cuando pertenece al mismo dominio de Workspace
+ *      que la cuenta que publicó. Ahí no hace falta liga personal.
+ *
+ * @return {Object|null} Datos de la persona, o null si no se pudo identificar.
+ */
 function usuarioActual_() {
+  var empleado = null;
+
+  if (SESION_TOKEN) {
+    var buscado = String(SESION_TOKEN).trim();
+    empleado = buscar_('Empleados', function (f) {
+      return String(f.token).trim() !== '' && String(f.token).trim() === buscado;
+    });
+    if (!empleado) {
+      return { email: '', registrado: false, tokenInvalido: true };
+    }
+  }
+
   var correo = '';
-  try {
-    correo = Session.getActiveUser().getEmail();
-  } catch (err) {
-    correo = '';
+  if (!empleado) {
+    try {
+      correo = Session.getActiveUser().getEmail();
+    } catch (err) {
+      correo = '';
+    }
+    if (!correo) {
+      return null;
+    }
+    empleado = buscarEmpleadoPorEmail_(correo);
   }
-  if (!correo) {
-    return null;
-  }
-  var empleado = buscarEmpleadoPorEmail_(correo);
+
   if (!empleado) {
     return { email: correo, registrado: false };
   }
   return {
-    email: correo,
+    email: String(empleado.email),
     registrado: true,
     id: empleado.id,
     nombre: empleado.nombre,
@@ -33,6 +65,9 @@ function usuarioActual_() {
 
 function exigirSesion_() {
   var u = usuarioActual_();
+  if (u && u.tokenInvalido) {
+    throw new Error('Tu liga de acceso ya no es válida. Pídele al administrador que te la reenvíe.');
+  }
   if (!u || !u.registrado) {
     throw new Error('Tu correo no está dado de alta en el comedor. Pídele al administrador que te registre.');
   }
@@ -197,7 +232,8 @@ function apiEstadoInicial() {
     return { sesion: false };
   }
   if (!u.registrado) {
-    return { sesion: true, registrado: false, email: u.email };
+    return { sesion: true, registrado: false, email: u.email,
+             tokenInvalido: !!u.tokenInvalido };
   }
   if (u.estado !== 'activo') {
     return { sesion: true, registrado: true, activo: false, email: u.email };

@@ -229,7 +229,68 @@ instalarDisparadores();
 ok('deja dos disparadores', sim.disparadores.length === 2);
 ok('verificar() pasa', verificar() === true);
 
-console.log('\n20. Bitácora');
+console.log('\n20. Acceso con correos externos');
+sim.comoUsuario('admin@tlterminals.com');
+const idDiana = apiGuardarEmpleado({
+  email: 'diana.perez@hotmail.com', nombre: 'Diana Pérez', numeroNomina: '1027' });
+const fichaDiana = leerTodo_('Empleados').filter((e) => String(e.id) === String(idDiana))[0];
+ok('el alta genera token', String(fichaDiana.token).length >= 32);
+ok('la liga personal lleva el token',
+   apiAdminEstado().empleados.some((e) => e.liga.indexOf('?t=' + fichaDiana.token) !== -1));
+
+// Nadie identificado: ni token ni sesión de Google conocida.
+sim.comoUsuario('desconocido@outlook.com');
+SESION_TOKEN = '';
+ok('sin token ni alta, no hay sesión', apiEstadoInicial().registrado === false);
+
+// Con su liga personal sí entra, aunque su correo sea externo.
+SESION_TOKEN = String(fichaDiana.token);
+const comoDiana = usuarioActual_();
+ok('el token identifica a Diana', comoDiana && comoDiana.email === 'diana.perez@hotmail.com');
+ok('y queda como empleada', comoDiana.rol === 'empleado');
+debeFallar('una empleada externa no es admin', () => apiAdminEstado(), 'solo para el administrador');
+
+SESION_TOKEN = 'token-inventado';
+ok('un token falso no identifica a nadie', usuarioActual_().tokenInvalido === true);
+debeFallar('y no deja operar', () => exigirSesion_(), 'ya no es válida');
+
+// Regenerar invalida la liga anterior.
+SESION_TOKEN = '';
+sim.comoUsuario('admin@tlterminals.com');
+const ligaNueva = apiRegenerarLiga(idDiana);
+SESION_TOKEN = String(fichaDiana.token);
+ok('la liga vieja deja de servir', usuarioActual_().tokenInvalido === true);
+SESION_TOKEN = ligaNueva.split('?t=')[1];
+ok('la liga nueva sí sirve', usuarioActual_().email === 'diana.perez@hotmail.com');
+SESION_TOKEN = '';
+
+console.log('\n21. Despachador');
+sim.comoUsuario('admin@tlterminals.com');
+ok('ejecutar() enruta la llamada', ejecutar('', 'apiEstadoInicial', []).registrado === true);
+ok('ejecutar() fija el token', ejecutar(ligaNueva.split('?t=')[1], 'apiEstadoInicial', [])
+   .usuario.email === 'diana.perez@hotmail.com');
+debeFallar('bloquea funciones no expuestas',
+  () => ejecutar('', 'instalar', []), 'no permitida');
+debeFallar('bloquea funciones inventadas',
+  () => ejecutar('', 'borrarTodo', []), 'no permitida');
+SESION_TOKEN = '';
+
+console.log('\n22. Drive como base de datos');
+sim.comoUsuario('admin@tlterminals.com');
+const carpeta = carpeta_();
+ok('existe la carpeta del comedor', carpeta.getName() === NOMBRE_CARPETA);
+ok('la hoja de cálculo vive en ella',
+   sim.archivosPorId[PropertiesService.getScriptProperties().getProperty(PROP_HOJA)].padre === carpeta);
+ok('hay subcarpeta de fotos', carpetaFotos_().getName() === 'Fotos');
+const ligaFoto = apiSubirFoto('milanesa.jpg', Buffer.from('imagen falsa').toString('base64'), 'image/jpeg');
+ok('la foto se guarda y devuelve liga', ligaFoto.indexOf('drive.google.com/thumbnail') === 8);
+ok('la foto queda pública',
+   carpetaFotos_().archivos[0].compartido[0] === 'ANYONE_WITH_LINK');
+const exportado2 = apiExportarCobros(hoy, hoy);
+ok('el reporte también va a la carpeta',
+   Object.keys(sim.archivosPorId).some((k) => sim.archivosPorId[k].padre === carpeta));
+
+console.log('\n23. Bitácora');
 ok('registra los movimientos', leerTodo_('Bitacora').length > 15,
    'renglones=' + leerTodo_('Bitacora').length);
 

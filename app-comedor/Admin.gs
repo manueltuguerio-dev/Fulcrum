@@ -9,7 +9,8 @@ function apiAdminEstado() {
       return {
         id: String(e.id), email: String(e.email), nombre: String(e.nombre),
         numeroNomina: String(e.numeroNomina || ''), area: String(e.area || ''),
-        rol: String(e.rol), estado: String(e.estado)
+        rol: String(e.rol), estado: String(e.estado),
+        liga: String(e.token) ? ligaApp_() + '?t=' + String(e.token) : ''
       };
     }),
     platillos: leerTodo_('Platillos').map(function (p) {
@@ -61,6 +62,7 @@ function apiGuardarEmpleado(datos) {
 
   campos.id = nuevoId_();
   campos.estado = 'activo';
+  campos.token = nuevoToken_();
   campos.creado = ahora_();
   insertar_('Empleados', campos);
   bitacora_('empleado_creado', campos.id, campos);
@@ -96,10 +98,14 @@ function apiInvitar(id) {
   if (!empleado) {
     throw new Error('No encontré a ese empleado.');
   }
-  var liga = ligaApp_();
-  if (!liga) {
+  var base = ligaApp_();
+  if (!base) {
     throw new Error('Publica primero el Web App: la invitación necesita la liga.');
   }
+  if (!String(empleado.token)) {
+    actualizar_('Empleados', empleado, { token: nuevoToken_() });
+  }
+  var liga = base + '?t=' + String(empleado.token);
   var empresa = leerConfig('empresa') || 'TLTERMINALS';
   MailApp.sendEmail({
     to: String(empleado.email),
@@ -110,9 +116,48 @@ function apiInvitar(id) {
       + '<p><a href="' + liga + '">' + liga + '</a></p>'
       + '<p>Ahí ves el menú del día, haces tu pedido y consultas lo que llevas gastado. '
       + 'Recuerda que hay una hora corte: después de esa hora ya no se puede pedir ni cambiar.</p>'
+      + '<p><b>Esta liga es tuya y personal.</b> No la compartas: quien la tenga puede '
+      + 'pedir a tu nombre. Guárdala en favoritos o deja la página instalada en tu '
+      + 'teléfono para no tener que buscarla cada vez.</p>'
   });
   bitacora_('invitacion_enviada', id, { email: empleado.email });
   return true;
+}
+
+/**
+ * Genera una liga personal nueva e invalida la anterior. Sirve cuando alguien
+ * la compartió por error o perdió el acceso.
+ */
+function apiRegenerarLiga(id) {
+  exigirAdmin_();
+  var empleado = buscarPorId_('Empleados', id);
+  if (!empleado) {
+    throw new Error('No encontré a ese empleado.');
+  }
+  var token = nuevoToken_();
+  actualizar_('Empleados', empleado, { token: token });
+  bitacora_('liga_regenerada', id, {});
+  return ligaApp_() + '?t=' + token;
+}
+
+/**
+ * Guarda en Drive la foto de un platillo y devuelve su liga pública.
+ * @param {string} nombreArchivo Nombre original.
+ * @param {string} base64 Contenido del archivo.
+ * @param {string} tipo Tipo MIME.
+ * @return {string} Liga utilizable en una etiqueta de imagen.
+ */
+function apiSubirFoto(nombreArchivo, base64, tipo) {
+  exigirAdmin_();
+  if (!base64) {
+    throw new Error('No llegó la imagen.');
+  }
+  var datos = Utilities.base64Decode(base64);
+  var blob = Utilities.newBlob(datos, tipo || 'image/jpeg', String(nombreArchivo || 'platillo.jpg'));
+  var archivo = carpetaFotos_().createFile(blob);
+  archivo.setSharing(DriveApp.Access.ANYONE_WITH_LINK, DriveApp.Permission.VIEW);
+  bitacora_('foto_subida', archivo.getId(), { nombre: nombreArchivo });
+  return 'https://drive.google.com/thumbnail?id=' + archivo.getId() + '&sz=w800';
 }
 
 /* -------------------------------- tarifas --------------------------------- */

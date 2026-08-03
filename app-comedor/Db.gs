@@ -7,10 +7,12 @@
  */
 
 var PROP_HOJA = 'ID_HOJA_CALCULO';
+var PROP_CARPETA = 'ID_CARPETA_DRIVE';
+var NOMBRE_CARPETA = 'Comedor TLTERMINALS';
 
 var TABLAS = {
   Config: ['clave', 'valor'],
-  Empleados: ['id', 'email', 'nombre', 'numeroNomina', 'area', 'rol', 'estado', 'creado'],
+  Empleados: ['id', 'email', 'nombre', 'numeroNomina', 'area', 'rol', 'estado', 'token', 'creado'],
   Platillos: ['id', 'nombre', 'descripcion', 'imagen', 'tipo', 'permiteComplementos',
               'precio', 'activo', 'fijo'],
   Menus: ['fecha', 'estado', 'horaCorte', 'aviso', 'publicado', 'cerrado'],
@@ -89,12 +91,52 @@ function instalar() {
       area: '',
       rol: 'admin',
       estado: 'activo',
+      token: nuevoToken_(),
       creado: ahora_()
     });
   }
 
+  acomodarEnDrive_(libro);
+
   Logger.log('Base de datos lista: ' + libro.getUrl());
+  Logger.log('Carpeta en Drive: ' + carpeta_().getUrl());
   return libro.getId();
+}
+
+/**
+ * Carpeta de Drive donde vive todo: la base de datos, las fotos y los
+ * reportes que se exportan. Se crea la primera vez.
+ * @return {Folder}
+ */
+function carpeta_() {
+  var props = PropertiesService.getScriptProperties();
+  var id = props.getProperty(PROP_CARPETA);
+  if (id) {
+    try {
+      return DriveApp.getFolderById(id);
+    } catch (err) {
+      // se borró: se vuelve a crear abajo
+    }
+  }
+  var nueva = DriveApp.createFolder(NOMBRE_CARPETA);
+  props.setProperty(PROP_CARPETA, nueva.getId());
+  return nueva;
+}
+
+/** Subcarpeta para las fotos de los platillos. @private */
+function carpetaFotos_() {
+  var raiz = carpeta_();
+  var existentes = raiz.getFoldersByName('Fotos');
+  return existentes.hasNext() ? existentes.next() : raiz.createFolder('Fotos');
+}
+
+/** Mueve la hoja de cálculo a la carpeta del comedor. @private */
+function acomodarEnDrive_(libro) {
+  try {
+    DriveApp.getFileById(libro.getId()).moveTo(carpeta_());
+  } catch (err) {
+    Logger.log('No pude mover la hoja a la carpeta: ' + err.message);
+  }
 }
 
 /** @return {Spreadsheet} El libro, instalándolo si hace falta. @private */
@@ -231,6 +273,15 @@ function configCompleta_() {
 
 function nuevoId_() {
   return Utilities.getUuid().replace(/-/g, '').substring(0, 10);
+}
+
+/**
+ * Token de acceso personal. Es lo que identifica a quien entra con un correo
+ * externo, así que se hace largo a propósito.
+ * @private
+ */
+function nuevoToken_() {
+  return (Utilities.getUuid() + Utilities.getUuid()).replace(/-/g, '');
 }
 
 function zona_() {

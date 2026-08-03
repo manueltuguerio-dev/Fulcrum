@@ -1,6 +1,28 @@
 <script>
 var estado = { inicial: null, admin: null, vista: 'pedir', borrador: null, cacheAdmin: {} };
 
+var LLAVE_TOKEN = 'comedor-tlterminals-token';
+
+// El token llega en la liga personal (?t=…) y de ahí en adelante vive en el
+// navegador, para no tener que abrir el correo cada vez. Es lo que identifica
+// a quien entra con un correo externo.
+var TOKEN = (function () {
+  var deLaLiga = (typeof TOKEN_INICIAL === 'string') ? TOKEN_INICIAL : '';
+  try {
+    if (deLaLiga) {
+      window.localStorage.setItem(LLAVE_TOKEN, deLaLiga);
+      return deLaLiga;
+    }
+    return window.localStorage.getItem(LLAVE_TOKEN) || '';
+  } catch (e) {
+    return deLaLiga;
+  }
+})();
+
+function olvidarToken() {
+  try { window.localStorage.removeItem(LLAVE_TOKEN); } catch (e) { return; }
+}
+
 function $(id) { return document.getElementById(id); }
 
 function esc(texto) {
@@ -18,11 +40,11 @@ function llamar(nombre, args) {
     var corredor = google.script.run
       .withSuccessHandler(resolver)
       .withFailureHandler(rechazar);
-    if (typeof corredor[nombre] !== 'function') {
-      rechazar(new Error('No existe la función ' + nombre + ' en el servidor.'));
+    if (typeof corredor.ejecutar !== 'function') {
+      rechazar(new Error('No pude comunicarme con el servidor.'));
       return;
     }
-    corredor[nombre].apply(corredor, args || []);
+    corredor.ejecutar(TOKEN, nombre, args || []);
   });
 }
 
@@ -71,21 +93,30 @@ function arrancar() {
     $('app').classList.remove('oculto');
 
     if (!datos.sesion) {
-      $('vista').innerHTML = '<h2 class="titulo">No pude identificar tu cuenta</h2>'
-        + '<div class="nota malo">Google no me está diciendo quién eres.</div>'
-        + '<p class="sub">Si eres empleado: abre la liga en una ventana donde ya tengas '
-        + 'iniciada tu sesión de Google, o pruébala en modo incógnito con una sola cuenta.</p>'
-        + '<p class="sub">Si eres quien administra: esto pasa cuando la aplicación se publicó '
-        + 'con acceso <b>Cualquier usuario</b> en lugar de <b>Usuarios de TLTERMINALS</b>. '
-        + 'Google solo revela el correo de quien entra cuando es del mismo dominio de '
-        + 'Workspace que la cuenta que publicó. Revisa el paso 5 del instructivo.</p>';
+      $('vista').innerHTML = '<h2 class="titulo">Necesitas tu liga personal</h2>'
+        + '<div class="nota">Para entrar al comedor tienes que abrir la liga que te '
+        + 'llegó por correo. Es personal y termina en <b>?t=</b> seguido de una clave.</div>'
+        + '<p class="sub">Si no la tienes o la perdiste, pídele al administrador que te '
+        + 'reenvíe la invitación. Cuando entres con ella, este dispositivo la recuerda y '
+        + 'ya no tendrás que buscarla otra vez.</p>';
+      return;
+    }
+    if (datos.tokenInvalido) {
+      olvidarToken();
+      $('vista').innerHTML = '<h2 class="titulo">Tu liga ya no sirve</h2>'
+        + '<div class="nota malo">La liga con la que entraste fue reemplazada o cancelada.</div>'
+        + '<p class="sub">Pídele al administrador que te reenvíe la invitación. '
+        + 'Llega por correo con una liga nueva.</p>';
       return;
     }
     if (!datos.registrado) {
       $('vista').innerHTML = '<h2 class="titulo">Aún no estás dado de alta</h2>'
-        + '<p class="sub">Tu correo <b>' + esc(datos.email) + '</b> no está registrado en el comedor.</p>'
-        + '<div class="nota">Pídele al administrador que te agregue con ese mismo correo. '
-        + 'En cuanto lo haga, vuelve a abrir esta liga.</div>';
+        + (datos.email
+            ? '<p class="sub">Tu correo <b>' + esc(datos.email)
+              + '</b> no está registrado en el comedor.</p>'
+            : '<p class="sub">No traes una liga personal de acceso.</p>')
+        + '<div class="nota">Pídele al administrador que te dé de alta. Te va a llegar '
+        + 'un correo con tu liga personal: esa es la que tienes que usar y guardar.</div>';
       return;
     }
     if (datos.activo === false) {
@@ -107,7 +138,16 @@ function pintarBarra() {
   var empresa = (estado.inicial.config && estado.inicial.config.empresa) || 'Comedor';
   $('barra').innerHTML = '<h1>Comedor ' + esc(empresa) + '</h1>'
     + '<div class="quien">' + esc(u.nombre)
-    + (u.rol === 'admin' ? '<span class="insignia">admin</span>' : '') + '</div>';
+    + (u.rol === 'admin' ? '<span class="insignia">admin</span>' : '')
+    + ' <button class="suave" id="salir" style="padding:4px 9px;font-size:11px;'
+    + 'margin-left:8px">Salir</button></div>';
+  $('salir').addEventListener('click', function () {
+    if (!confirm('¿Olvidar tu acceso en este dispositivo? Necesitarás tu liga personal para volver a entrar.')) {
+      return;
+    }
+    olvidarToken();
+    location.href = location.pathname;
+  });
 
   var pestanas = [['pedir', 'Pedir'], ['mios', 'Mis pedidos']];
   if (u.rol === 'admin') {
@@ -729,8 +769,11 @@ function vistaAdminPlatillos() {
       + '<label class="campo">Precio<input type="number" id="pprecio" step="0.5" value="0"></label>'
       + '</div>'
       + '<label class="campo">Descripción<input type="text" id="pdesc"></label>'
-      + '<label class="campo">Liga de la foto<input type="text" id="pimg" '
-      + 'placeholder="https://…"></label>'
+      + '<label class="campo">Foto del platillo<input type="file" id="parchivo" '
+      + 'accept="image/*"></label>'
+      + '<div id="vistaPrevia"></div>'
+      + '<label class="campo">Liga de la foto, si prefieres pegarla'
+      + '<input type="text" id="pimg" placeholder="https://…"></label>'
       + '<label class="checkbox"><input type="checkbox" id="pcomp" checked> Permite complementos</label>'
       + '<label class="checkbox"><input type="checkbox" id="pfijo"> Se agrega solo a cada menú nuevo</label>'
       + '<label class="checkbox"><input type="checkbox" id="pactivo" checked> Activo</label>'
@@ -767,6 +810,31 @@ function vistaAdminPlatillos() {
       }).catch(fallo);
     });
     $('limpiar').addEventListener('click', vistaAdminPlatillos);
+
+    $('parchivo').addEventListener('change', function () {
+      var archivo = this.files && this.files[0];
+      if (!archivo) { return; }
+      if (archivo.size > 4 * 1024 * 1024) {
+        avisar('La foto pesa más de 4 MB. Usa una más ligera.', true);
+        return;
+      }
+      $('vistaPrevia').innerHTML = '<p class="vacio">Subiendo la foto a Drive…</p>';
+      var lector = new FileReader();
+      lector.onload = function () {
+        var base64 = String(lector.result).split(',')[1];
+        llamar('apiSubirFoto', [archivo.name, base64, archivo.type]).then(function (liga) {
+          $('pimg').value = liga;
+          $('vistaPrevia').innerHTML = '<img src="' + esc(liga) + '" alt="" '
+            + 'style="max-height:120px;border-radius:5px;margin-top:8px">';
+          avisar('Foto guardada en Drive.');
+        }).catch(function (e) {
+          $('vistaPrevia').innerHTML = '';
+          fallo(e);
+        });
+      };
+      lector.readAsDataURL(archivo);
+    });
+
     enlazar('[data-editar]', 'click', function () {
       var id = this.getAttribute('data-editar');
       d.platillos.forEach(function (p) {
@@ -778,6 +846,10 @@ function vistaAdminPlatillos() {
         $('pprecio').value = p.precio;
         $('pdesc').value = p.descripcion;
         $('pimg').value = p.imagen;
+        $('vistaPrevia').innerHTML = p.imagen
+          ? '<img src="' + esc(p.imagen) + '" alt="" style="max-height:120px;'
+            + 'border-radius:5px;margin-top:8px">'
+          : '';
         $('pcomp').checked = p.permiteComplementos;
         $('pfijo').checked = p.fijo;
         $('pactivo').checked = p.activo;
@@ -791,7 +863,8 @@ function vistaAdminPlatillos() {
 
 function vistaAdminEmpleados() {
   $('vista').innerHTML = '<h2 class="titulo">Empleados</h2>'
-    + '<p class="sub">Se identifican con su cuenta de Google, así que el correo debe ser exacto.</p>'
+    + '<p class="sub">Cada quien entra con su liga personal, que le llega por correo. '
+    + 'Sirve cualquier correo: del trabajo, Gmail, Hotmail o el que usen.</p>'
     + '<div id="contenido"><p class="vacio">Cargando…</p></div>';
   cargarAdmin(true).then(function (d) {
     var html = '<div class="tarjeta"><h3 id="tituloForm">Nuevo empleado</h3>'
@@ -820,6 +893,9 @@ function vistaAdminEmpleados() {
           + '<td><button class="suave" data-editar="' + e.id + '">Editar</button> '
           + '<button class="suave" data-tarifa="' + e.id + '">Tarifa</button> '
           + '<button class="suave" data-invitar="' + e.id + '">Invitar</button> '
+          + (e.liga ? '<button class="suave" data-liga="' + esc(e.liga)
+              + '">Copiar liga</button> ' : '')
+          + '<button class="suave" data-regenerar="' + e.id + '">Liga nueva</button> '
           + '<button class="suave' + (e.estado === 'activo' ? ' peligro' : '') + '" data-estado="'
           + e.id + '" data-valor="' + (e.estado === 'activo' ? 'inactivo' : 'activo') + '">'
           + (e.estado === 'activo' ? 'Dar de baja' : 'Reactivar') + '</button></td></tr>';
@@ -859,7 +935,20 @@ function vistaAdminEmpleados() {
     });
     enlazar('[data-invitar]', 'click', function () {
       llamar('apiInvitar', [this.getAttribute('data-invitar')])
-        .then(function () { avisar('Invitación enviada por correo.'); }).catch(fallo);
+        .then(function () { avisar('Invitación enviada con su liga personal.'); }).catch(fallo);
+    });
+    enlazar('[data-liga]', 'click', function () {
+      var liga = this.getAttribute('data-liga');
+      navigator.clipboard.writeText(liga).then(function () {
+        avisar('Liga personal copiada. Es individual: no la mandes a un grupo.');
+      }, function () { prompt('Copia la liga:', liga); });
+    });
+    enlazar('[data-regenerar]', 'click', function () {
+      if (!confirm('Se cancela su liga anterior y deja de funcionar. ¿Continuar?')) { return; }
+      llamar('apiRegenerarLiga', [this.getAttribute('data-regenerar')]).then(function (liga) {
+        avisar('Liga nueva generada. Mándasela con el botón Invitar.');
+        vistaAdminEmpleados();
+      }).catch(fallo);
     });
     enlazar('[data-tarifa]', 'click', function () {
       panelTarifas(this.getAttribute('data-tarifa'), d);

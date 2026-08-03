@@ -18,10 +18,50 @@ var TITULO = 'Comedor TLTERMINALS';
 
 function doGet(e) {
   var plantilla = HtmlService.createTemplateFromFile('Index');
+  // La liga personal viene como ?t=TOKEN. El navegador lo guarda y lo manda
+  // en cada llamada, que es lo que permite entrar con correos externos.
+  plantilla.tokenInicial = (e && e.parameter && e.parameter.t)
+    ? String(e.parameter.t) : '';
   return plantilla.evaluate()
     .setTitle(TITULO)
     .addMetaTag('viewport', 'width=device-width, initial-scale=1')
     .setXFrameOptionsMode(HtmlService.XFrameOptionsMode.ALLOWALL);
+}
+
+/**
+ * Funciones que el navegador puede invocar. Todo lo que no esté aquí es
+ * inalcanzable desde el cliente.
+ */
+var FUNCIONES_PUBLICAS = [
+  'apiEstadoInicial', 'apiGuardarPedido', 'apiCancelarPedido', 'apiMisPedidos',
+  'apiAdminEstado', 'apiGuardarEmpleado', 'apiCambiarEstadoEmpleado', 'apiInvitar',
+  'apiRegenerarLiga', 'apiTarifasDe', 'apiGuardarTarifa', 'apiBorrarTarifa',
+  'apiGuardarPlatillo', 'apiSubirFoto', 'apiMenuAdmin', 'apiCrearMenu', 'apiDuplicarMenu',
+  'apiAgregarAlMenu', 'apiQuitarDelMenu', 'apiCambiarDisponible', 'apiActualizarMenu',
+  'apiPublicarMenu', 'apiMensajeWhatsApp', 'apiPedidosDelDia', 'apiPedidoExpreso',
+  'apiEliminarPedido', 'apiCondonar', 'apiMarcarEntregados', 'apiResumenProduccion',
+  'apiReporteCobros', 'apiExportarCobros', 'apiGuardarConfig'
+];
+
+/**
+ * Punto único por el que pasan todas las llamadas del navegador. Fija el token
+ * de la sesión y luego ejecuta la función pedida.
+ *
+ * @param {string} token Token de la liga personal, o cadena vacía.
+ * @param {string} nombre Función a ejecutar.
+ * @param {Array} args Sus argumentos.
+ * @return {*} Lo que devuelva la función.
+ */
+function ejecutar(token, nombre, args) {
+  SESION_TOKEN = token ? String(token) : '';
+  if (FUNCIONES_PUBLICAS.indexOf(String(nombre)) === -1) {
+    throw new Error('Operación no permitida: ' + nombre);
+  }
+  var fn = globalThis[nombre];
+  if (typeof fn !== 'function') {
+    throw new Error('No existe la función ' + nombre + '.');
+  }
+  return fn.apply(null, args || []);
 }
 
 /**
