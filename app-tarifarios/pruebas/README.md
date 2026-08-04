@@ -10,7 +10,7 @@ node pruebas/prueba.js
 
 `simulador.js` reemplaza SpreadsheetApp, PropertiesService, Session, ScriptApp,
 DriveApp y HtmlService con equivalentes en memoria, y carga los `.gs` reales.
-`prueba.js` corre 178 comprobaciones sobre un escenario completo: instalación,
+`prueba.js` corre 185 comprobaciones sobre un escenario completo: instalación,
 alta de partners y rutas, catálogos de carga, unidad y movimiento, cálculo del
 costo total con combustible y casetas, conversión de dólares con el tipo de
 cambio del día, orden de la mejor a la peor opción, pesos de precio contra
@@ -18,8 +18,8 @@ tiempo, comparaciones sin tiempo capturado, vigencias, apartado de mejores
 opciones, campos personalizados (incluido el que separa la comparación),
 importación de CSV con acentos y separadores raros, actualización sin duplicar,
 exportación, filtros combinados (ruta, partner, carga, unidad, movimiento,
-moneda, situación y campos propios), permisos por rol, edición, duplicado y
-bajas.
+moneda, situación y campos propios), permisos por rol, ligas de acceso e invitaciones por correo,
+edición, duplicado y bajas.
 
 `tarifario-ejecutivo.csv` son 26 renglones reales de la hoja *Tarifario
 Ejecutivo* de TLTERMINALS, con sus rarezas incluidas: notas con comas y

@@ -73,9 +73,13 @@ LO MÍNIMO PARA ARRANCAR
   6. Implementar > Nueva implementación > Aplicación web:
        Ejecutar como: Yo
        Quién tiene acceso: Cualquier persona
-  7. Abre la liga que te da. Listo.
+  7. Ejecuta  miLiga()  y abre la liga que aparece en el registro. Listo.
 
 El paso 3 es el que más se olvida y sin él la aplicación no abre.
+
+El paso 7 tampoco se salta: la aplicación se entra con una liga personal que
+termina en ?t= y una clave. Si abres la liga pelona te va a decir "Necesitas tu
+liga personal", y eso es correcto, no está roto.
 
 Los nombres de los archivos HTML tienen que ser exactamente Index, Estilos y
 Cliente: el código los busca por nombre.

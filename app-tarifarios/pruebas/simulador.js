@@ -45,6 +45,16 @@ global.Session = {
 const registro = [];
 global.Logger = { log: (m) => registro.push(String(m)) };
 
+const correosEnviados = [];
+global.MailApp = {
+  sendEmail: (opciones) => {
+    if (String(opciones.to).indexOf('@') === -1) {
+      throw new Error('Invalid email: ' + opciones.to);
+    }
+    correosEnviados.push(opciones);
+  }
+};
+
 global.ScriptApp = {
   getService: () => ({ getUrl: () => 'https://script.google.com/macros/s/PRUEBA/exec' })
 };
@@ -216,6 +226,7 @@ ARCHIVOS.forEach((archivo) => {
 
 module.exports = {
   comoUsuario: (correo) => { usuarioSimulado = correo; },
+  correosEnviados,
   librosPorId,
   carpetasPorId,
   archivosPorId,

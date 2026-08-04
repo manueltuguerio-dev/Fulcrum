@@ -254,6 +254,91 @@ function apiBorrarUsuario(id) {
   return true;
 }
 
+/**
+ * Imprime en el registro tu propia liga de acceso. Se ejecuta desde el editor y
+ * es la manera de entrar la primera vez: quien instala queda como
+ * administrador, pero sin esta liga no tiene por dónde pasar.
+ *
+ * @return {string} La liga, o cadena vacía si algo falta.
+ */
+function miLiga() {
+  var correo = Session.getEffectiveUser().getEmail();
+  var usuario = buscarUsuarioPorEmail_(correo);
+  if (!usuario) {
+    Logger.log('No encuentro a ' + correo + ' entre los usuarios. Ejecuta instalar() primero.');
+    return '';
+  }
+  if (!String(usuario.token)) {
+    actualizar_('Usuarios', usuario, { token: nuevoToken_() });
+  }
+  var base = ligaApp_();
+  if (!base) {
+    Logger.log('Todavía no publicas la aplicación web, así que no hay liga que armar.');
+    Logger.log('Ve a Implementar > Nueva implementación > Aplicación web y vuelve a '
+      + 'ejecutar miLiga().');
+    Logger.log('Tu clave de acceso, para cuando la tengas: ' + String(usuario.token));
+    return '';
+  }
+  var liga = base + '?t=' + String(usuario.token);
+  Logger.log('');
+  Logger.log('TU LIGA PERSONAL (ábrela en el navegador y guárdala en favoritos):');
+  Logger.log(liga);
+  Logger.log('');
+  Logger.log('Es personal: quien la tenga entra como ' + String(usuario.email)
+    + ' con rol ' + String(usuario.rol) + '.');
+  return liga;
+}
+
+/**
+ * Manda la liga personal por correo. Es lo que se usa para dar acceso a alguien
+ * más sin tener que pasarle la clave por WhatsApp.
+ * @param {string} id Id del usuario.
+ * @return {Object} {enviado, correo, liga}
+ */
+function apiInvitar(id) {
+  exigirAdmin_();
+  var usuario = buscarPorId_('Usuarios', id);
+  if (!usuario) {
+    throw new Error('No encuentro ese usuario.');
+  }
+  var base = ligaApp_();
+  if (!base) {
+    throw new Error('Publica primero la aplicación web: la invitación necesita la liga.');
+  }
+  if (!String(usuario.token)) {
+    actualizar_('Usuarios', usuario, { token: nuevoToken_() });
+  }
+  var liga = base + '?t=' + String(usuario.token);
+  var empresa = leerConfig('empresa') || 'TLTERMINALS';
+
+  try {
+    MailApp.sendEmail({
+      to: String(usuario.email),
+      subject: 'Tarifarios ' + empresa + ' — tu acceso',
+      htmlBody: '<p>Hola ' + escaparHtml_(String(usuario.nombre)) + ',</p>'
+        + '<p>Ya tienes acceso a los tarifarios de transportistas de '
+        + escaparHtml_(empresa) + '. Entra desde esta liga:</p>'
+        + '<p><a href="' + liga + '">' + liga + '</a></p>'
+        + '<p>Ahí puedes comparar transportistas por ruta y ver cuál conviene.</p>'
+        + '<p><b>Esta liga es tuya y personal.</b> No la compartas: quien la tenga '
+        + 'entra con tu nombre. Guárdala en favoritos para no tener que buscarla.</p>'
+    });
+  } catch (err) {
+    // Sin cuota de correo o sin permiso: la liga sirve igual, se pasa a mano.
+    bitacora_('invitacion_fallida', id, { error: err.message });
+    return { enviado: false, correo: String(usuario.email), liga: liga, error: err.message };
+  }
+
+  bitacora_('invitacion_enviada', id, { correo: String(usuario.email) });
+  return { enviado: true, correo: String(usuario.email), liga: liga };
+}
+
+function escaparHtml_(texto) {
+  return String(texto === null || texto === undefined ? '' : texto)
+    .replace(/&/g, '&amp;').replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+}
+
 /** Genera una liga personal nueva y anula la anterior. */
 function apiRegenerarLiga(id) {
   exigirAdmin_();

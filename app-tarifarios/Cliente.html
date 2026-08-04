@@ -328,17 +328,36 @@ function arrancar() {
     $('app').classList.remove('oculto');
 
     if (!datos.sesion) {
+      // Con la aplicación publicada para "cualquier persona", Google no le dice
+      // al script quién entró: por eso hace falta la liga personal. Y por eso
+      // hay que explicar aquí cómo se consigue, incluido el caso de quien acaba
+      // de instalar y todavía no tiene la suya.
       $('vista').innerHTML = '<h2 class="titulo">Necesitas tu liga personal</h2>'
-        + '<div class="nota">Para entrar a los tarifarios abre la liga que te llegó '
-        + 'por correo. Es personal y termina en <b>?t=</b> seguido de una clave.</div>'
-        + '<p class="sub">Si no la tienes, pídesela al administrador.</p>';
+        + '<div class="nota">Los tarifarios se abren con una liga personal, que '
+        + 'termina en <b>?t=</b> seguido de una clave. Es lo que identifica a cada '
+        + 'quien, porque Google no comparte con la aplicación el correo de quien entra.</div>'
+        + '<h3>Si alguien más instaló el sistema</h3>'
+        + '<p class="sub">Pídele tu liga al administrador. Desde <b>Ajustes</b> puede '
+        + 'mandártela por correo con el botón <b>Invitar</b>.</p>'
+        + '<h3>Si tú lo instalaste</h3>'
+        + '<p class="sub">Tu liga se imprime sola al instalar, pero se consigue en '
+        + 'cualquier momento:</p>'
+        + '<ol class="sub"><li>Abre el proyecto en <b>script.google.com</b>.</li>'
+        + '<li>En la lista de funciones elige <b>miLiga</b> y dale <b>Ejecutar</b>.</li>'
+        + '<li>Abajo, en el registro de ejecución, aparece tu liga. Ábrela y '
+        + 'guárdala en favoritos.</li></ol>'
+        + '<div class="nota aviso">También puedes sacarla a mano: en la hoja de cálculo '
+        + '<b>TLTERMINALS · Tarifarios — Base de datos</b>, pestaña <b>Usuarios</b>, '
+        + 'copia el valor de la columna <b>token</b> y pégalo al final de esta dirección '
+        + 'después de <b>?t=</b>.</div>';
       return;
     }
     if (datos.tokenInvalido) {
       olvidarToken();
       $('vista').innerHTML = '<h2 class="titulo">Tu liga ya no sirve</h2>'
         + '<div class="nota malo">La liga con la que entraste fue reemplazada o cancelada.</div>'
-        + '<p class="sub">Pídele al administrador que te reenvíe una nueva.</p>';
+        + '<p class="sub">Pídele al administrador que te mande una nueva. Si tú instalaste '
+        + 'el sistema, ejecuta la función <b>miLiga</b> desde el editor de Apps Script.</p>';
       return;
     }
     if (!datos.registrado) {
@@ -2071,6 +2090,8 @@ function cargarUsuarios() {
         + esc(u.estado) + '</span></td>'
         + '<td class="acciones">'
         + '<button class="suave chico" data-editar="' + esc(u.id) + '">Editar</button>'
+        + '<button class="suave chico" data-invitar="' + esc(u.id) + '">Invitar</button>'
+        + '<button class="suave chico" data-ver="' + esc(u.id) + '">Ver liga</button>'
         + '<button class="suave chico" data-liga="' + esc(u.id) + '">Liga nueva</button>'
         + '<button class="suave chico peligro" data-borrar="' + esc(u.id) + '">Borrar</button>'
         + '</td></tr>';
@@ -2079,14 +2100,41 @@ function cargarUsuarios() {
     pintarEn('lista-usuarios', '<div class="tabla-envoltura"><table><thead><tr>'
       + '<th>Nombre</th><th>Correo</th><th>Rol</th><th>Estado</th><th></th>'
       + '</tr></thead><tbody>' + filas + '</tbody></table></div>'
-      + '<p class="apagado">Quien tenga correo del mismo dominio entra con su cuenta de '
-      + 'Google. Para correos externos usa "Liga nueva" y mándasela.</p>'
+      + '<p class="apagado">Cada quien entra con su liga personal: la aplicación no puede '
+      + 'saber quién es de otra manera. <b>Invitar</b> se la manda por correo; '
+      + '<b>Ver liga</b> te la muestra para pasarla por WhatsApp; <b>Liga nueva</b> '
+      + 'cancela la anterior y genera otra.</p>'
       + '<div class="botones"><button class="suave" id="nuevo-usuario">Dar de alta usuario</button></div>');
 
     $('nuevo-usuario').addEventListener('click', function () { formaUsuario(null); });
     enlazar('button[data-editar]', 'click', function () {
       var id = this.getAttribute('data-editar');
       formaUsuario(lista.filter(function (u) { return u.id === id; })[0]);
+    });
+    enlazar('button[data-invitar]', 'click', function () {
+      var boton = this;
+      boton.disabled = true;
+      llamar('apiInvitar', [boton.getAttribute('data-invitar')]).then(function (r) {
+        boton.disabled = false;
+        if (r.enviado) {
+          avisar('Invitación enviada a ' + r.correo + '.');
+          return;
+        }
+        avisar('No pude mandar el correo. Pásale la liga a mano.', true);
+        mostrarTexto('Liga personal de ' + r.correo, r.liga);
+      }).catch(function (err) {
+        boton.disabled = false;
+        fallo(err);
+      });
+    });
+    enlazar('button[data-ver]', 'click', function () {
+      var id = this.getAttribute('data-ver');
+      var usuario = lista.filter(function (u) { return u.id === id; })[0];
+      if (!usuario.liga) {
+        avisar('Ese usuario todavía no tiene liga. Usa "Liga nueva".', true);
+        return;
+      }
+      mostrarTexto('Liga personal de ' + usuario.email, usuario.liga);
     });
     enlazar('button[data-liga]', 'click', function () {
       if (!confirm('La liga anterior deja de servir. ¿Generar una nueva?')) { return; }

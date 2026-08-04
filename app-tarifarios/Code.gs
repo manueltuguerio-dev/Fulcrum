@@ -15,7 +15,8 @@
  * Para instalar, ejecuta desde el editor:
  *   1. instalar()       crea la hoja de cálculo y te deja como administrador
  *   2. cargarEjemplo()  opcional: datos de prueba para ver el comparador andando
- * y luego publica: Implementar > Nueva implementación > Aplicación web.
+ * luego publica: Implementar > Nueva implementación > Aplicación web,
+ *   3. miLiga()         imprime tu liga personal, que es con la que entras
  */
 
 var TITULO = 'Tarifarios de transportistas';
@@ -38,7 +39,7 @@ function doGet(e) {
  */
 var FUNCIONES_PUBLICAS = [
   'apiEstadoInicial', 'apiUsuarios', 'apiGuardarUsuario', 'apiBorrarUsuario',
-  'apiRegenerarLiga', 'apiGuardarConfig',
+  'apiRegenerarLiga', 'apiInvitar', 'apiGuardarConfig',
   'apiProveedores', 'apiGuardarProveedor', 'apiBorrarProveedor',
   'apiRutas', 'apiGuardarRuta', 'apiBorrarRuta',
   'apiCatalogos', 'apiGuardarCatalogo', 'apiBorrarCatalogo',
@@ -132,9 +133,12 @@ function verificar() {
     + ' | Rutas: ' + leerTodo_('Rutas').length
     + ' | Tarifas: ' + leerTodo_('Tarifas').length);
   var liga = ligaApp_();
-  Logger.log(liga
-    ? 'Liga de la aplicación: ' + liga
-    : 'Falta publicar: Implementar > Nueva implementación > Aplicación web.');
+  if (liga) {
+    Logger.log('Liga de la aplicación: ' + liga);
+    miLiga();
+  } else {
+    Logger.log('Falta publicar: Implementar > Nueva implementación > Aplicación web.');
+  }
   return true;
 }
 

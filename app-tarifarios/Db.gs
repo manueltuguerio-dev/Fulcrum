@@ -174,6 +174,9 @@ function instalar() {
 
   Logger.log('Base de datos lista: ' + libro.getUrl());
   Logger.log('Carpeta en Drive: ' + carpeta_().getUrl());
+  // Sin la liga personal el administrador no tiene por dónde entrar, así que se
+  // imprime aquí mismo: es lo primero que va a necesitar.
+  miLiga();
   return libro.getId();
 }
 

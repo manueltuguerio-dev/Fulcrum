@@ -203,6 +203,8 @@ RESPUESTAS = {
                    "campos": CAMPOS["tarifa"], "tipoCambio": TIPO_CAMBIO},
     "apiCampos": CAMPOS,
     "apiActualizarTipoCambio": TIPO_CAMBIO,
+    "apiInvitar": {"enviado": True, "correo": "compras@tlterminals.com",
+                   "liga": "https://script.google.com/macros/s/EJEMPLO/exec?t=def456"},
     "apiProveedores": PROVEEDORES,
     "apiRutas": RUTAS,
     "apiCatalogos": CATALOGOS,
@@ -252,6 +254,7 @@ NOMBRES = [
     "apiMejoresOpciones", "apiHistorial", "apiImportarRevisar", "apiImportarAplicar",
     "apiPlantilla", "apiExportarCsv", "apiExportarLibro", "apiRespaldo",
     "apiCampos", "apiGuardarCampo", "apiBorrarCampo", "apiActualizarTipoCambio",
+    "apiInvitar",
 ]
 
 MOCK = """
@@ -312,6 +315,21 @@ setTimeout(function () {
         if (document.getElementById('x-cuenta').textContent.indexOf('Costo total') !== 0) {
           window.__errores.push('la cuenta en vivo no se calculó');
         } }, 'x-guardar'],
+      ['pantalla sin liga personal', function () {
+        var real = RESPUESTAS.apiEstadoInicial;
+        RESPUESTAS.apiEstadoInicial = { sesion: false };
+        arrancar();
+        setTimeout(function () {
+          var texto = document.getElementById('vista').textContent;
+          if (texto.indexOf('miLiga') === -1) {
+            window.__errores.push('la pantalla sin liga no dice cómo conseguirla');
+          }
+          if (texto.indexOf('llegó por correo') !== -1) {
+            window.__errores.push('la pantalla sin liga sigue prometiendo un correo');
+          }
+          RESPUESTAS.apiEstadoInicial = real;
+        }, 120);
+      }, null],
       ['informe de importación', function () {
         estado.vista = 'datos'; pintar();
         pintarInforme(RESPUESTAS.apiImportarRevisar); }, 'i-aplicar']

@@ -320,6 +320,32 @@ ok('la liga personal sale con el token', /\?t=/.test(usuarios[0].liga));
 const ligaNueva = apiRegenerarLiga(usuarios[1].id);
 ok('regenerar la liga cambia el token', ligaNueva !== usuarios[1].liga);
 
+// Sin esto, quien instala se queda afuera de su propio sistema.
+const propia = miLiga();
+ok('miLiga() arma la liga de quien instaló', /\?t=/.test(propia), propia);
+ok('y es la del administrador',
+  propia === apiUsuarios().filter((u) => u.rol === 'admin')[0].liga);
+
+const invitacion = apiInvitar(usuarios[1].id);
+ok('la invitación se manda por correo', invitacion.enviado === true,
+  JSON.stringify(invitacion));
+ok('al correo del usuario', invitacion.correo === usuarios[1].email);
+ok('y lleva la liga dentro',
+  sim.correosEnviados[sim.correosEnviados.length - 1].htmlBody
+    .indexOf(invitacion.liga) !== -1);
+ok('la liga de la invitación es la vigente',
+  invitacion.liga === apiUsuarios().filter((u) => u.id === usuarios[1].id)[0].liga);
+
+// Si el correo truena —sin cuota, sin permiso—, la liga se devuelve igual para
+// pasarla a mano en vez de dejar a la persona sin acceso.
+const correoRoto = apiGuardarUsuario({ email: 'sin.correo@ejemplo.com', nombre: 'Prueba' });
+const filaRota = buscarPorId_('Usuarios', correoRoto);
+actualizar_('Usuarios', filaRota, { email: 'no-es-un-correo' });
+const fallida = apiInvitar(correoRoto);
+ok('si el correo falla, no se pierde la liga',
+  fallida.enviado === false && /\?t=/.test(fallida.liga), JSON.stringify(fallida));
+apiBorrarUsuario(correoRoto);
+
 apiGuardarConfig({ pesoPrecio: '50', pesoTiempo: '50', tipoCambioUSD: '20' });
 ok('guarda los pesos', leerConfig('pesoPrecio') === '50');
 ok('el tipo de cambio nuevo cambia el costo en dólares',

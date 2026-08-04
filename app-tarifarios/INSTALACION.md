@@ -157,10 +157,29 @@ Abre esa liga: ya deberías ver los tarifarios.
 
 ---
 
-## Paso 7 · Comprobar
+## Paso 7 · Sacar tu liga personal
+
+**Este paso no se puede saltar.** La aplicación está publicada para "cualquier
+persona", y en ese modo Google no le dice al script quién entró: por eso cada
+quien entra con una liga personal que termina en `?t=` y una clave.
+
+1. En la lista de funciones elige **`miLiga`**.
+2. Clic en **Ejecutar**.
+3. En el registro aparece tu liga. Ábrela y guárdala en favoritos.
+
+Si abres la liga de la aplicación sin el `?t=…`, verás la pantalla *Necesitas tu
+liga personal*: es correcto, no está roto.
+
+Para darle acceso a alguien más, desde la aplicación: **Ajustes** → *Dar de alta
+usuario* → botón **Invitar**, que le manda su liga por correo. Si prefieres
+pasarla por WhatsApp, usa **Ver liga**.
+
+---
+
+## Paso 8 · Comprobar
 
 Con la función **`verificar`** desde el editor. En el registro te dice si algo
-falta y te repite la liga de la aplicación.
+falta, y te repite la liga de la aplicación y la tuya.
 
 ---
 
@@ -335,7 +354,7 @@ personal y sustituye a la contraseña, así que no se comparte.
 En tu computadora, con Node y Python instalados:
 
 ```bash
-node pruebas/prueba.js      # 178 comprobaciones de la lógica del servidor
+node pruebas/prueba.js      # 185 comprobaciones de la lógica del servidor
 python3 pruebas/armar_ui.py # genera pruebas/ui.html para revisar la interfaz
 ```
 
@@ -345,6 +364,26 @@ cambio no rompió nada antes de volver a pegar el código.
 ---
 
 ## Preguntas frecuentes
+
+**Instalé todo y me dice "Necesitas tu liga personal". ¿Está roto?**
+No. Esa pantalla sale cuando entras sin liga, y es lo normal la primera vez.
+Ejecuta **`miLiga()`** desde el editor de Apps Script: en el registro sale tu
+liga, con `?t=` y tu clave. Es la dirección que tienes que guardar, no la liga
+pelona de la aplicación.
+
+Si prefieres sacarla a mano: abre la hoja **TLTERMINALS · Tarifarios — Base de
+datos**, pestaña **Usuarios**, copia lo que dice la columna **token** en tu
+renglón y pégalo al final de la liga de la aplicación, después de `?t=`.
+
+**¿Por qué no me llegó ningún correo al instalar?**
+Porque al instalar no se manda ninguno: el administrador saca su liga con
+`miLiga()`. Los correos son para invitar a los demás, con el botón **Invitar**
+de la pestaña Ajustes.
+
+**¿Y si el correo no sale?**
+Las cuentas gratuitas de Gmail tienen un límite de correos al día en Apps
+Script, y a veces el envío falla. Cuando pasa, la aplicación te muestra la liga
+en pantalla para que la pases por WhatsApp: nadie se queda sin acceso por eso.
 
 **¿Dónde quedan los datos?**
 En una hoja de cálculo en tu Drive, carpeta *Tarifarios TLTERMINALS*. Puedes
