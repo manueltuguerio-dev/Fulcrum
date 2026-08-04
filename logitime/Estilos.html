@@ -1,0 +1,159 @@
+<style>
+/* ── Variables de tema ───────────────────────────────────────── */
+:root {
+  --bg:    #0b1526;
+  --card:  #122036;
+  --line:  #1e2f4a;
+  --txt:   #e8eef7;
+  --muted: #93a4bd;
+  --brand: #2f6df6;
+  --amber: #f5a524;
+  --green: #1fa971;
+  --red:   #e5484d;
+  --shadow: 0 2px 10px rgba(0,0,0,.4);
+
+  --badge-verde-bg: rgba(31,169,113,.18); --badge-verde-txt: #4ade9b;
+  --badge-ambar-bg: rgba(245,165,36,.18); --badge-ambar-txt: #f5a524;
+  --badge-rojo-bg:  rgba(229,72,77,.18);  --badge-rojo-txt:  #ff7b7f;
+  --badge-curso-bg: rgba(47,109,246,.15); --badge-curso-txt: #7aabff;
+  --badge-pausa-bg: rgba(245,165,36,.15); --badge-pausa-txt: #f5a524;
+
+  --step-done-bg:   rgba(31,169,113,.15); --step-done-txt:   #27c982; --step-done-brd: rgba(31,169,113,.3);
+  --step-skip-bg:   rgba(100,100,100,.1);
+  --input-bg: #0d1a2d;
+}
+
+:root[data-theme="light"] {
+  --bg:    #f0f4fb;
+  --card:  #ffffff;
+  --line:  #dce5f0;
+  --txt:   #1a2332;
+  --muted: #5a7090;
+  --brand: #1d5ce8;
+  --amber: #b86800;
+  --green: #14855a;
+  --red:   #c82020;
+  --shadow: 0 2px 8px rgba(0,0,0,.1);
+
+  --badge-verde-bg: rgba(20,133,90,.1);  --badge-verde-txt: #0d6b48;
+  --badge-ambar-bg: rgba(184,104,0,.1);  --badge-ambar-txt: #8b5000;
+  --badge-rojo-bg:  rgba(200,32,32,.1);  --badge-rojo-txt:  #960000;
+  --badge-curso-bg: rgba(29,92,232,.1);  --badge-curso-txt: #1340a0;
+  --badge-pausa-bg: rgba(184,104,0,.1);  --badge-pausa-txt: #8b5000;
+
+  --step-done-bg:  rgba(20,133,90,.1);  --step-done-txt:  #0d6b48; --step-done-brd: rgba(20,133,90,.25);
+  --step-skip-bg:  rgba(100,100,100,.08);
+  --input-bg: #f8fafb;
+}
+
+/* ── Reset base ──────────────────────────────────────────────── */
+*, *::before, *::after { box-sizing: border-box; }
+body {
+  margin: 0;
+  background: var(--bg);
+  color: var(--txt);
+  font-family: system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
+  font-size: 14px;
+  transition: background .2s, color .2s;
+}
+
+/* ── Estructura ──────────────────────────────────────────────── */
+.wrap    { max-width: 1100px; margin: 0 auto; padding: 20px; }
+header   { display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap; margin-bottom: 18px; }
+h1       { font-size: 20px; margin: 0; }
+h2       { font-size: 12px; margin: 0 0 10px; color: var(--muted); text-transform: uppercase; letter-spacing: .08em; }
+.card    { background: var(--card); border: 1px solid var(--line); border-radius: 12px; padding: 16px; margin-bottom: 16px; box-shadow: var(--shadow); }
+.grid    { display: grid; gap: 12px; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); }
+.row     { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; }
+.scroll  { overflow-x: auto; }
+.hidden  { display: none !important; }
+a        { color: var(--brand); }
+
+/* ── Formularios ─────────────────────────────────────────────── */
+label  { display: block; font-size: 12px; color: var(--muted); margin-bottom: 4px; }
+input, select, textarea {
+  width: 100%; padding: 9px 10px; border-radius: 8px;
+  border: 1px solid var(--line); background: var(--input-bg);
+  color: var(--txt); font-size: 14px; transition: border .15s;
+}
+input:focus, select:focus, textarea:focus { outline: none; border-color: var(--brand); }
+select[multiple] { height: 110px; }
+textarea         { min-height: 70px; resize: vertical; }
+
+/* ── Botones ─────────────────────────────────────────────────── */
+button {
+  border: 0; border-radius: 8px; padding: 10px 14px;
+  font-size: 14px; font-weight: 600; cursor: pointer;
+  background: var(--brand); color: #fff;
+  transition: opacity .15s, transform .1s;
+}
+button:hover:not(:disabled) { opacity: .88; }
+button:active:not(:disabled) { transform: scale(.97); }
+button.ghost   { background: transparent; border: 1px solid var(--line); color: var(--txt); }
+button.warn    { background: var(--amber); color: #fff; }
+button.danger  { background: var(--red); color: #fff; }
+button.success { background: var(--green); color: #fff; }
+button.sm      { padding: 6px 10px; font-size: 12px; }
+button:disabled{ opacity: .42; cursor: not-allowed; }
+
+/* ── Tabs ────────────────────────────────────────────────────── */
+.tabs         { display: flex; gap: 6px; margin-bottom: 14px; flex-wrap: wrap; }
+.tabs button  { background: transparent; border: 1px solid var(--line); color: var(--muted); }
+.tabs button.active { background: var(--brand); color: #fff; border-color: var(--brand); }
+
+/* ── Tabla ───────────────────────────────────────────────────── */
+table  { width: 100%; border-collapse: collapse; font-size: 13px; }
+th, td { text-align: left; padding: 8px; border-bottom: 1px solid var(--line); white-space: nowrap; }
+th     { color: var(--muted); font-weight: 600; font-size: 11px; text-transform: uppercase; letter-spacing: .04em; }
+tr:last-child td { border-bottom: none; }
+
+/* ── Badges ──────────────────────────────────────────────────── */
+.badge         { display: inline-block; padding: 2px 9px; border-radius: 999px; font-size: 11px; font-weight: 700; }
+.VERDE         { background: var(--badge-verde-bg); color: var(--badge-verde-txt); }
+.AMBAR, .ÁMBAR { background: var(--badge-ambar-bg); color: var(--badge-ambar-txt); }
+.ROJO          { background: var(--badge-rojo-bg);  color: var(--badge-rojo-txt);  }
+.EN_CURSO      { background: var(--badge-curso-bg); color: var(--badge-curso-txt); }
+.EN_PAUSA      { background: var(--badge-pausa-bg); color: var(--badge-pausa-txt); }
+
+/* ── KPI / cronómetro ────────────────────────────────────────── */
+.kpi           { font-size: 28px; font-weight: 700; margin-top: 6px; }
+.crono         { font-variant-numeric: tabular-nums; font-size: 30px; font-weight: 700; color: var(--amber); line-height: 1; }
+.crono-est     { font-size: 12px; margin-top: 4px; color: var(--muted); }
+.crono-est.retraso { color: var(--red); font-weight: 700; }
+.muted         { color: var(--muted); font-size: 12px; }
+
+/* ── Progreso de etapas ──────────────────────────────────────── */
+.progress-steps { display: flex; gap: 4px; flex-wrap: wrap; align-items: center; }
+.step           { padding: 3px 10px; border-radius: 999px; font-size: 11px; font-weight: 600; border: 1px solid transparent; }
+.step.done      { background: var(--step-done-bg); color: var(--step-done-txt); border-color: var(--step-done-brd); }
+.step.active    { background: var(--brand); color: #fff; }
+.step.skip      { background: var(--step-skip-bg); color: var(--muted); text-decoration: line-through; }
+.step.pending   { background: transparent; color: var(--muted); border-color: var(--line); }
+.step-arrow     { color: var(--muted); font-size: 10px; }
+
+/* ── Modal ───────────────────────────────────────────────────── */
+.modal-overlay {
+  position: fixed; inset: 0; background: rgba(0,0,0,.6);
+  display: flex; align-items: center; justify-content: center; z-index: 100;
+}
+.modal-box {
+  background: var(--card); border: 1px solid var(--line); border-radius: 14px;
+  padding: 22px; max-width: 520px; width: 92%; max-height: 90vh;
+  overflow-y: auto; box-shadow: var(--shadow);
+}
+
+/* ── Toast ───────────────────────────────────────────────────── */
+.toast {
+  position: fixed; bottom: 24px; left: 50%; transform: translateX(-50%);
+  background: var(--card); border: 1px solid var(--line); border-radius: 10px;
+  padding: 11px 20px; box-shadow: var(--shadow); font-size: 14px; z-index: 200;
+  opacity: 0; transition: opacity .25s; pointer-events: none; max-width: 420px;
+  text-align: center; white-space: nowrap;
+}
+.toast.show  { opacity: 1; }
+.toast.ok    { border-color: var(--green); color: var(--green); }
+.toast.err   { border-color: var(--red);   color: var(--red);   }
+
+/* ── Tema toggle ─────────────────────────────────────────────── */
+#theme-btn { font-size: 18px; padding: 6px 10px; line-height: 1; }
+</style>

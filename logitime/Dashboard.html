@@ -1,0 +1,345 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <base target="_top">
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>LogiTime — Indicadores</title>
+  <?!= include('Estilos') ?>
+  <style>
+    .kpi-grid { display: grid; gap: 12px; grid-template-columns: repeat(auto-fit, minmax(170px, 1fr)); margin-bottom: 16px; }
+    .semaforo-row { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+    .semaforo-item { display: flex; align-items: center; gap: 5px; font-size: 13px; }
+    .dot { width: 10px; height: 10px; border-radius: 50%; flex-shrink: 0; }
+    .dot-verde { background: var(--green); }
+    .dot-ambar { background: var(--amber); }
+    .dot-rojo  { background: var(--red); }
+    .chart-bar-wrap { display: flex; flex-direction: column; gap: 6px; }
+    .bar-row { display: flex; align-items: center; gap: 8px; font-size: 12px; }
+    .bar-label { width: 130px; flex-shrink: 0; color: var(--muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .bar-track { flex: 1; height: 8px; background: var(--line); border-radius: 4px; overflow: hidden; }
+    .bar-fill  { height: 100%; background: var(--brand); border-radius: 4px; transition: width .4s; }
+    .bar-val   { width: 55px; text-align: right; flex-shrink: 0; color: var(--txt); }
+    .filters   { display: flex; gap: 8px; flex-wrap: wrap; align-items: flex-end; }
+    .filters > div { display: flex; flex-direction: column; gap: 4px; min-width: 140px; }
+    .tab-panel { display: none; }
+    .tab-panel.active { display: block; }
+    .loading-msg { color: var(--muted); font-size: 13px; padding: 20px 0; text-align: center; }
+  </style>
+</head>
+<body>
+<div class="wrap">
+
+  <!-- Header -->
+  <header>
+    <h1>LogiTime — Indicadores</h1>
+    <div class="row" style="gap:10px">
+      <a href="?page=Index"><button class="ghost sm">← Operaciones</button></a>
+      <button id="theme-btn" class="ghost" onclick="toggleTheme()" title="Cambiar tema">☀️</button>
+    </div>
+  </header>
+
+  <!-- Filters -->
+  <div class="card" style="margin-bottom:16px">
+    <div class="filters">
+      <div>
+        <label>Período</label>
+        <select id="sel-dias" onchange="cargar()">
+          <option value="7">Últimos 7 días</option>
+          <option value="30" selected>Últimos 30 días</option>
+          <option value="90">Últimos 90 días</option>
+          <option value="365">Último año</option>
+        </select>
+      </div>
+      <div>
+        <label>Agrupación (tendencia)</label>
+        <select id="sel-periodo" onchange="cargarSerie()">
+          <option value="dia">Por día</option>
+          <option value="semana">Por semana</option>
+          <option value="mes" selected>Por mes</option>
+        </select>
+      </div>
+      <div style="align-self:flex-end">
+        <button onclick="cargar()" class="ghost sm">Actualizar</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- KPI cards -->
+  <div class="kpi-grid" id="kpi-grid">
+    <div class="card" style="margin:0"><div class="loading-msg">Cargando…</div></div>
+  </div>
+
+  <!-- Semáforo summary -->
+  <div class="card" id="card-semaforo" style="margin-bottom:16px;display:none">
+    <h2>Semáforo de tiempos</h2>
+    <div class="semaforo-row" id="sem-row"></div>
+  </div>
+
+  <!-- Tabs -->
+  <div class="tabs" id="tabs">
+    <button class="active" onclick="showTab('tendencia',this)">Tendencia</button>
+    <button onclick="showTab('cliente',this)">Por cliente</button>
+    <button onclick="showTab('flujo',this)">Por flujo</button>
+    <button onclick="showTab('etapa',this)">Por etapa</button>
+    <button onclick="showTab('empleado',this)">Por empleado</button>
+  </div>
+
+  <!-- Tendencia -->
+  <div id="tab-tendencia" class="tab-panel active">
+    <div class="card">
+      <h2>Tendencia de maniobras</h2>
+      <div class="scroll"><table id="t-serie"></table></div>
+      <div class="row" style="margin-top:10px">
+        <button class="ghost sm" onclick="descargarCSV('t-serie','tendencia')">Descargar CSV</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Por cliente -->
+  <div id="tab-cliente" class="tab-panel">
+    <div class="card">
+      <h2>Por cliente</h2>
+      <div id="bars-cliente" class="chart-bar-wrap" style="margin-bottom:12px"></div>
+      <div class="scroll"><table id="t-cliente"></table></div>
+      <div class="row" style="margin-top:10px">
+        <button class="ghost sm" onclick="descargarCSV('t-cliente','por_cliente')">Descargar CSV</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Por flujo -->
+  <div id="tab-flujo" class="tab-panel">
+    <div class="card">
+      <h2>Por tipo de flujo</h2>
+      <div id="bars-flujo" class="chart-bar-wrap" style="margin-bottom:12px"></div>
+      <div class="scroll"><table id="t-flujo"></table></div>
+      <div class="row" style="margin-top:10px">
+        <button class="ghost sm" onclick="descargarCSV('t-flujo','por_flujo')">Descargar CSV</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Por etapa -->
+  <div id="tab-etapa" class="tab-panel">
+    <div class="card">
+      <h2>Por etapa</h2>
+      <div id="bars-etapa" class="chart-bar-wrap" style="margin-bottom:12px"></div>
+      <div class="scroll"><table id="t-etapa"></table></div>
+      <div class="row" style="margin-top:10px">
+        <button class="ghost sm" onclick="descargarCSV('t-etapa','por_etapa')">Descargar CSV</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Por empleado -->
+  <div id="tab-empleado" class="tab-panel">
+    <div class="card">
+      <h2>Por empleado</h2>
+      <div id="bars-empleado" class="chart-bar-wrap" style="margin-bottom:12px"></div>
+      <div class="scroll"><table id="t-empleado"></table></div>
+      <div class="row" style="margin-top:10px">
+        <button class="ghost sm" onclick="descargarCSV('t-empleado','por_empleado')">Descargar CSV</button>
+      </div>
+    </div>
+  </div>
+
+</div><!-- /.wrap -->
+
+<div id="toast" class="toast"></div>
+
+<script>
+/* ── Theme ── */
+function initTheme() {
+  var saved = localStorage.getItem('lt_theme');
+  var theme = saved || (window.matchMedia('(prefers-color-scheme: light)').matches ? 'light' : 'dark');
+  applyTheme(theme);
+}
+function applyTheme(t) {
+  document.documentElement.setAttribute('data-theme', t);
+  document.getElementById('theme-btn').textContent = t === 'light' ? '🌙' : '☀️';
+  localStorage.setItem('lt_theme', t);
+}
+function toggleTheme() {
+  var curr = document.documentElement.getAttribute('data-theme') || 'dark';
+  applyTheme(curr === 'dark' ? 'light' : 'dark');
+}
+
+/* ── Toast ── */
+function toast(msg, tipo) {
+  var el = document.getElementById('toast');
+  el.textContent = msg;
+  el.className = 'toast show ' + (tipo || '');
+  setTimeout(function() { el.className = 'toast'; }, 3000);
+}
+
+/* ── Helpers ── */
+function $(id) { return document.getElementById(id); }
+
+function fmtMin(min) {
+  if (min === undefined || min === null || min === '') return '—';
+  var m = Math.round(Number(min));
+  if (isNaN(m)) return '—';
+  var h = Math.floor(m / 60);
+  var mm = m % 60;
+  return h > 0 ? h + 'h ' + mm + 'm' : mm + ' min';
+}
+
+function fmtNum(n) {
+  if (n === undefined || n === null) return '—';
+  return String(n);
+}
+
+/* ── Table renderer ── */
+function renderTabla(tableId, rows, cols) {
+  var t = $(tableId);
+  if (!t) return;
+  if (!rows || rows.length === 0) {
+    t.innerHTML = '<tr><td colspan="' + cols.length + '" style="color:var(--muted);text-align:center">Sin datos</td></tr>';
+    return;
+  }
+  var html = '<tr>' + cols.map(function(c) { return '<th>' + c[0] + '</th>'; }).join('') + '</tr>';
+  html += rows.map(function(r) {
+    return '<tr>' + cols.map(function(c) {
+      var v = r[c[1]];
+      if (c[2] === 'min') v = fmtMin(v);
+      else if (c[2] === 'badge') v = v ? '<span class="badge ' + v + '">' + v + '</span>' : '—';
+      else v = (v === undefined || v === null || v === '') ? '—' : v;
+      return '<td>' + v + '</td>';
+    }).join('') + '</tr>';
+  }).join('');
+  t.innerHTML = html;
+}
+
+/* ── Bar chart renderer ── */
+function renderBars(containerId, rows, labelKey, valueKey) {
+  var el = $(containerId);
+  if (!el || !rows || rows.length === 0) { if (el) el.innerHTML = ''; return; }
+  var max = rows.reduce(function(m, r) { return Math.max(m, Number(r[valueKey]) || 0); }, 0);
+  el.innerHTML = rows.slice(0, 12).map(function(r) {
+    var pct = max > 0 ? Math.round((Number(r[valueKey]) || 0) / max * 100) : 0;
+    return '<div class="bar-row">' +
+      '<span class="bar-label" title="' + (r[labelKey] || '') + '">' + (r[labelKey] || '—') + '</span>' +
+      '<div class="bar-track"><div class="bar-fill" style="width:' + pct + '%"></div></div>' +
+      '<span class="bar-val">' + fmtNum(r[valueKey]) + '</span>' +
+    '</div>';
+  }).join('');
+}
+
+/* ── KPI renderer ── */
+function renderKPIs(k) {
+  var g = $('kpi-grid');
+  if (!k) { g.innerHTML = '<div class="card" style="margin:0"><div class="loading-msg">Sin datos</div></div>'; return; }
+  function card(label, val, sub) {
+    return '<div class="card" style="margin:0">' +
+      '<div class="muted">' + label + '</div>' +
+      '<div class="kpi">' + val + '</div>' +
+      (sub ? '<div class="muted" style="margin-top:4px">' + sub + '</div>' : '') +
+    '</div>';
+  }
+  g.innerHTML =
+    card('Maniobras finalizadas', fmtNum(k.maniobras)) +
+    card('En curso ahora', fmtNum(k.en_curso)) +
+    card('Promedio total', fmtMin(k.promedio_min)) +
+    card('Promedio efectivo', fmtMin(k.promedio_efectivo_min)) +
+    card('Demora acumulada', fmtMin(k.demora_total_min)) +
+    card('Maniobras con daño', fmtNum(k.danos));
+
+  var sem = k.semaforo || {};
+  var semRow = $('sem-row');
+  var total = (sem.VERDE || 0) + (sem['ÁMBAR'] || sem.AMBAR || 0) + (sem.ROJO || 0);
+  semRow.innerHTML = [
+    ['dot-verde', 'Verde', sem.VERDE || 0],
+    ['dot-ambar', 'Ámbar', sem['ÁMBAR'] || sem.AMBAR || 0],
+    ['dot-rojo',  'Rojo',  sem.ROJO  || 0]
+  ].map(function(s) {
+    var pct = total > 0 ? ' (' + Math.round(s[2] / total * 100) + '%)' : '';
+    return '<div class="semaforo-item">' +
+      '<span class="dot ' + s[0] + '"></span>' +
+      '<span>' + s[1] + ': <strong>' + s[2] + '</strong>' + pct + '</span>' +
+    '</div>';
+  }).join('<span style="color:var(--line);margin:0 4px">|</span>');
+  $('card-semaforo').style.display = '';
+
+  /* breakdowns */
+  var cols = [['Nombre','nombre'],['Maniobras','maniobras'],['Promedio','promedio_min','min']];
+  renderTabla('t-cliente',  k.por_cliente,  cols);
+  renderTabla('t-flujo',    k.por_flujo,    cols);
+  renderTabla('t-etapa',    k.por_etapa,    cols);
+  renderTabla('t-empleado', k.por_empleado, cols);
+  renderBars('bars-cliente',  k.por_cliente,  'nombre', 'maniobras');
+  renderBars('bars-flujo',    k.por_flujo,    'nombre', 'maniobras');
+  renderBars('bars-etapa',    k.por_etapa,    'nombre', 'maniobras');
+  renderBars('bars-empleado', k.por_empleado, 'nombre', 'maniobras');
+}
+
+/* ── Serie (tendencia) ── */
+function cargarSerie() {
+  var dias = $('sel-dias').value;
+  var periodo = $('sel-periodo').value;
+  renderTabla('t-serie', null, []);
+  $('t-serie').innerHTML = '<tr><td class="loading-msg">Cargando tendencia…</td></tr>';
+  google.script.run
+    .withSuccessHandler(function(rows) {
+      renderTabla('t-serie', rows, [
+        ['Período',      'periodo'],
+        ['Maniobras',    'maniobras'],
+        ['Promedio',     'promedio_min', 'min'],
+        ['Demora total', 'demora_min',   'min']
+      ]);
+    })
+    .withFailureHandler(function(e) {
+      $('t-serie').innerHTML = '<tr><td style="color:var(--red)">Error: ' + (e.message || e) + '</td></tr>';
+    })
+    .serie(periodo, dias);
+}
+
+/* ── Main loader ── */
+function cargar() {
+  var dias = $('sel-dias').value;
+  $('kpi-grid').innerHTML = '<div class="card" style="margin:0"><div class="loading-msg">Cargando indicadores…</div></div>';
+  $('card-semaforo').style.display = 'none';
+
+  google.script.run
+    .withSuccessHandler(function(k) {
+      renderKPIs(k);
+    })
+    .withFailureHandler(function(e) {
+      $('kpi-grid').innerHTML = '<div class="card" style="margin:0;border-color:var(--red)">' +
+        '<div style="color:var(--red)">Error al cargar: ' + (e.message || e) + '</div></div>';
+      toast('Error al cargar indicadores', 'err');
+    })
+    .indicadores(dias);
+
+  cargarSerie();
+}
+
+/* ── Tab navigation ── */
+function showTab(name, btn) {
+  document.querySelectorAll('.tab-panel').forEach(function(p) { p.classList.remove('active'); });
+  document.querySelectorAll('#tabs button').forEach(function(b) { b.classList.remove('active'); });
+  $('tab-' + name).classList.add('active');
+  if (btn) btn.classList.add('active');
+}
+
+/* ── CSV export ── */
+function descargarCSV(tableId, nombre) {
+  var rows = document.querySelectorAll('#' + tableId + ' tr');
+  if (!rows.length) { toast('Sin datos para exportar', 'err'); return; }
+  var csv = Array.prototype.slice.call(rows).map(function(tr) {
+    return Array.prototype.slice.call(tr.children).map(function(td) {
+      return '"' + td.textContent.replace(/"/g, '""') + '"';
+    }).join(',');
+  }).join('\n');
+  var a = document.createElement('a');
+  a.href = 'data:text/csv;charset=utf-8,' + encodeURIComponent('﻿' + csv);
+  a.download = nombre + '_' + new Date().toISOString().slice(0,10) + '.csv';
+  a.click();
+}
+
+/* ── Init ── */
+initTheme();
+cargar();
+</script>
+</body>
+</html>
