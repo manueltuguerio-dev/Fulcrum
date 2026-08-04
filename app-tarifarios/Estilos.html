@@ -158,6 +158,56 @@
   .etiqueta.acento { background: var(--acento-suave); color: var(--acento); }
   .etiqueta.oro { background: var(--oro-suave); color: var(--oro); }
 
+  /* -------------------------------- fichas -------------------------------- */
+
+  .grupo-fichas {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 10px 22px;
+    align-items: flex-start;
+    margin-top: 12px;
+  }
+  .grupo-fichas > div { min-width: 0; }
+  .grupo-fichas .titulo-fichas {
+    display: block;
+    font-family: var(--mono);
+    font-size: 10.5px;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    color: var(--ink-3);
+    margin-bottom: 5px;
+  }
+  .fichas { display: flex; flex-wrap: wrap; gap: 6px; }
+  .fichas button {
+    border: 1px solid var(--rule-fuerte);
+    border-radius: 20px;
+    background: var(--surface);
+    padding: 5px 12px;
+    font-family: inherit;
+    font-size: 13px;
+    color: var(--ink-2);
+    cursor: pointer;
+    white-space: nowrap;
+  }
+  .fichas button:hover { border-color: var(--acento); color: var(--acento); }
+  .fichas button.elegida {
+    border-color: var(--acento);
+    background: var(--acento-suave);
+    color: var(--acento);
+    font-weight: 600;
+  }
+
+  .barra-filtros {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px 14px;
+    align-items: center;
+    justify-content: space-between;
+    margin-top: 14px;
+    padding-top: 12px;
+    border-top: 1px solid var(--rule);
+  }
+
   /* ------------------------------ comparador ------------------------------ */
 
   .filtros {

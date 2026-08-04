@@ -152,6 +152,46 @@ function valorCampoTexto_(campo, valor) {
   return String(valor);
 }
 
+/**
+ * ¿Este registro cumple con los filtros de campos propios?
+ * Compara sin acentos ni mayúsculas, y por "contiene" en los de texto libre,
+ * para que buscar "tuny" encuentre "TUNY" y "Cuenta TUNY".
+ *
+ * @param {Object} extras Los valores del registro.
+ * @param {Object} filtros {clave: valor buscado}. Las claves vacías no filtran.
+ * @param {Array<Object>} definiciones Los campos del ámbito.
+ * @return {boolean}
+ * @private
+ */
+function coincideExtras_(extras, filtros, definiciones) {
+  if (!filtros) {
+    return true;
+  }
+  var valores = extras || {};
+  var cumple = true;
+
+  definiciones.forEach(function (campo) {
+    if (!cumple) {
+      return;
+    }
+    var buscado = texto_(filtros[campo.clave]);
+    if (buscado === '') {
+      return;
+    }
+    var tiene = normalizar_(valores[campo.clave]);
+    var quiero = normalizar_(buscado);
+    // En listas y sí/no el valor tiene que ser exacto; en texto libre basta con
+    // que lo contenga.
+    if (campo.tipo === 'lista' || campo.tipo === 'si_no' || campo.tipo === 'fecha') {
+      cumple = tiene === quiero;
+    } else {
+      cumple = tiene.indexOf(quiero) !== -1;
+    }
+  });
+
+  return cumple;
+}
+
 /* --------------------------------- la API ---------------------------------- */
 
 function apiGuardarCampo(datos) {

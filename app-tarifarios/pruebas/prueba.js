@@ -500,7 +500,56 @@ ok('reinstalar la marca como redondo',
 ok('y no toca las que ya lo traían',
   apiTarifas({}).tarifas.some((t) => t.movimiento === 'oneway'));
 
-console.log('\n19. Verificación final');
+console.log('\n19. Filtros');
+// Un tablero conocido: la ruta de prueba tiene full (3 opciones) y sencillo.
+ok('filtra por ruta', apiComparar({ rutaId: rutaPrueba }).grupos
+  .every((g) => g.rutaId === rutaPrueba));
+ok('filtra por tipo de unidad',
+  apiComparar({ rutaId: rutaPrueba, equipo: 'full' }).grupos.length === 1);
+ok('filtra por movimiento',
+  apiComparar({ movimiento: 'oneway' }).grupos.every((g) => g.movimiento === 'oneway'));
+ok('filtra por partner',
+  apiComparar({ proveedorId: bajio }).grupos.every(
+    (g) => g.opciones.every((o) => o.proveedorId === bajio)));
+ok('filtra por moneda',
+  apiComparar({ moneda: 'USD' }).grupos.every(
+    (g) => g.opciones.every((o) => o.moneda === 'USD')));
+ok('la moneda que no existe no devuelve nada',
+  apiComparar({ moneda: 'EUR' }).grupos.length === 0);
+ok('busca por texto en el nombre del partner',
+  apiComparar({ texto: 'Fletes Bajío' }).grupos.every(
+    (g) => g.opciones.every((o) => o.proveedor.indexOf('Fletes') !== -1)));
+
+// Filtro por campo propio: la tarifa con cuenta TUNY.
+ok('filtra por un campo propio de texto',
+  apiTarifas({ extras: { cuenta: 'tuny' } }).tarifas.length === 1);
+ok('el campo propio vacío no filtra nada',
+  apiTarifas({ extras: { cuenta: '' } }).tarifas.length === apiTarifas({}).tarifas.length);
+ok('filtra por un campo propio de sí/no',
+  apiTarifas({ extras: { revisada: 'SI' } }).tarifas
+    .every((t) => t.extras.revisada === 'SI'));
+ok('y en el comparador también',
+  apiComparar({ extras: { revisada: 'NO' } }).grupos.every(
+    (g) => g.opciones.every((o) => o.extras.revisada === 'NO')));
+
+// Situación de la tarifa en la pantalla de captura.
+ok('filtra las vigentes de hoy',
+  apiTarifas({ estado: 'vigentes' }).tarifas
+    .every((t) => t.estado === 'activo' && !t.vencida));
+ok('filtra las inactivas',
+  apiTarifas({ estado: 'inactivas' }).tarifas.every((t) => t.estado === 'inactivo'));
+ok('filtra las que no tienen tiempo capturado',
+  apiTarifas({ estado: 'sintiempo' }).tarifas.every((t) => t.sinTiempo));
+const vencidasFiltro = apiTarifas({ estado: 'vencidas' }).tarifas;
+ok('filtra las vencidas', vencidasFiltro.every((t) => t.vencida));
+ok('combinar filtros los suma, no los reemplaza',
+  apiTarifas({ moneda: 'MXN', movimiento: 'oneway' }).tarifas
+    .every((t) => t.moneda === 'MXN' && t.movimiento === 'oneway'));
+ok('lo que se exporta respeta los filtros',
+  apiExportarCsv('tarifas', { moneda: 'USD' }).renglones
+    === apiTarifas({ moneda: 'USD' }).total);
+
+console.log('\n20. Verificación final');
 ok('verificar() dice que todo está listo', verificar() === true);
 
 console.log('\n' + pasadas + ' pasadas, ' + fallidas + ' fallidas\n');

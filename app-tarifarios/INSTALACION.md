@@ -224,6 +224,30 @@ puntajes entre rutas distintas.
 ordena solo por precio y lo dice con un aviso. No se inventa un tiempo ni se
 castiga a nadie por no tenerlo.
 
+### Filtrar
+
+Todo lo que clasifica una tarifa tiene su filtro, y se combinan entre sí (se
+suman, no se reemplazan). Los de pocas opciones son **botones**; los de listas
+largas, menús.
+
+| Pantalla | Filtros |
+|---|---|
+| Comparar y Mejores opciones | Ruta · Partner · Tipo de carga · Tipo de unidad · **Movimiento** · **Moneda** · **Ordenar por** · Vigente al día · Buscar · Campos propios · Incluir fuera de vigencia · Peso precio/tiempo |
+| Tarifas | Ruta · Partner · Tipo de carga · Tipo de unidad · **Movimiento** · **Moneda** · **Situación** · Buscar · Campos propios |
+| Proveedores | Buscar (nombre, RFC, contacto, ciudad) · **Situación** · Campos propios |
+| Rutas | Buscar (origen, destino, notas) · **Situación** |
+
+Los botones de **Situación** en Tarifas son atajos a las preguntas de todos los
+días: *Vigentes hoy*, *Por vencer*, *Vencidas*, *Inactivas* y *Sin tiempo* —esta
+última para saber a qué tarifas les falta capturar el tiempo de entrega—.
+
+Cada campo propio que agregues aparece solo como filtro: los de lista y sí/no
+como menú, los de texto como caja de búsqueda.
+
+**Lo que exportas respeta los filtros que tengas puestos**, así que se puede
+sacar un CSV de "solo las tarifas en dólares de esta ruta" sin recortar nada a
+mano. El botón *Limpiar filtros* los quita todos de un golpe.
+
 ### Importar un tarifario
 
 Pestaña **Importar y exportar**. Sube el CSV o pega el contenido copiado de
@@ -290,7 +314,7 @@ personal y sustituye a la contraseña, así que no se comparte.
 En tu computadora, con Node y Python instalados:
 
 ```bash
-node pruebas/prueba.js      # 161 comprobaciones de la lógica del servidor
+node pruebas/prueba.js      # 178 comprobaciones de la lógica del servidor
 python3 pruebas/armar_ui.py # genera pruebas/ui.html para revisar la interfaz
 ```
 

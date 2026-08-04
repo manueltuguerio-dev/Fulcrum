@@ -29,6 +29,7 @@ function agrupar_(filtros) {
 
   var capacidadMin = numero_(f.capacidadMin, 0);
   var buscado = normalizar_(f.texto);
+  var definiciones = campos_('tarifa', true);
   var descartadas = { inactivas: 0, vencidas: 0, sinVigencia: 0, capacidad: 0, proveedorInactivo: 0 };
 
   var candidatas = tarifasEnriquecidas_().filter(function (t) {
@@ -47,7 +48,14 @@ function agrupar_(filtros) {
     if (f.proveedorId && t.proveedorId !== String(f.proveedorId)) {
       return false;
     }
-    if (buscado && normalizar_(t.proveedor + ' ' + t.ruta).indexOf(buscado) === -1) {
+    if (f.moneda && t.moneda !== String(f.moneda).toUpperCase()) {
+      return false;
+    }
+    if (!coincideExtras_(t.extras, f.extras, definiciones)) {
+      return false;
+    }
+    if (buscado && normalizar_(t.proveedor + ' ' + t.ruta + ' ' + t.notas)
+        .indexOf(buscado) === -1) {
       return false;
     }
     if (t.estado !== 'activo') {

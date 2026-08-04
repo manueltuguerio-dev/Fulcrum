@@ -212,6 +212,8 @@ function apiTarifas(filtros) {
   var f = filtros || {};
   var hoy = hoyTexto_();
   var buscado = normalizar_(f.texto);
+  var definiciones = campos_('tarifa', true);
+  var limiteAviso = sumarDias_(hoy, numero_(leerConfig('diasAvisoVencimiento'), 30));
 
   var lista = tarifasEnriquecidas_().filter(function (t) {
     if (f.rutaId && t.rutaId !== String(f.rutaId)) {
@@ -229,6 +231,32 @@ function apiTarifas(filtros) {
     if (f.movimiento && normalizar_(t.movimiento) !== normalizar_(f.movimiento)) {
       return false;
     }
+    if (f.moneda && t.moneda !== String(f.moneda).toUpperCase()) {
+      return false;
+    }
+    if (!coincideExtras_(t.extras, f.extras, definiciones)) {
+      return false;
+    }
+
+    // Filtro rápido por situación de la tarifa.
+    var arrancada = !t.vigenciaDesde || t.vigenciaDesde <= hoy;
+    if (f.estado === 'vigentes' && (t.estado !== 'activo' || t.vencida || !arrancada)) {
+      return false;
+    }
+    if (f.estado === 'porvencer' && !(t.estado === 'activo' && !t.vencida
+        && t.vigenciaHasta && t.vigenciaHasta <= limiteAviso)) {
+      return false;
+    }
+    if (f.estado === 'vencidas' && !t.vencida) {
+      return false;
+    }
+    if (f.estado === 'inactivas' && t.estado === 'activo') {
+      return false;
+    }
+    if (f.estado === 'sintiempo' && !t.sinTiempo) {
+      return false;
+    }
+
     if (f.soloVigentes) {
       var arranca = !t.vigenciaDesde || t.vigenciaDesde <= hoy;
       if (t.estado !== 'activo' || t.vencida || !arranca) {
