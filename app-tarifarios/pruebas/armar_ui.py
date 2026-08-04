@@ -17,13 +17,35 @@ CATALOGOS = {
          "estado": "inactivo"},
     ],
     "equipo": [
-        {"id": "e1", "clave": "full", "nombre": "Full (doble remolque)", "orden": 1,
-         "estado": "activo"},
-        {"id": "e2", "clave": "sencillo", "nombre": "Sencillo (48/53 ft)", "orden": 2,
-         "estado": "activo"},
-        {"id": "e3", "clave": "torton", "nombre": "Torton", "orden": 3, "estado": "activo"},
+        {"id": "e1", "clave": "full", "nombre": "Full", "orden": 1, "estado": "activo"},
+        {"id": "e2", "clave": "sencillo", "nombre": "Sencillo", "orden": 2, "estado": "activo"},
+        {"id": "e3", "clave": "ftl53", "nombre": "FTL 53'", "orden": 3, "estado": "activo"},
+    ],
+    "movimiento": [
+        {"id": "v1", "clave": "redondo", "nombre": "Redondo", "orden": 1, "estado": "activo"},
+        {"id": "v2", "clave": "oneway", "nombre": "One way", "orden": 2, "estado": "activo"},
     ],
 }
+
+CAMPOS = {
+    "tarifa": [
+        {"id": "k1", "ambito": "tarifa", "clave": "cuenta", "etiqueta": "Cuenta",
+         "tipo": "texto", "opciones": [], "compara": False, "orden": 1, "estado": "activo"},
+        {"id": "k2", "ambito": "tarifa", "clave": "revisada",
+         "etiqueta": "Revisión de tarifa", "tipo": "si_no", "opciones": [],
+         "compara": False, "orden": 2, "estado": "activo"},
+        {"id": "k3", "ambito": "tarifa", "clave": "tipodecontrato",
+         "etiqueta": "Tipo de contrato", "tipo": "lista",
+         "opciones": ["Spot", "Anual", "Licitación"], "compara": False, "orden": 3,
+         "estado": "activo"},
+    ],
+    "proveedor": [
+        {"id": "k9", "ambito": "proveedor", "clave": "credito", "etiqueta": "Días de crédito",
+         "tipo": "numero", "opciones": [], "compara": False, "orden": 1, "estado": "activo"},
+    ],
+}
+
+TIPO_CAMBIO = {"valor": 17.42, "fecha": hoy, "origen": "GOOGLEFINANCE", "automatico": True}
 
 PROVEEDORES = [
     {"id": "p1", "nombre": "Transportes del Norte", "rfc": "TNO950101AB1",
@@ -53,7 +75,11 @@ def opcion(posicion, proveedor, costo, horas, puntaje, mejor=False, rapida=False
         "calificacion": 4.5, "rutaId": "r1", "ruta": "Monterrey → Guadalajara",
         "origen": "Monterrey", "destino": "Guadalajara", "km": 780,
         "mercancia": "general", "mercanciaNombre": "Carga general",
-        "equipo": "full", "equipoNombre": "Full (doble remolque)", "moneda": "MXN",
+        "equipo": "full", "equipoNombre": "Full", "movimiento": "redondo",
+        "movimientoNombre": "Redondo", "moneda": "MXN", "convertida": False,
+        "tipoCambio": 0, "sinTiempo": False,
+        "extras": {"cuenta": "TUNY", "revisada": "SI"},
+        "extrasTexto": {"cuenta": "TUNY", "revisada": "Sí", "tipodecontrato": ""},
         "tarifa": costo * 0.85, "combustiblePct": 12, "combustible": costo * 0.1,
         "casetas": costo * 0.05, "maniobras": 0, "otros": 0, "subtotal": costo,
         "costoTotal": costo, "costoPorKm": round(costo / 780, 2), "tiempoHoras": horas,
@@ -71,7 +97,9 @@ GRUPO = {
     "clave": "r1|general|full", "rutaId": "r1", "ruta": "Monterrey → Guadalajara",
     "origen": "Monterrey", "destino": "Guadalajara", "km": 780,
     "mercancia": "general", "mercanciaNombre": "Carga general",
-    "equipo": "full", "equipoNombre": "Full (doble remolque)",
+    "equipo": "full", "equipoNombre": "Full", "movimiento": "redondo",
+    "movimientoNombre": "Redondo", "conTiempo": True, "sinTiempo": 0,
+    "etiquetas": [],
     "opciones": [
         opcion(1, "Fletes Bajío", 38000, 16, 92.4, mejor=True, rapida=True),
         opcion(2, "Transportes del Norte", 39600, 18, 81.0),
@@ -84,6 +112,19 @@ GRUPO = {
 GRUPO["mejor"] = GRUPO["opciones"][0]
 GRUPO["segunda"] = GRUPO["opciones"][1]
 
+GRUPO_SIN_TIEMPO = dict(
+    GRUPO, clave="r2|general|ftl53", rutaId="r2", ruta="Laredo, TX → Querétaro",
+    origen="Laredo, TX", destino="Querétaro", equipo="ftl53", equipoNombre="FTL 53'",
+    movimiento="oneway", movimientoNombre="One way", conTiempo=False, sinTiempo=2,
+    km=0, total=2, proveedores=2,
+    opciones=[dict(o, sinTiempo=True, tiempoHoras=0, tiempoTexto="—", convertida=True,
+                   tipoCambio=17.42, moneda="USD", esMasRapida=False, horasDeMas=0,
+                   motivo="La más barata." if o["posicion"] == 1
+                          else "Cuesta 4.2 % más que la más barata.")
+              for o in GRUPO["opciones"][:2]])
+GRUPO_SIN_TIEMPO["mejor"] = GRUPO_SIN_TIEMPO["opciones"][0]
+GRUPO_SIN_TIEMPO["segunda"] = GRUPO_SIN_TIEMPO["opciones"][1]
+
 DESCARTADAS = {"inactivas": 1, "vencidas": 2, "sinVigencia": 0, "capacidad": 0,
                "proveedorInactivo": 1}
 
@@ -92,28 +133,35 @@ TARIFAS = [
      "proveedorActivo": True, "calificacion": 4.5, "rutaId": "r1",
      "ruta": "Monterrey → Guadalajara", "origen": "Monterrey", "destino": "Guadalajara",
      "km": 780, "mercancia": "general", "mercanciaNombre": "Carga general",
-     "equipo": "full", "equipoNombre": "Full (doble remolque)", "moneda": "MXN",
+     "equipo": "full", "equipoNombre": "Full", "movimiento": "redondo",
+     "movimientoNombre": "Redondo", "moneda": "MXN",
      "tarifa": 38500, "combustiblePct": 12, "combustible": 4620, "casetas": 2450,
      "maniobras": 0, "otros": 0, "subtotal": 45570, "costoTotal": 45570,
+     "convertida": False, "tipoCambio": 0, "sinTiempo": False,
      "costoPorKm": 58.42, "tiempoHoras": 18, "capacidadTon": 48, "vigenciaDesde": hoy,
      "vigenciaHasta": fin, "estado": "activo", "vencida": False, "notas": "Incluye seguro",
+     "extras": {"cuenta": "TUNY"}, "extrasTexto": {"cuenta": "TUNY", "revisada": "No"},
      "actualizado": hoy},
     {"id": "t2", "proveedorId": "p2", "proveedor": "Fletes Bajío", "proveedorActivo": True,
      "calificacion": 4, "rutaId": "r1", "ruta": "Monterrey → Guadalajara",
      "origen": "Monterrey", "destino": "Guadalajara", "km": 780, "mercancia": "general",
      "mercanciaNombre": "Carga general", "equipo": "sencillo",
-     "equipoNombre": "Sencillo (48/53 ft)", "moneda": "USD", "tarifa": 1400,
+     "equipoNombre": "FTL 53'", "movimiento": "oneway", "movimientoNombre": "One way",
+     "moneda": "USD", "tarifa": 1400,
      "combustiblePct": 10, "combustible": 140, "casetas": 0, "maniobras": 0, "otros": 0,
-     "subtotal": 1540, "costoTotal": 26950, "costoPorKm": 34.55, "tiempoHoras": 30,
+     "subtotal": 1540, "costoTotal": 26824, "costoPorKm": 34.55, "tiempoHoras": 0,
+     "convertida": True, "tipoCambio": 17.42, "sinTiempo": True,
      "capacidadTon": 24, "vigenciaDesde": hoy, "vigenciaHasta": "", "estado": "inactivo",
-     "vencida": True, "notas": "", "actualizado": hoy},
+     "vencida": True, "notas": "", "extras": {}, "extrasTexto": {},
+     "actualizado": hoy},
 ]
 
 MEJOR = {
     "clave": "r1|general|full", "rutaId": "r1", "ruta": "Monterrey → Guadalajara",
     "origen": "Monterrey", "destino": "Guadalajara", "km": 780, "mercancia": "general",
-    "mercanciaNombre": "Carga general", "equipo": "full",
-    "equipoNombre": "Full (doble remolque)", "opciones": 3, "proveedores": 3,
+    "mercanciaNombre": "Carga general", "equipo": "full", "equipoNombre": "Full",
+    "movimiento": "redondo", "movimientoNombre": "Redondo", "conTiempo": True,
+    "etiquetas": [], "opciones": 3, "proveedores": 3,
     "proveedor": "Fletes Bajío", "proveedorId": "p2", "tarifaId": "t2",
     "costoTotal": 38000, "costoPorKm": 48.72, "tiempoHoras": 16, "tiempoTexto": "16 h",
     "puntaje": 92.4, "motivo": "La más barata y la más rápida.", "vigenciaHasta": fin,
@@ -132,21 +180,29 @@ RESPUESTAS = {
         "usuario": {"id": "u1", "nombre": "Manuel Tuguerio", "rol": "admin",
                     "email": "manuel@tlterminals.com", "estado": "activo"},
         "config": {"empresa": "TLTERMINALS", "monedaBase": "MXN", "tipoCambioUSD": "17.50",
+                   "tipoCambioAuto": "SI", "tipoCambioFecha": hoy,
+                   "tipoCambioOrigen": "GOOGLEFINANCE",
                    "pesoPrecio": "70", "pesoTiempo": "30", "diasAvisoVencimiento": "30"},
-        "hoy": hoy, "catalogos": CATALOGOS, "proveedores": PROVEEDORES, "rutas": RUTAS,
+        "hoy": hoy, "catalogos": CATALOGOS, "campos": CAMPOS, "tipoCambio": TIPO_CAMBIO,
+        "proveedores": PROVEEDORES, "rutas": RUTAS,
         "resumen": {"proveedores": 3, "rutas": 2, "tarifas": 9, "vigentes": 7,
                     "porVencer": 2, "vencidas": 2},
     },
-    "apiComparar": {"grupos": [GRUPO], "fecha": hoy, "monedaBase": "MXN", "total": 3,
+    "apiComparar": {"grupos": [GRUPO, GRUPO_SIN_TIEMPO], "fecha": hoy,
+                    "monedaBase": "MXN", "total": 5, "tipoCambio": TIPO_CAMBIO,
                     "criterio": {"pesoPrecio": 70, "pesoTiempo": 30, "orden": "puntaje"},
                     "descartadas": DESCARTADAS},
     "apiMejoresOpciones": {
         "mejores": [MEJOR, MEJOR_SOLO], "fecha": hoy, "monedaBase": "MXN",
+        "tipoCambio": TIPO_CAMBIO,
         "criterio": {"pesoPrecio": 70, "pesoTiempo": 30, "orden": "puntaje"},
         "descartadas": DESCARTADAS,
         "resumen": {"combinaciones": 2, "rutas": 2, "opciones": 4, "ahorroTotal": 6200,
                     "sinCompetencia": 1}},
-    "apiTarifas": {"tarifas": TARIFAS, "total": 2, "hoy": hoy},
+    "apiTarifas": {"tarifas": TARIFAS, "total": 2, "hoy": hoy,
+                   "campos": CAMPOS["tarifa"], "tipoCambio": TIPO_CAMBIO},
+    "apiCampos": CAMPOS,
+    "apiActualizarTipoCambio": TIPO_CAMBIO,
     "apiProveedores": PROVEEDORES,
     "apiRutas": RUTAS,
     "apiCatalogos": CATALOGOS,
@@ -159,7 +215,8 @@ RESPUESTAS = {
          "liga": "https://script.google.com/macros/s/EJEMPLO/exec?t=def456"},
     ],
     "apiHistorial": {"ruta": "Monterrey → Guadalajara", "mercanciaNombre": "Carga general",
-                     "equipoNombre": "Full (doble remolque)", "historial": TARIFAS},
+                     "equipoNombre": "Full", "movimientoNombre": "Redondo",
+                   "historial": TARIFAS},
     "apiPlantilla": {"nombre": "plantilla-tarifas.csv", "contenido": "proveedor,origen\nA,B"},
     "apiExportarCsv": {"nombre": "tarifarios.csv", "contenido": "a,b\n1,2", "renglones": 1},
     "apiExportarLibro": {"url": "https://docs.google.com/spreadsheets/d/X",
@@ -172,15 +229,16 @@ RESPUESTAS = {
         "ignoradas": ["Color favorito"],
         "filas": [
             {"n": 2, "accion": "alta", "resumen": "Fletes Bajío · Monterrey → Saltillo",
-             "problemas": [], "datos": {}},
+             "problemas": [], "avisos": [], "datos": {}},
             {"n": 3, "accion": "actualiza", "resumen": "Transportes del Norte · Monterrey → Saltillo",
-             "problemas": [], "datos": {}},
-            {"n": 4, "accion": "error", "resumen": "Sin nombre", "problemas": ["Falta el tipo de equipo."],
-             "datos": {}},
+             "problemas": [], "avisos": ["Repite la combinación del renglón 2."], "datos": {}},
+            {"n": 4, "accion": "error", "resumen": "Sin nombre",
+             "problemas": ["Falta el tipo de unidad."], "avisos": [], "datos": {}},
         ],
         "nuevos": {"proveedores": ["Mudanzas Express"], "rutas": ["Monterrey → Saltillo"],
-                   "mercancias": [], "equipos": []},
-        "resumen": {"total": 3, "altas": 1, "actualizaciones": 1, "errores": 1}},
+                   "mercancias": [], "equipos": [], "movimientos": []},
+        "resumen": {"total": 3, "altas": 1, "actualizaciones": 1, "errores": 1,
+                    "repetidos": 1}},
     "apiImportarAplicar": {"altas": 1, "actualizaciones": 1, "omitidas": 1, "sinReferencia": 0,
                            "errores": [], "nuevos": {"proveedores": 1, "rutas": 1, "catalogos": 0}},
 }
@@ -193,6 +251,7 @@ NOMBRES = [
     "apiBorrarTarifa", "apiDuplicarTarifa", "apiCambiarEstadoTarifa", "apiComparar",
     "apiMejoresOpciones", "apiHistorial", "apiImportarRevisar", "apiImportarAplicar",
     "apiPlantilla", "apiExportarCsv", "apiExportarLibro", "apiRespaldo",
+    "apiCampos", "apiGuardarCampo", "apiBorrarCampo", "apiActualizarTipoCambio",
 ]
 
 MOCK = """
@@ -228,7 +287,7 @@ SONDA = """
 <script>
 setTimeout(function () {
   var vistas = ['comparar', 'mejores', 'tarifas', 'proveedores', 'rutas', 'catalogos',
-                'datos', 'ajustes'];
+                'campos', 'datos', 'ajustes'];
   var i = 0;
   function revisarFormularios() {
     var pruebas = [
@@ -242,6 +301,17 @@ setTimeout(function () {
         estado.vista = 'catalogos'; pintar(); formaCatalogo({ tipo: 'equipo' }); }, 'c-guardar'],
       ['formulario de usuario', function () {
         estado.vista = 'ajustes'; pintar(); formaUsuario(null); }, 'u-guardar'],
+      ['formulario de campo propio', function () {
+        estado.vista = 'campos'; pintar(); formaCampo({ ambito: 'tarifa' }); }, 'k-guardar'],
+      ['edición de tarifa con campos propios', function () {
+        estado.vista = 'tarifas'; pintar();
+        formaTarifa(RESPUESTAS.apiTarifas.tarifas[0]);
+        if (!document.getElementById('extra-cuenta')) {
+          window.__errores.push('el campo propio no se dibujó');
+        }
+        if (document.getElementById('x-cuenta').textContent.indexOf('Costo total') !== 0) {
+          window.__errores.push('la cuenta en vivo no se calculó');
+        } }, 'x-guardar'],
       ['informe de importación', function () {
         estado.vista = 'datos'; pintar();
         pintarInforme(RESPUESTAS.apiImportarRevisar); }, 'i-aplicar']

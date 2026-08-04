@@ -14,45 +14,75 @@ var TABLAS = {
   Config: ['clave', 'valor'],
   Usuarios: ['id', 'email', 'nombre', 'rol', 'estado', 'token', 'creado'],
   Proveedores: ['id', 'nombre', 'rfc', 'contacto', 'telefono', 'correo', 'ciudad',
-                'calificacion', 'estado', 'notas', 'creado'],
+                'calificacion', 'estado', 'notas', 'creado', 'extras'],
   Rutas: ['id', 'origen', 'destino', 'km', 'notas', 'estado', 'creado'],
   Catalogos: ['id', 'tipo', 'clave', 'nombre', 'orden', 'estado'],
+  Campos: ['id', 'ambito', 'clave', 'etiqueta', 'tipo', 'opciones', 'compara', 'orden',
+           'estado'],
   Tarifas: ['id', 'proveedorId', 'rutaId', 'mercancia', 'equipo', 'moneda', 'tarifa',
             'combustiblePct', 'casetas', 'maniobras', 'otros', 'tiempoHoras',
             'capacidadTon', 'vigenciaDesde', 'vigenciaHasta', 'estado', 'notas',
-            'actualizado'],
+            'actualizado', 'movimiento', 'extras'],
   Bitacora: ['momento', 'actor', 'accion', 'entidad', 'detalle']
 };
+
+// Las columnas nuevas se agregan siempre AL FINAL de su tabla. Los datos se leen
+// por posición, así que meter una columna en medio recorrería todo lo capturado.
+
 
 var CONFIG_INICIAL = {
   empresa: 'TLTERMINALS',
   monedaBase: 'MXN',
   tipoCambioUSD: '17.50',
+  tipoCambioAuto: 'SI',
+  tipoCambioFecha: '',
+  tipoCambioOrigen: 'manual',
   pesoPrecio: '70',
   pesoTiempo: '30',
   diasAvisoVencimiento: '30'
 };
 
-/** Catálogos que se cargan solos en la instalación. Se pueden editar después. */
+/**
+ * Catálogos que se cargan solos en la instalación. Se pueden editar después.
+ * Son los tres ejes con los que se decide qué tarifas compiten entre sí: qué se
+ * mueve, en qué se mueve y si el viaje es sencillo o de ida y vuelta.
+ */
 var CATALOGO_INICIAL = {
   equipo: [
-    ['sencillo', 'Sencillo (48/53 ft)'],
-    ['full', 'Full (doble remolque)'],
+    ['sencillo', 'Sencillo'],
+    ['full', 'Full'],
+    ['ftl53', "FTL 53'"],
     ['torton', 'Torton'],
     ['rabon', 'Rabón'],
-    ['camioneta35', 'Camioneta 3.5 ton'],
     ['plataforma', 'Plataforma'],
+    ['lowboy', 'Low boy'],
     ['refrigerado', 'Caja refrigerada']
   ],
   mercancia: [
-    ['general', 'Carga general'],
+    ['general', 'General'],
+    ['peligrosa', 'Peligrosa'],
+    ['generalsobrepeso', 'General / sobre peso'],
     ['refrigerada', 'Refrigerada'],
-    ['peligrosa', 'Materiales peligrosos'],
     ['granel', 'Granel'],
     ['sobredimensionada', 'Sobredimensionada'],
     ['altovalor', 'Alto valor']
+  ],
+  movimiento: [
+    ['redondo', 'Redondo'],
+    ['oneway', 'One way']
   ]
 };
+
+/**
+ * Campos personalizados que vienen de fábrica, porque el tarifario del que
+ * salió este sistema ya los traía. Se pueden borrar o agregar más.
+ */
+var CAMPOS_INICIALES = [
+  { ambito: 'tarifa', clave: 'cuenta', etiqueta: 'Cuenta', tipo: 'texto',
+    opciones: '', compara: 'NO', orden: 1 },
+  { ambito: 'tarifa', clave: 'revisada', etiqueta: 'Revisión de tarifa', tipo: 'si_no',
+    opciones: '', compara: 'NO', orden: 2 }
+];
 
 /**
  * Crea la hoja de cálculo y las pestañas si aún no existen. Es idempotente:
@@ -115,6 +145,16 @@ function instalar() {
     });
   });
 
+  CAMPOS_INICIALES.forEach(function (campo) {
+    if (!buscarCampo_(campo.ambito, campo.clave)) {
+      insertar_('Campos', {
+        id: nuevoId_(), ambito: campo.ambito, clave: campo.clave,
+        etiqueta: campo.etiqueta, tipo: campo.tipo, opciones: campo.opciones,
+        compara: campo.compara, orden: campo.orden, estado: 'activo'
+      });
+    }
+  });
+
   // El primero que instala queda como administrador.
   var correo = Session.getEffectiveUser().getEmail();
   if (correo && buscarUsuarioPorEmail_(correo) === null) {
@@ -129,11 +169,35 @@ function instalar() {
     });
   }
 
+  migrar_();
   acomodarEnDrive_(libro);
 
   Logger.log('Base de datos lista: ' + libro.getUrl());
   Logger.log('Carpeta en Drive: ' + carpeta_().getUrl());
   return libro.getId();
+}
+
+/**
+ * Pone al día lo que ya estaba capturado cuando el sistema gana columnas.
+ * Es idempotente: correrla de nuevo no hace nada.
+ * @private
+ */
+function migrar_() {
+  // El tipo de movimiento llegó después. Lo capturado antes era todo redondo,
+  // que es como se venía trabajando.
+  var pendientes = leerTodo_('Tarifas').filter(function (t) {
+    return texto_(t.movimiento) === '';
+  });
+  if (!pendientes.length) {
+    return;
+  }
+  var hoja = hoja_('Tarifas');
+  var columna = TABLAS.Tarifas.indexOf('movimiento') + 1;
+  pendientes.forEach(function (t) {
+    hoja.getRange(t._fila, columna).setValue('redondo');
+  });
+  olvidarCache_('Tarifas');
+  Logger.log('Marqué como "redondo" ' + pendientes.length + ' tarifas que no tenían movimiento.');
 }
 
 /**
@@ -328,6 +392,17 @@ function buscarUsuarioPorEmail_(email) {
   }
   return buscar_('Usuarios', function (f) {
     return String(f.email).toLowerCase().trim() === buscado;
+  });
+}
+
+function buscarCampo_(ambito, clave) {
+  var a = String(ambito);
+  var c = normalizar_(clave);
+  if (!c) {
+    return null;
+  }
+  return buscar_('Campos', function (f) {
+    return String(f.ambito) === a && normalizar_(f.clave) === c;
   });
 }
 

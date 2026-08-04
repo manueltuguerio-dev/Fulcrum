@@ -35,7 +35,8 @@ var ALIAS = {
     notas: ['notas', 'observaciones', 'comentarios']
   },
   tarifas: {
-    proveedor: ['proveedor', 'transportista', 'linea', 'razonsocial', 'nombre', 'empresa'],
+    proveedor: ['proveedor', 'transportista', 'linea', 'razonsocial', 'nombre', 'empresa',
+                'partner', 'socio'],
     ruta: ['ruta', 'tramo', 'trayecto'],
     origen: ['origen', 'ciudadorigen', 'plazaorigen', 'salida'],
     destino: ['destino', 'ciudaddestino', 'plazadestino', 'llegada'],
@@ -43,6 +44,8 @@ var ALIAS = {
                 'producto', 'tipodecarga'],
     equipo: ['equipo', 'tipoequipo', 'tipodeequipo', 'unidad', 'tipounidad', 'camion',
              'tipodeunidad', 'configuracion'],
+    movimiento: ['movimiento', 'tipomovimiento', 'tipodemovimiento', 'viaje', 'modalidad',
+                 'tipodeviaje', 'sentido'],
     moneda: ['moneda', 'divisa', 'currency'],
     tarifa: ['tarifa', 'tarifabase', 'flete', 'precio', 'costo', 'importe', 'monto',
              'fletebase'],
@@ -64,6 +67,24 @@ var ALIAS = {
     notas: ['notas', 'observaciones', 'comentarios']
   }
 };
+
+/**
+ * Los alias de un tipo, más una entrada por cada campo personalizado. Así una
+ * columna llamada "Cuenta" o "Revisión de tarifa" entra sola, sin configurar
+ * nada: el campo ya dice cómo se llama.
+ * @return {Object} {campo: [alias]}
+ * @private
+ */
+function aliasDe_(tipo) {
+  var base = {};
+  Object.keys(ALIAS[tipo]).forEach(function (campo) { base[campo] = ALIAS[tipo][campo]; });
+  if (tipo === 'tarifas' || tipo === 'proveedores') {
+    campos_(tipo === 'tarifas' ? 'tarifa' : 'proveedor', true).forEach(function (campo) {
+      base['extra:' + campo.clave] = [normalizar_(campo.etiqueta), normalizar_(campo.clave)];
+    });
+  }
+  return base;
+}
 
 /* --------------------------------- lectura -------------------------------- */
 
@@ -148,7 +169,7 @@ function matriz_(texto, sep) {
  * @private
  */
 function mapearColumnas_(encabezados, tipo) {
-  var alias = ALIAS[tipo];
+  var alias = aliasDe_(tipo);
   var campos = {};
   var ignoradas = [];
   var columnas = [];
@@ -279,12 +300,30 @@ function analizar_(tipo, texto, opciones) {
 
   var contexto = contextoImportacion_();
   var filas = [];
-  var nuevos = { proveedores: {}, rutas: {}, mercancias: {}, equipos: {} };
-  var conteo = { altas: 0, actualizaciones: 0, errores: 0 };
+  var nuevos = { proveedores: {}, rutas: {}, mercancias: {}, equipos: {}, movimientos: {} };
+  var conteo = { altas: 0, actualizaciones: 0, errores: 0, repetidos: 0 };
+  var vistos = {};
 
   for (var i = 1; i < datos.length; i++) {
     var renglon = leerRenglon_(tipo, datos[i], mapa.campos, contexto, nuevos, crear);
     renglon.n = i + 1;
+    renglon.avisos = renglon.avisos || [];
+
+    // Un archivo puede traer dos veces la misma combinación —pasa cuando el
+    // tarifario se fue armando a mano—. No es un error, pero hay que decirlo:
+    // solo se va a quedar el último.
+    if (!renglon.problemas.length) {
+      var huella = huellaRenglon_(tipo, renglon.datos);
+      if (huella && vistos[huella]) {
+        renglon.avisos.push('Repite la combinación del renglón ' + vistos[huella]
+          + '. Se quedará este, que es el último.');
+        conteo.repetidos++;
+      }
+      if (huella) {
+        vistos[huella] = renglon.n;
+      }
+    }
+
     if (renglon.problemas.length) {
       renglon.accion = 'error';
       conteo.errores++;
@@ -307,15 +346,33 @@ function analizar_(tipo, texto, opciones) {
       proveedores: Object.keys(nuevos.proveedores).map(function (k) { return nuevos.proveedores[k]; }),
       rutas: Object.keys(nuevos.rutas).map(function (k) { return nuevos.rutas[k]; }),
       mercancias: Object.keys(nuevos.mercancias).map(function (k) { return nuevos.mercancias[k]; }),
-      equipos: Object.keys(nuevos.equipos).map(function (k) { return nuevos.equipos[k]; })
+      equipos: Object.keys(nuevos.equipos).map(function (k) { return nuevos.equipos[k]; }),
+      movimientos: Object.keys(nuevos.movimientos).map(function (k) { return nuevos.movimientos[k]; })
     },
     resumen: {
       total: filas.length,
       altas: conteo.altas,
       actualizaciones: conteo.actualizaciones,
-      errores: conteo.errores
+      errores: conteo.errores,
+      repetidos: conteo.repetidos
     }
   };
+}
+
+/**
+ * Lo que hace único a un renglón del archivo, para detectar repeticiones.
+ * @private
+ */
+function huellaRenglon_(tipo, d) {
+  if (tipo === 'proveedores') {
+    return normalizar_(d.nombre);
+  }
+  if (tipo === 'rutas') {
+    return normalizar_(d.origen) + '|' + normalizar_(d.destino);
+  }
+  return [normalizar_(d.proveedor), normalizar_(d.origen), normalizar_(d.destino),
+          normalizar_(d.mercancia), normalizar_(d.equipo), normalizar_(d.movimiento),
+          String(d.vigenciaDesde || '')].join('|');
 }
 
 /** Al menos una columna de cada grupo tiene que venir. @private */
@@ -336,7 +393,7 @@ function camposObligatorios_(tipo) {
  */
 function contextoImportacion_() {
   var ctx = {
-    proveedores: {}, rutas: {}, mercancias: {}, equipos: {}, tarifas: {},
+    proveedores: {}, rutas: {}, mercancias: {}, equipos: {}, movimientos: {}, tarifas: {},
     monedaBase: String(leerConfig('monedaBase') || 'MXN').toUpperCase()
   };
   leerTodo_('Proveedores').forEach(function (p) {
@@ -349,20 +406,43 @@ function contextoImportacion_() {
     ctx.rutas[normalizar_(r.origen) + '|' + normalizar_(r.destino)] = r;
   });
   leerTodo_('Catalogos').forEach(function (c) {
-    var destino = String(c.tipo) === 'equipo' ? ctx.equipos : ctx.mercancias;
+    var destino = ctx.mercancias;
+    if (String(c.tipo) === 'equipo') {
+      destino = ctx.equipos;
+    } else if (String(c.tipo) === 'movimiento') {
+      destino = ctx.movimientos;
+    }
     destino[normalizar_(c.clave)] = c;
     destino[normalizar_(c.nombre)] = c;
   });
   leerTodo_('Tarifas').forEach(function (t) {
-    ctx.tarifas[claveTarifa_(t.proveedorId, t.rutaId, t.mercancia, t.equipo,
-                             fecha_(t.vigenciaDesde))] = t;
+    ctx.tarifas[claveCombinacion_({
+      proveedorId: t.proveedorId, rutaId: t.rutaId, mercancia: t.mercancia,
+      equipo: t.equipo, movimiento: t.movimiento, vigenciaDesde: fecha_(t.vigenciaDesde)
+    }, extrasDe_(t))] = t;
   });
+  ctx.campos = { tarifa: campos_('tarifa', true), proveedor: campos_('proveedor', true) };
   return ctx;
 }
 
-function claveTarifa_(proveedorId, rutaId, mercancia, equipo, desde) {
-  return String(proveedorId) + '|' + String(rutaId) + '|' + normalizar_(mercancia)
-    + '|' + normalizar_(equipo) + '|' + String(desde || '');
+/**
+ * Lee los campos personalizados que traiga el archivo.
+ * @return {Object} Valores por clave, ya normalizados por tipo.
+ * @private
+ */
+function extrasDelRenglon_(fila, campos, definiciones) {
+  var salida = {};
+  definiciones.forEach(function (campo) {
+    var crudo = valorDe_(fila, campos, 'extra:' + campo.clave);
+    if (crudo === '') {
+      return;
+    }
+    var valor = normalizarValorCampo_(campo, crudo);
+    if (valor !== '') {
+      salida[campo.clave] = valor;
+    }
+  });
+  return salida;
 }
 
 /** @private */
@@ -387,6 +467,7 @@ function renglonProveedor_(fila, campos, ctx) {
     problemas.push('La calificación va de 0 a 5.');
   }
   var existente = ctx.proveedores[normalizar_(nombre)];
+  var extras = extrasDelRenglon_(fila, campos, ctx.campos.proveedor);
 
   return {
     problemas: problemas,
@@ -394,6 +475,7 @@ function renglonProveedor_(fila, campos, ctx) {
     resumen: nombre,
     datos: {
       id: existente ? String(existente.id) : '',
+      extras: extras,
       nombre: nombre,
       rfc: valorDe_(fila, campos, 'rfc').toUpperCase(),
       contacto: valorDe_(fila, campos, 'contacto'),
@@ -485,17 +567,32 @@ function renglonTarifa_(fila, campos, ctx, nuevos, crear) {
     problemas.push('El tipo de mercancía "' + mercancia + '" no está en el catálogo.');
   }
 
+  var movimiento = valorDe_(fila, campos, 'movimiento');
+  var claveMovimiento = '';
+  if (!movimiento) {
+    // Un tarifario sin columna de movimiento es de un solo tipo de viaje: se
+    // toma como redondo, que es lo más común, y se dice en el informe.
+    claveMovimiento = 'redondo';
+  } else if (ctx.movimientos[normalizar_(movimiento)]) {
+    claveMovimiento = texto_(ctx.movimientos[normalizar_(movimiento)].clave);
+  } else if (crear) {
+    claveMovimiento = normalizar_(movimiento);
+    nuevos.movimientos[claveMovimiento] = movimiento;
+  } else {
+    problemas.push('El tipo de movimiento "' + movimiento + '" no está en el catálogo.');
+  }
+
   var equipo = valorDe_(fila, campos, 'equipo');
   var claveEquipo = '';
   if (!equipo) {
-    problemas.push('Falta el tipo de equipo.');
+    problemas.push('Falta el tipo de unidad.');
   } else if (ctx.equipos[normalizar_(equipo)]) {
     claveEquipo = texto_(ctx.equipos[normalizar_(equipo)].clave);
   } else if (crear) {
     claveEquipo = normalizar_(equipo);
     nuevos.equipos[claveEquipo] = equipo;
   } else {
-    problemas.push('El tipo de equipo "' + equipo + '" no está en el catálogo.');
+    problemas.push('El tipo de unidad "' + equipo + '" no está en el catálogo.');
   }
 
   var tarifa = numero_(valorDe_(fila, campos, 'tarifa'), -1);
@@ -503,13 +600,14 @@ function renglonTarifa_(fila, campos, ctx, nuevos, crear) {
     problemas.push('Falta la tarifa o no se entiende el número.');
   }
 
+  // El tiempo de entrega es opcional: casi ningún tarifario lo trae.
   var horas = numero_(valorDe_(fila, campos, 'tiempoHoras'), 0);
   var dias = numero_(valorDe_(fila, campos, 'tiempoDias'), 0);
   if (!horas && dias) {
     horas = dias * 24;
   }
-  if (horas <= 0) {
-    problemas.push('Falta el tiempo de entrega (en horas o en días).');
+  if (horas < 0) {
+    problemas.push('El tiempo de entrega no puede ser negativo.');
   }
 
   var moneda = valorDe_(fila, campos, 'moneda').toUpperCase() || ctx.monedaBase;
@@ -531,8 +629,12 @@ function renglonTarifa_(fila, campos, ctx, nuevos, crear) {
     problemas.push('La vigencia termina antes de empezar.');
   }
 
+  var extras = extrasDelRenglon_(fila, campos, ctx.campos.tarifa);
   var existente = (filaProveedor && filaRuta)
-    ? ctx.tarifas[claveTarifa_(filaProveedor.id, filaRuta.id, claveMercancia, claveEquipo, desde)]
+    ? ctx.tarifas[claveCombinacion_({
+        proveedorId: filaProveedor.id, rutaId: filaRuta.id, mercancia: claveMercancia,
+        equipo: claveEquipo, movimiento: claveMovimiento, vigenciaDesde: desde
+      }, extras)]
     : null;
 
   var datos = {
@@ -543,6 +645,8 @@ function renglonTarifa_(fila, campos, ctx, nuevos, crear) {
     km: numero_(valorDe_(fila, campos, 'km'), 0),
     mercancia: claveMercancia,
     equipo: claveEquipo,
+    movimiento: claveMovimiento,
+    extras: extras,
     moneda: moneda,
     tarifa: tarifa < 0 ? 0 : tarifa,
     combustiblePct: numero_(valorDe_(fila, campos, 'combustiblePct'), 0),
@@ -568,7 +672,8 @@ function renglonTarifa_(fila, campos, ctx, nuevos, crear) {
     problemas: problemas,
     accion: existente ? 'actualiza' : 'alta',
     resumen: proveedor + ' · ' + origen + ' → ' + destino + ' · '
-      + (mercancia || 'general') + ' · ' + equipo,
+      + (mercancia || 'general') + ' · ' + (equipo || '—')
+      + ' · ' + (movimiento || 'redondo'),
     datos: datos
   };
 }
@@ -641,10 +746,11 @@ function aplicarProveedores_(filas) {
     var existente = d.id ? buscarPorId_('Proveedores', d.id) : porNombre[normalizar_(d.nombre)];
     if (existente) {
       Object.keys(d).forEach(function (campo) {
-        if (campo !== 'id' && d[campo] !== '') {
+        if (campo !== 'id' && campo !== 'extras' && d[campo] !== '') {
           existente[campo] = d[campo];
         }
       });
+      existente.extras = extrasParaGuardar_('proveedor', d.extras, extrasDe_(existente));
       escribirFila_('Proveedores', existente._fila, existente);
       actualizaciones++;
       return;
@@ -653,7 +759,8 @@ function aplicarProveedores_(filas) {
       id: nuevoId_(), nombre: d.nombre, rfc: d.rfc, contacto: d.contacto,
       telefono: d.telefono, correo: d.correo, ciudad: d.ciudad,
       calificacion: d.calificacion === '' ? 0 : d.calificacion,
-      estado: d.estado || 'activo', notas: d.notas, creado: ahora_()
+      estado: d.estado || 'activo', notas: d.notas, creado: ahora_(),
+      extras: extrasParaGuardar_('proveedor', d.extras, {})
     };
     porNombre[normalizar_(d.nombre)] = alta;
     nuevos.push(alta);
@@ -735,7 +842,8 @@ function aplicarTarifas_(filas, crear) {
       ctx.rutas[claveRuta] = ruta;
       rutasNuevas.push(ruta);
     }
-    [['mercancia', 'mercancias'], ['equipo', 'equipos']].forEach(function (par) {
+    [['mercancia', 'mercancias'], ['equipo', 'equipos'],
+     ['movimiento', 'movimientos']].forEach(function (par) {
       var clave = normalizar_(d[par[0]]);
       if (!crear || !clave || ctx[par[1]][clave]) {
         return;
@@ -773,6 +881,7 @@ function aplicarTarifas_(filas, crear) {
       rutaId: String(ruta.id),
       mercancia: d.mercancia,
       equipo: d.equipo,
+      movimiento: d.movimiento,
       moneda: d.moneda,
       tarifa: d.tarifa,
       combustiblePct: d.combustiblePct,
@@ -785,14 +894,16 @@ function aplicarTarifas_(filas, crear) {
       vigenciaHasta: d.vigenciaHasta,
       estado: d.estado,
       notas: d.notas,
+      extras: extrasParaGuardar_('tarifa', d.extras, {}),
       actualizado: momento
     };
-    var clave = claveTarifa_(campos.proveedorId, campos.rutaId, campos.mercancia,
-                             campos.equipo, campos.vigenciaDesde);
+    var clave = claveCombinacion_(campos, d.extras);
     var vacios = d._vacios || [];
     var existente = ctx.tarifas[clave];
     if (existente && existente._fila) {
       campos.id = String(existente.id);
+      // Los campos personalizados que el archivo no traiga se conservan.
+      campos.extras = extrasParaGuardar_('tarifa', d.extras, extrasDe_(existente));
       Object.keys(campos).forEach(function (c) {
         if (vacios.indexOf(c) === -1) {
           existente[c] = campos[c];
@@ -858,17 +969,16 @@ function apiPlantilla(tipo) {
       ]
     },
     tarifas: {
-      columnas: ['proveedor', 'origen', 'destino', 'mercancia', 'equipo', 'moneda',
-                 'tarifa', 'combustible', 'casetas', 'maniobras', 'otros',
-                 'tiempoHoras', 'capacidad', 'vigenciaDesde', 'vigenciaHasta',
-                 'estado', 'notas'],
+      columnas: ['partner', 'origen', 'destino', 'tipo de carga', 'tipo de movimiento',
+                 'tipo de unidad', 'moneda', 'tarifa', 'combustible', 'casetas',
+                 'maniobras', 'otros', 'tiempo horas', 'capacidad', 'vigencia desde',
+                 'vigencia hasta', 'estado', 'notas'],
       ejemplos: [
-        ['Transportes del Norte', 'Monterrey', 'Guadalajara', 'general', 'full',
-         'MXN', '38500', '12', '2450', '0', '0', '18', '48',
-         '2026-01-01', '2026-12-31', 'activo', 'Incluye seguro de carga'],
-        ['Fletes Bajío', 'Monterrey', 'Guadalajara', 'general', 'sencillo',
-         'MXN', '24800', '10', '2450', '800', '0', '22', '24',
-         '2026-01-01', '2026-12-31', 'activo', '']
+        ['Transportes del Norte', 'Altamira', 'Monterrey', 'GENERAL', 'REDONDO',
+         'FULL', 'MXN', '48700', '', '', '', '', '', '', '', '31/12/2026', 'activo',
+         'El tiempo de entrega es opcional'],
+        ['Fletes Bajío', 'Laredo, TX', 'Querétaro', 'GENERAL', 'ONE WAY',
+         "FTL 53'", 'USD', '1225', '', '', '', '', '', '', '', '', 'activo', '']
       ]
     }
   };
@@ -877,6 +987,17 @@ function apiPlantilla(tipo) {
   if (!p) {
     throw new Error('No hay plantilla para "' + tipo + '".');
   }
+  // Los campos personalizados también van en la plantilla: si alguien agregó
+  // "Cuenta", el transportista debe poder llenarla.
+  if (tipo === 'tarifas' || tipo === 'proveedores') {
+    campos_(tipo === 'tarifas' ? 'tarifa' : 'proveedor', false).forEach(function (campo) {
+      p.columnas.push(campo.etiqueta);
+      p.ejemplos.forEach(function (fila) {
+        fila.push(campo.tipo === 'si_no' ? 'SI' : '');
+      });
+    });
+  }
+
   var lineas = [p.columnas].concat(p.ejemplos).map(function (fila) {
     return fila.map(celdaCsv_).join(',');
   });

@@ -21,6 +21,7 @@ global.PropertiesService = {
 function dosDigitos(n) { return String(n).padStart(2, '0'); }
 
 global.Utilities = {
+  sleep: () => undefined,
   getUuid: () => 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, (c) => {
     const r = (Math.random() * 16) | 0;
     return (c === 'x' ? r : (r & 0x3) | 0x8).toString(16);
@@ -76,6 +77,7 @@ class HojaFalsa {
   deleteRow(n) { this.datos.splice(n - 1, 1); }
   setFrozenRows() { return this; }
   autoResizeColumns() { return this; }
+  hideSheet() { this.oculta = true; return this; }
   getRange(fila, col, nFilas, nCols) {
     const hoja = this;
     nFilas = nFilas || 1;
@@ -103,7 +105,13 @@ class HojaFalsa {
         }
         return this;
       },
-      setFontWeight() { return this; }
+      setFontWeight() { return this; },
+      setValue(v) { return this.setValues([[v]]); },
+      // GOOGLEFINANCE no existe fuera de Google: la fórmula se queda como texto
+      // y el sistema tiene que aguantarlo y seguir con el valor manual.
+      setFormula(f) { return this.setValues([[f]]); },
+      getValue() { return this.getValues()[0][0]; },
+      clearContent() { return this.setValues([['']]); }
     };
   }
 }
@@ -134,6 +142,7 @@ class LibroFalso {
 
 const librosPorId = {};
 global.SpreadsheetApp = {
+  flush: () => undefined,
   create: (nombre) => new LibroFalso(nombre),
   openById: (id) => {
     if (!librosPorId[id]) { throw new Error('No existe la hoja ' + id); }
@@ -188,8 +197,8 @@ global.DriveApp = {
 };
 
 // ------------------------------------------------------- cargar el código real
-['Db.gs', 'Sesion.gs', 'Catalogos.gs', 'Tarifas.gs', 'Comparador.gs',
- 'Importar.gs', 'Exportar.gs', 'Code.gs'].forEach((archivo) => {
+['Db.gs', 'Sesion.gs', 'TipoCambio.gs', 'Campos.gs', 'Catalogos.gs', 'Tarifas.gs',
+ 'Comparador.gs', 'Importar.gs', 'Exportar.gs', 'Code.gs'].forEach((archivo) => {
   const codigo = fs.readFileSync(path.join(RAIZ, archivo), 'utf8');
   try {
     (0, eval)(codigo);

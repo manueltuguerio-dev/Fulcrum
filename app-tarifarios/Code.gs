@@ -4,7 +4,9 @@
  * Punto de entrada. La lógica está repartida así:
  *   Db.gs          hoja de cálculo como base de datos
  *   Sesion.gs      quién entra, qué puede hacer y los ajustes
- *   Catalogos.gs   proveedores, rutas, tipos de mercancía y de equipo
+ *   Catalogos.gs   proveedores, rutas, tipos de carga, unidad y movimiento
+ *   Campos.gs      campos personalizados (cuenta, revisión…)
+ *   TipoCambio.gs  el dólar del día, para comparar pesos contra dólares
  *   Tarifas.gs     captura de tarifas y cómo se arma el costo total
  *   Comparador.gs  el orden de la mejor opción a la peor
  *   Importar.gs    lectura de CSV y de lo que se pega desde Excel
@@ -40,6 +42,7 @@ var FUNCIONES_PUBLICAS = [
   'apiProveedores', 'apiGuardarProveedor', 'apiBorrarProveedor',
   'apiRutas', 'apiGuardarRuta', 'apiBorrarRuta',
   'apiCatalogos', 'apiGuardarCatalogo', 'apiBorrarCatalogo',
+  'apiCampos', 'apiGuardarCampo', 'apiBorrarCampo', 'apiActualizarTipoCambio',
   'apiTarifas', 'apiGuardarTarifa', 'apiBorrarTarifa', 'apiDuplicarTarifa',
   'apiCambiarEstadoTarifa',
   'apiComparar', 'apiMejoresOpciones', 'apiHistorial',
@@ -114,8 +117,8 @@ function verificar() {
   }
 
   var catalogo = catalogos_();
-  if (!catalogo.equipo.length || !catalogo.mercancia.length) {
-    problemas.push('Faltan los catálogos de mercancía o de equipo. Ejecuta instalar().');
+  if (!catalogo.equipo.length || !catalogo.mercancia.length || !catalogo.movimiento.length) {
+    problemas.push('Faltan catálogos (carga, unidad o movimiento). Ejecuta instalar().');
   }
 
   if (problemas.length) {
@@ -178,23 +181,26 @@ function cargarEjemplo() {
     return id;
   });
 
-  // proveedor, ruta, mercancía, equipo, tarifa, combustible %, casetas, horas
+  // proveedor, ruta, carga, unidad, movimiento, moneda, tarifa, combustible %,
+  // casetas, horas (0 = sin tiempo capturado, como llega la mayoría)
   var tarifas = [
-    [0, 0, 'general', 'full', 38500, 12, 2450, 18],
-    [1, 0, 'general', 'full', 36900, 14, 2450, 22],
-    [2, 0, 'general', 'full', 41200, 10, 2450, 16],
-    [0, 0, 'general', 'sencillo', 25600, 12, 2450, 20],
-    [1, 0, 'general', 'sencillo', 24800, 10, 2450, 22],
-    [3, 0, 'general', 'sencillo', 27300, 9, 2450, 17],
-    [0, 0, 'refrigerada', 'refrigerado', 44100, 12, 2450, 19],
-    [2, 0, 'refrigerada', 'refrigerado', 42800, 15, 2450, 24],
-    [1, 1, 'general', 'full', 33400, 11, 3100, 15],
-    [2, 1, 'general', 'full', 31900, 13, 3100, 20],
-    [3, 1, 'general', 'sencillo', 22750, 10, 3100, 18],
-    [0, 1, 'general', 'sencillo', 23900, 12, 3100, 14],
-    [2, 2, 'general', 'full', 47600, 13, 3850, 26],
-    [0, 2, 'general', 'full', 49900, 11, 3850, 22],
-    [3, 2, 'peligrosa', 'sencillo', 58200, 14, 3850, 28]
+    [0, 0, 'general', 'full', 'redondo', 'MXN', 38500, 12, 2450, 18],
+    [1, 0, 'general', 'full', 'redondo', 'MXN', 36900, 14, 2450, 22],
+    [2, 0, 'general', 'full', 'redondo', 'MXN', 41200, 10, 2450, 16],
+    [0, 0, 'general', 'sencillo', 'redondo', 'MXN', 25600, 12, 2450, 20],
+    [1, 0, 'general', 'sencillo', 'redondo', 'MXN', 24800, 10, 2450, 22],
+    [3, 0, 'general', 'sencillo', 'redondo', 'MXN', 27300, 9, 2450, 17],
+    [0, 0, 'general', 'full', 'oneway', 'MXN', 20400, 12, 2450, 0],
+    [1, 0, 'general', 'full', 'oneway', 'MXN', 21900, 10, 2450, 0],
+    [0, 0, 'peligrosa', 'full', 'redondo', 'MXN', 49720, 12, 2450, 19],
+    [2, 0, 'peligrosa', 'full', 'redondo', 'MXN', 48800, 15, 2450, 24],
+    [1, 1, 'general', 'full', 'redondo', 'MXN', 33400, 11, 3100, 15],
+    [2, 1, 'general', 'full', 'redondo', 'MXN', 31900, 13, 3100, 20],
+    [3, 1, 'general', 'sencillo', 'redondo', 'MXN', 22750, 10, 3100, 18],
+    [0, 1, 'general', 'sencillo', 'redondo', 'MXN', 23900, 12, 3100, 14],
+    [2, 2, 'general', 'ftl53', 'oneway', 'USD', 1325, 0, 0, 0],
+    [3, 2, 'general', 'ftl53', 'oneway', 'USD', 1225, 0, 0, 0],
+    [0, 2, 'general', 'ftl53', 'oneway', 'USD', 1400, 0, 0, 0]
   ];
 
   tarifas.forEach(function (t) {
@@ -204,18 +210,20 @@ function cargarEjemplo() {
       rutaId: rutas[t[1]],
       mercancia: t[2],
       equipo: t[3],
-      moneda: 'MXN',
-      tarifa: t[4],
-      combustiblePct: t[5],
-      casetas: t[6],
+      movimiento: t[4],
+      moneda: t[5],
+      tarifa: t[6],
+      combustiblePct: t[7],
+      casetas: t[8],
       maniobras: 0,
       otros: 0,
-      tiempoHoras: t[7],
+      tiempoHoras: t[9],
       capacidadTon: t[3] === 'full' ? 48 : 24,
       vigenciaDesde: hoyTexto_(),
       vigenciaHasta: sumarDias_(hoyTexto_(), 365),
       estado: 'activo',
       notas: 'Datos de ejemplo',
+      extras: '',
       actualizado: ahora_()
     });
   });

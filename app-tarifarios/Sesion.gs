@@ -123,6 +123,8 @@ function apiEstadoInicial() {
     config: configCompleta_(),
     hoy: hoyTexto_(),
     catalogos: catalogos_(),
+    campos: { tarifa: campos_('tarifa', false), proveedor: campos_('proveedor', false) },
+    tipoCambio: tipoCambioDelDia_(false),
     proveedores: listaProveedores_(),
     rutas: listaRutas_(),
     resumen: resumenGeneral_()
@@ -141,10 +143,14 @@ function resumenGeneral_() {
   var vigentes = 0;
   var porVencer = 0;
   var vencidas = 0;
+  var sinTiempo = 0;
 
   leerTodo_('Tarifas').forEach(function (t) {
     if (!esSi_(t.estado)) {
       return;
+    }
+    if (numero_(t.tiempoHoras, 0) <= 0) {
+      sinTiempo++;
     }
     var hasta = fecha_(t.vigenciaHasta);
     if (hasta && hasta < hoy) {
@@ -165,7 +171,8 @@ function resumenGeneral_() {
     tarifas: leerTodo_('Tarifas').length,
     vigentes: vigentes,
     porVencer: porVencer,
-    vencidas: vencidas
+    vencidas: vencidas,
+    sinTiempo: sinTiempo
   };
 }
 
@@ -281,6 +288,13 @@ function apiGuardarConfig(cambios) {
     }
     escribirConfig(clave, String(cambios[clave]));
   });
+
+  if (cambios.tipoCambioUSD !== undefined) {
+    // Si alguien captura el tipo de cambio a mano, ese gana hasta que se vuelva
+    // a consultar: se marca de dónde salió para que no haya dudas después.
+    escribirConfig('tipoCambioOrigen', 'manual');
+    escribirConfig('tipoCambioFecha', hoyTexto_());
+  }
 
   // Los pesos del puntaje se guardan como porcentajes que suman 100.
   var precio = numero_(leerConfig('pesoPrecio'), 70);

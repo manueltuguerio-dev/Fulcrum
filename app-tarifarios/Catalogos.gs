@@ -6,8 +6,16 @@
 /* ------------------------------- proveedores ------------------------------- */
 
 function listaProveedores_() {
+  var definiciones = campos_('proveedor', true);
   return leerTodo_('Proveedores').map(function (p) {
+    var extras = extrasDe_(p);
+    var extrasTexto = {};
+    definiciones.forEach(function (campo) {
+      extrasTexto[campo.clave] = valorCampoTexto_(campo, extras[campo.clave]);
+    });
     return {
+      extras: extras,
+      extrasTexto: extrasTexto,
       id: String(p.id),
       nombre: texto_(p.nombre),
       rfc: texto_(p.rfc),
@@ -64,6 +72,8 @@ function apiGuardarProveedor(datos) {
   };
 
   var existente = datos.id ? buscarPorId_('Proveedores', datos.id) : null;
+  campos.extras = extrasParaGuardar_('proveedor', datos.extras,
+                                     existente ? extrasDe_(existente) : {});
   var homonimo = proveedorPorNombre_(nombre);
   if (homonimo && (!existente || String(homonimo.id) !== String(existente.id))) {
     throw new Error('Ya hay un proveedor que se llama "' + nombre + '".');
@@ -256,7 +266,7 @@ function rutaSiFalta_(origen, destino, crear, km) {
  * @private
  */
 function catalogos_() {
-  var salida = { mercancia: [], equipo: [] };
+  var salida = { mercancia: [], equipo: [], movimiento: [] };
   leerTodo_('Catalogos').forEach(function (c) {
     var tipo = String(c.tipo);
     if (!salida[tipo]) {
@@ -289,8 +299,8 @@ function apiCatalogos() {
 function apiGuardarCatalogo(datos) {
   exigirAdmin_();
   var tipo = String(datos.tipo);
-  if (tipo !== 'mercancia' && tipo !== 'equipo') {
-    throw new Error('El catálogo solo puede ser de mercancía o de equipo.');
+  if (['mercancia', 'equipo', 'movimiento'].indexOf(tipo) === -1) {
+    throw new Error('El catálogo solo puede ser de carga, de unidad o de movimiento.');
   }
   var nombre = texto_(datos.nombre);
   if (!nombre) {
@@ -336,7 +346,7 @@ function apiBorrarCatalogo(id) {
   if (!fila) {
     throw new Error('No encuentro ese registro del catálogo.');
   }
-  var campo = String(fila.tipo) === 'equipo' ? 'equipo' : 'mercancia';
+  var campo = String(fila.tipo);
   var enUso = leerTodo_('Tarifas').filter(function (t) {
     return normalizar_(t[campo]) === normalizar_(fila.clave);
   }).length;
@@ -352,7 +362,7 @@ function apiBorrarCatalogo(id) {
 
 /** Cuando cambia una clave del catálogo, las tarifas la siguen. @private */
 function renombrarEnTarifas_(tipo, claveVieja, claveNueva) {
-  var campo = tipo === 'equipo' ? 'equipo' : 'mercancia';
+  var campo = tipo;
   leerTodo_('Tarifas').forEach(function (t) {
     if (normalizar_(t[campo]) === normalizar_(claveVieja)) {
       var cambios = {};

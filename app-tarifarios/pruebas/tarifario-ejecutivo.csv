@@ -1,0 +1,37 @@
+No.,TIPO DE CARGA,TIPO DE MOVIMIENTO,ORIGEN,DESTINO,RUTA,MONEDA,TIPO DE UNIDAD,PARTNER,TARIFA,VIGENCIA DESDE,VIGENCIA HASTA,NOTAS,REVISIÓN DE TARIFA
+42,GENERAL,REDONDO,ALTAMIRA,MONTERREY,ALTAMIRA - MONTERREY,MXN,FULL,HH,48700,,31/12/2026,,SI
+43,GENERAL,REDONDO,ALTAMIRA,MONTERREY,ALTAMIRA - MONTERREY,MXN,SENCILLO,HH,27500,,,,SI
+45,GENERAL,REDONDO,ALTAMIRA,MONTERREY,ALTAMIRA - MONTERREY,MXN,FULL,TRAYECTO TM,37500,,,"se pudiera agregar costo de drop off, considerar maniobras en patio $3,200 pcontenedor aprox/Se empata",NO
+46,GENERAL,REDONDO,ALTAMIRA,MONTERREY,ALTAMIRA - MONTERREY,MXN,SENCILLO,TRAYECTO TM,26200,,,"Sencillo empatado. se pudiera agregar costo de drop off, considerar maniobras en patio $3,200 pcontenedor aprox/Se empata",NO
+47,PELIGROSA,REDONDO,ALTAMIRA,MONTERREY,ALTAMIRA - MONTERREY,MXN,FULL,TRAYECTO TLH,49720,,,PESO LEGAL SIN EMPATAR,SI
+48,PELIGROSA,REDONDO,ALTAMIRA,MONTERREY,ALTAMIRA - MONTERREY,MXN,SENCILLO,TRAYECTO TLH,35501,,,,SI
+56,GENERAL,REDONDO,ALTAMIRA,DURANGO,ALTAMIRA - DURANGO,MXN,SENCILLO,SETRAMEX,49000,,,"Se negocio tarifa de 128,500 a 123mil, con disponibilidad inmediata max 26 ton arriba de eso se cobra $2500 por  contenedor",NO
+58,GENERAL,REDONDO,ALTAMIRA,DURANGO,ALTAMIRA - DURANGO,MXN,SENCILLO,HH,52000,,,"se pudiera agregar costo de drop off, considerar maniobras en patio $3,200 pcontenedor aprox/Se empata",NO
+61,GENERAL,ONE WAY,ALTAMIRA,MONTERREY,ALTAMIRA - MONTERREY,MXN,FULL,TRAYECTO TM,20400,,,Se empata unidad con otro contenedor,SI
+62,GENERAL,ONE WAY,ALTAMIRA,MONTERREY,ALTAMIRA - MONTERREY,MXN,SENCILLO,TRAYECTO TM,18500,,30/06/2026,"8 horas libres de descarga, peso max 25 ton /Se empata",SI
+95,PELIGROSA,ONE WAY,ALTAMIRA,MONTERREY,ALTAMIRA - MONTERREY,MXN,FULL,MOPSA,51000,,,,NO
+1,GENERAL,ONE WAY,"LAREDO, TX","JOCOTITLÁN, EDO. MÉX","LAREDO, TX - JOCOTITLÁN, EDO. MÉX",MXN,,ITS,,,,,NO
+51,GENERAL,ONE WAY,"LAREDO, TX","JOCOTITLÁN, EDO. MÉX","LAREDO, TX - JOCOTITLÁN, EDO. MÉX",USD,FTL 53',FORZA,1325,,,,NO
+53,GENERAL,ONE WAY,"LAREDO, TX",QUERÉTARO,"LAREDO, TX - QUERÉTARO",USD,FTL 53',FORZA,1225,,,"Considerar costo de maniobras $3200 aprox + drop off cuando aplique (según naviera), en caso de empatar $16,000",NO
+11,GENERAL,REDONDO,LÁZARO CÁRDENAS,"JILOTEPEC, EDO. MÉX","LÁZARO CÁRDENAS - JILOTEPEC, EDO. MÉX",MXN,SENCILLO,TRAYECTO TM,39800,,,"Cargos por sobrepeso: $2,000.00 extras a la tarifa pactada
+8 horas libres de demora tanto en carga como en descarga, cargos extras por 24 horas adicionales $5,000.00
+Vigencia de tarifa: Julio 2026",NO
+12,GENERAL,REDONDO,LÁZARO CÁRDENAS,QUERÉTARO,LÁZARO CÁRDENAS - QUERÉTARO,MXN,FULL,HH,80800,,31/12/2026,"Se cobra sobre peso extra POR CONTENEDOR a partir de la tonelada 24.5 con un cargo de $1,100 pesos por tonelada extra o
+fracción hasta la tonelada 28. A partir de la tonelada 28.1 y
+hasta la tonelada 30 se cobra $2,600 por tonelada extra o fracción.",NO
+18,GENERAL,REDONDO,MANZANILLO,DURANGO,MANZANILLO - DURANGO,MXN,FULL,SETRAMEX,89000,,,"Se cobra sobre peso extra POR CONTENEDOR a partir de la tonelada 24.5 con un cargo de $1,100 pesos por tonelada extra o
+fracción hasta la tonelada 28. A partir de la tonelada 28.1 y
+hasta la tonelada 30 se cobra $2,600 por tonelada extra o fracción.",NO
+19,GENERAL,REDONDO,MANZANILLO,DURANGO,MANZANILLO - DURANGO,MXN,SENCILLO,SETRAMEX,65000,,,"Cargos por sobrepeso: $2,000.00 extras a la tarifa pactada
+8 horas libres de demora tanto en carga como en descarga, cargos extras por 24 horas adicionales $5,000.00
+Vigencia de tarifa: Julio 2026",NO
+21,GENERAL,REDONDO,MANZANILLO,DURANGO,MANZANILLO - DURANGO,MXN,SENCILLO,HH,66400,,,"Poca capacidad en Manzanillo, considerando sobrepeso, se pudiera agregar costo de drop off, considerar maniobras en patio $3,200 pcontenedor aprox",NO
+22,GENERAL,REDONDO,MANZANILLO,DURANGO,MANZANILLO - DURANGO,MXN,FULL,NEYNO,90000,,,"Poca capacidad en Manzanillo, considerando sobrepeso, se pudiera agregar costo de drop off, considerar maniobras en patio $3,200 pcontenedor aprox",NO
+23,GENERAL,REDONDO,MANZANILLO,DURANGO,MANZANILLO - DURANGO,MXN,SENCILLO,NEYNO,55000,,,"26 toneladas. Monterrey Centro: Apodaca, Ciénega de Flores, Guadalupe, San Pedro Garza García, General Zuazua, Escobedo, San Nicolás Vigencia. 31 DICIEMBRE 2026, se pudiera agregar costo de drop off, considerar maniobras en patio $3,200 pcontenedor aprox",NO
+29,GENERAL,REDONDO,MANZANILLO,"TULA, HIDALGO","MANZANILLO - TULA, HIDALGO",MXN,SENCILLO,NEYNO,55000,,,"2 DIAS LIBRES CRUCE FRONTERA, 2 HRAS CARGA-DESCARGA",SI
+30,GENERAL,REDONDO,MANZANILLO,"TULA, HIDALGO","MANZANILLO - TULA, HIDALGO",MXN,FULL,3T,74000,,,"2 DIAS LIBRES CRUCE FRONTERA, 2 HRAS CARGA-DESCARGA",NO
+31,GENERAL,REDONDO,MANZANILLO,"TULA, HIDALGO","MANZANILLO - TULA, HIDALGO",MXN,SENCILLO,3T,59200,,,"2 DIAS LIBRES CRUCE FRONTERA, 2 HRAS CARGA-DESCARGA",NO
+34,GENERAL,REDONDO,MANZANILLO,"TULA, HIDALGO","MANZANILLO - TULA, HIDALGO",MXN,FULL,SETRAMEX,68000,,31/12/2026,"Se cobra sobre peso extra POR CONTENEDOR a partir de la tonelada 24.5 con un cargo de $1,100 pesos por tonelada extra o
+fracción hasta la tonelada 28. A partir de la tonelada 28.1 y
+hasta la tonelada 30 se cobra $2,600 por tonelada extra o fracción.",NO
+37,GENERAL,REDONDO,MANZANILLO,"TULA, HIDALGO","MANZANILLO - TULA, HIDALGO",MXN,SENCILLO,NEYNO,50000,,30/06/2026,"8 horas libres de descarga, peso max 25 ton,se pudiera agregar costo de drop off, considerar maniobras en patio $3,200 pcontenedor aprox",NO

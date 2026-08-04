@@ -2,12 +2,13 @@
 var estado = {
   inicial: null,
   vista: 'comparar',
-  filtros: { rutaId: '', mercancia: '', equipo: '', fecha: '', orden: 'puntaje',
-             pesoPrecio: '', incluirVencidas: false, proveedorId: '' },
+  filtros: { rutaId: '', mercancia: '', equipo: '', movimiento: '', fecha: '',
+             orden: 'puntaje', pesoPrecio: '', incluirVencidas: false, proveedorId: '' },
   comparacion: null,
   mejores: null,
   tarifas: null,
-  filtroTarifas: { rutaId: '', proveedorId: '', texto: '', soloVigentes: false },
+  filtroTarifas: { rutaId: '', proveedorId: '', movimiento: '', texto: '',
+                   soloVigentes: false },
   borrador: null,
   importacion: { tipo: 'tarifas', texto: '', informe: null, crearFaltantes: true },
   usuarios: null
@@ -120,6 +121,60 @@ function esAdmin() {
   return estado.inicial && estado.inicial.usuario && estado.inicial.usuario.rol === 'admin';
 }
 
+function camposDe(ambito) {
+  var todos = (estado.inicial && estado.inicial.campos) || {};
+  return todos[ambito] || [];
+}
+
+/**
+ * Dibuja un campo personalizado según su tipo. La clave del campo va en el id
+ * para poder leerlo después sin llevar registro aparte.
+ */
+function campoPersonalizado(campo, valor) {
+  var id = 'extra-' + campo.clave;
+  var v = valor === undefined || valor === null ? '' : valor;
+  if (campo.tipo === 'si_no') {
+    return '<label class="checkbox"><input type="checkbox" id="' + id + '"'
+      + (String(v).toUpperCase() === 'SI' ? ' checked' : '') + ' /> '
+      + esc(campo.etiqueta) + '</label>';
+  }
+  if (campo.tipo === 'lista') {
+    return '<label class="campo">' + esc(campo.etiqueta) + '<select id="' + id + '">'
+      + '<option value="">—</option>'
+      + campo.opciones.map(function (o) {
+          return '<option value="' + esc(o) + '"' + (String(v) === o ? ' selected' : '')
+            + '>' + esc(o) + '</option>';
+        }).join('')
+      + '</select></label>';
+  }
+  if (campo.tipo === 'numero') {
+    return campoNumero(id, campo.etiqueta, v);
+  }
+  if (campo.tipo === 'fecha') {
+    return '<label class="campo">' + esc(campo.etiqueta)
+      + '<input type="date" id="' + id + '" value="' + esc(v) + '" /></label>';
+  }
+  return campoTexto(id, campo.etiqueta, v);
+}
+
+function leerCamposPersonalizados(ambito) {
+  var salida = {};
+  camposDe(ambito).forEach(function (campo) {
+    var nodo = $('extra-' + campo.clave);
+    if (!nodo) { return; }
+    salida[campo.clave] = campo.tipo === 'si_no' ? (nodo.checked ? 'SI' : 'NO') : nodo.value;
+  });
+  return salida;
+}
+
+/** El tipo de cambio con el que se está comparando ahora mismo. */
+function cintaTipoCambio(tc) {
+  if (!tc || !tc.valor) { return ''; }
+  return '<span class="etiqueta acento" title="' + esc(tc.origen) + '">USD 1 = '
+    + esc(tc.valor) + ' ' + esc(moneda()) + (tc.fecha ? ' · ' + esc(tc.fecha) : '')
+    + '</span>';
+}
+
 /**
  * Descarga un archivo generado en el servidor. Si el navegador no deja bajar
  * desde aquí, se muestra el contenido para copiarlo a mano.
@@ -217,7 +272,7 @@ function pintarBarra() {
   var u = estado.inicial.usuario;
   var empresa = (estado.inicial.config && estado.inicial.config.empresa) || 'TLTERMINALS';
   $('barra').innerHTML = '<h1>Tarifarios · ' + esc(empresa) + '</h1>'
-    + '<div class="quien">' + esc(u.nombre)
+    + '<div class="quien">' + cintaTipoCambio(estado.inicial.tipoCambio) + ' ' + esc(u.nombre)
     + (u.rol === 'admin' ? '<span class="insignia">admin</span>' : '')
     + ' <button class="suave chico" id="salir" style="margin-left:8px">Salir</button></div>';
   $('salir').addEventListener('click', function () {
@@ -230,7 +285,8 @@ function pintarBarra() {
                   ['tarifas', 'Tarifas']];
   if (esAdmin()) {
     pestanas = pestanas.concat([['proveedores', 'Proveedores'], ['rutas', 'Rutas'],
-      ['catalogos', 'Catálogos'], ['datos', 'Importar y exportar'], ['ajustes', 'Ajustes']]);
+      ['catalogos', 'Catálogos'], ['campos', 'Campos propios'],
+      ['datos', 'Importar y exportar'], ['ajustes', 'Ajustes']]);
   } else {
     pestanas.push(['datos', 'Exportar']);
   }
@@ -251,7 +307,7 @@ function pintar() {
   var mapa = {
     comparar: vistaComparar, mejores: vistaMejores, tarifas: vistaTarifas,
     proveedores: vistaProveedores, rutas: vistaRutas, catalogos: vistaCatalogos,
-    datos: vistaDatos, ajustes: vistaAjustes
+    campos: vistaCampos, datos: vistaDatos, ajustes: vistaAjustes
   };
   (mapa[estado.vista] || vistaComparar)();
 }
@@ -302,10 +358,12 @@ function cajaFiltros() {
   return '<div class="filtros">'
     + '<div class="fila-campos">'
     + '<label class="campo">Ruta<select id="f-ruta">' + opcionesRutas(f.rutaId) + '</select></label>'
-    + '<label class="campo">Tipo de mercancía<select id="f-mercancia">'
+    + '<label class="campo">Tipo de carga<select id="f-mercancia">'
     + opcionesCatalogo('mercancia', f.mercancia, 'Todas') + '</select></label>'
-    + '<label class="campo">Tipo de equipo<select id="f-equipo">'
+    + '<label class="campo">Tipo de unidad<select id="f-equipo">'
     + opcionesCatalogo('equipo', f.equipo, 'Todos') + '</select></label>'
+    + '<label class="campo">Tipo de movimiento<select id="f-movimiento">'
+    + opcionesCatalogo('movimiento', f.movimiento, 'Todos') + '</select></label>'
     + '<label class="campo">Vigente al día<input type="date" id="f-fecha" value="'
     + esc(f.fecha || estado.inicial.hoy) + '" /></label>'
     + '<label class="campo">Ordenar por<select id="f-orden">'
@@ -326,6 +384,7 @@ function leerFiltros() {
   estado.filtros.rutaId = valorDe('f-ruta');
   estado.filtros.mercancia = valorDe('f-mercancia');
   estado.filtros.equipo = valorDe('f-equipo');
+  estado.filtros.movimiento = valorDe('f-movimiento');
   estado.filtros.fecha = valorDe('f-fecha');
   estado.filtros.orden = valorDe('f-orden');
   estado.filtros.pesoPrecio = valorDe('f-peso');
@@ -333,7 +392,8 @@ function leerFiltros() {
 }
 
 function enlazarFiltros(alCambiar) {
-  ['f-ruta', 'f-mercancia', 'f-equipo', 'f-fecha', 'f-orden', 'f-vencidas'].forEach(function (id) {
+  ['f-ruta', 'f-mercancia', 'f-equipo', 'f-movimiento', 'f-fecha', 'f-orden',
+   'f-vencidas'].forEach(function (id) {
     var nodo = $(id);
     if (nodo) {
       nodo.addEventListener('change', function () { leerFiltros(); alCambiar(); });
@@ -408,7 +468,12 @@ function pintarComparacion() {
     + cifra(datos.total, 'Opciones comparadas')
     + cifra(datos.criterio.pesoPrecio + ' / ' + datos.criterio.pesoTiempo, 'Precio / tiempo')
     + cifra(datos.fecha, 'Vigente al')
-    + '</div>';
+    + '</div>'
+    + (datos.tipoCambio && datos.tipoCambio.valor
+        ? '<p class="apagado">Las tarifas en dólares se comparan a '
+          + esc(datos.tipoCambio.valor) + ' ' + esc(datos.monedaBase) + ' por dólar · '
+          + esc(datos.tipoCambio.origen) + '.</p>'
+        : '');
 
   pintarEn('resultado', encabezado
     + datos.grupos.map(pintarGrupo).join('')
@@ -416,7 +481,7 @@ function pintarComparacion() {
 
   enlazar('button[data-historial]', 'click', function () {
     var partes = this.getAttribute('data-historial').split('|');
-    verHistorial(partes[0], partes[1], partes[2]);
+    verHistorial(partes[0], partes[1], partes[2], partes[3]);
   });
 }
 
@@ -426,17 +491,27 @@ function cifra(valor, etiqueta) {
 
 function pintarGrupo(g) {
   var maximo = g.costoMax || 1;
+  var caracteristicas = [g.mercanciaNombre, g.equipoNombre, g.movimientoNombre];
+  (g.etiquetas || []).forEach(function (e) {
+    caracteristicas.push(e.etiqueta + ': ' + e.valor);
+  });
+  if (g.km) { caracteristicas.push(entero(g.km) + ' km'); }
+
   return '<section class="grupo">'
     + '<header>'
     + '<div><b>' + esc(g.ruta) + '</b>'
-    + '<div class="caracteristicas">' + esc(g.mercanciaNombre) + ' · ' + esc(g.equipoNombre)
-    + (g.km ? ' · ' + entero(g.km) + ' km' : '') + '</div></div>'
+    + '<div class="caracteristicas">' + esc(caracteristicas.join(' · ')) + '</div></div>'
     + '<div class="pila">'
     + '<span class="etiqueta">' + g.total + ' opciones · ' + g.proveedores + ' proveedores</span>'
     + (g.ahorro > 0 ? '<span class="etiqueta ok">Ahorro contra la peor ' + dinero(g.ahorro) + '</span>' : '')
     + '<button class="suave chico" data-historial="' + esc(g.rutaId) + '|'
-    + esc(g.mercancia) + '|' + esc(g.equipo) + '">Historial</button>'
+    + esc(g.mercancia) + '|' + esc(g.equipo) + '|' + esc(g.movimiento) + '">Historial</button>'
     + '</div></header>'
+    + (g.conTiempo === false
+        ? '<div class="nota aviso" style="margin:12px 16px">Estas tarifas no traen tiempo '
+          + 'de entrega capturado, así que el orden es solo por precio. Captúralo para '
+          + 'que el tiempo también cuente.</div>'
+        : '')
     + g.opciones.map(function (o) { return pintarOpcion(o, maximo); }).join('')
     + '</section>';
 }
@@ -459,7 +534,8 @@ function pintarOpcion(o, maximo) {
     + (o.sobreprecio > 0
         ? '<div class="contra">+' + dinero(o.sobreprecio) + ' (' + o.sobreprecioPct + ' %)</div>'
         : '<div class="contra" style="color:var(--bueno)">mejor precio</div>')
-    + '<div class="tiempo">' + esc(o.tiempoTexto) + ' · puntaje ' + o.puntaje + '</div>'
+    + '<div class="tiempo">' + (o.sinTiempo ? 'sin tiempo' : esc(o.tiempoTexto))
+    + ' · puntaje ' + o.puntaje + '</div>'
     + '</div>'
     + '<div class="medidor"><i style="width:' + ancho + '%"></i></div>'
     + '<div class="detalle">tarifa ' + dinero(o.tarifa)
@@ -468,6 +544,7 @@ function pintarOpcion(o, maximo) {
     + (o.maniobras ? ' + maniobras ' + dinero(o.maniobras) : '')
     + (o.otros ? ' + otros ' + dinero(o.otros) : '')
     + ' · ' + esc(o.moneda)
+    + (o.convertida ? ' × ' + o.tipoCambio : '')
     + (o.costoPorKm ? ' · ' + dinero(o.costoPorKm) + '/km' : '')
     + (o.capacidadTon ? ' · ' + o.capacidadTon + ' ton' : '')
     + '</div>'
@@ -486,8 +563,8 @@ function descartadasTexto(d) {
   return '<p class="apagado">Se dejaron fuera: ' + esc(partes.join(', ')) + '.</p>';
 }
 
-function verHistorial(rutaId, mercancia, equipo) {
-  llamar('apiHistorial', [rutaId, mercancia, equipo]).then(function (datos) {
+function verHistorial(rutaId, mercancia, equipo, movimiento) {
+  llamar('apiHistorial', [rutaId, mercancia, equipo, movimiento]).then(function (datos) {
     var filas = datos.historial.map(function (t) {
       return '<tr' + (t.estado !== 'activo' ? ' class="inactiva"' : '') + '>'
         + '<td>' + esc(t.proveedor) + '</td>'
@@ -502,7 +579,8 @@ function verHistorial(rutaId, mercancia, equipo) {
     var caja = document.createElement('div');
     caja.className = 'tarjeta';
     caja.innerHTML = '<div class="tarjeta-cab"><h3>Historial · ' + esc(datos.ruta) + '</h3>'
-      + '<span class="apagado">' + esc(datos.mercanciaNombre) + ' · ' + esc(datos.equipoNombre) + '</span></div>'
+      + '<span class="apagado">' + esc(datos.mercanciaNombre) + ' · ' + esc(datos.equipoNombre)
+      + ' · ' + esc(datos.movimientoNombre) + '</span></div>'
       + (filas
           ? '<div class="tabla-envoltura"><table><thead><tr><th>Proveedor</th>'
             + '<th class="num">Costo total</th><th class="num">Tiempo</th>'
@@ -555,11 +633,16 @@ function pintarMejores() {
   var filas = datos.mejores.map(function (m) {
     return '<tr>'
       + '<td><b>' + esc(m.ruta) + '</b>' + (m.km ? '<div class="apagado">' + entero(m.km) + ' km</div>' : '') + '</td>'
-      + '<td>' + esc(m.mercanciaNombre) + '<div class="apagado">' + esc(m.equipoNombre) + '</div></td>'
+      + '<td>' + esc(m.mercanciaNombre) + '<div class="apagado">' + esc(m.equipoNombre)
+      + ' · ' + esc(m.movimientoNombre) + '</div>'
+      + ((m.etiquetas || []).length
+          ? '<div class="apagado">' + esc(m.etiquetas.map(function (e) { return e.valor; }).join(' · ')) + '</div>'
+          : '') + '</td>'
       + '<td><b>' + esc(m.proveedor) + '</b><div class="apagado">' + esc(m.motivo) + '</div></td>'
       + '<td class="num">' + dinero(m.costoTotal)
       + (m.costoPorKm ? '<div class="apagado">' + dinero(m.costoPorKm) + '/km</div>' : '') + '</td>'
-      + '<td class="num">' + esc(m.tiempoTexto) + '</td>'
+      + '<td class="num">' + (m.conTiempo === false ? '<span class="apagado">sin dato</span>'
+          : esc(m.tiempoTexto)) + '</td>'
       + '<td class="num">' + m.puntaje + '</td>'
       + '<td>' + (m.segundo ? esc(m.segundo) + '<div class="apagado">' + dinero(m.segundoCosto) + '</div>'
           : '<span class="etiqueta aviso">sin competencia</span>') + '</td>'
@@ -630,12 +713,15 @@ function generarLibro() {
 function vistaTarifas() {
   var f = estado.filtroTarifas;
   $('vista').innerHTML = '<h2 class="titulo">Tarifas</h2>'
-    + '<p class="sub">Lo que cobra cada transportista por ruta, mercancía y equipo. '
-    + 'El costo total ya trae combustible, casetas y maniobras, convertido a ' + esc(moneda()) + '.</p>'
+    + '<p class="sub">Lo que cobra cada partner por ruta, tipo de carga, unidad y '
+    + 'movimiento. El costo total ya trae combustible, casetas y maniobras, convertido '
+    + 'a ' + esc(moneda()) + ' con el tipo de cambio del día.</p>'
     + '<div class="filtros"><div class="fila-campos">'
     + '<label class="campo">Ruta<select id="t-ruta">' + opcionesRutas(f.rutaId, true) + '</select></label>'
-    + '<label class="campo">Proveedor<select id="t-proveedor">'
+    + '<label class="campo">Partner<select id="t-proveedor">'
     + opcionesProveedores(f.proveedorId, 'Todos') + '</select></label>'
+    + '<label class="campo">Movimiento<select id="t-movimiento">'
+    + opcionesCatalogo('movimiento', f.movimiento, 'Todos') + '</select></label>'
     + '<label class="campo">Buscar<input id="t-texto" value="' + esc(f.texto) + '" placeholder="proveedor, ruta, notas…" /></label>'
     + '</div>'
     + '<label class="checkbox"><input type="checkbox" id="t-vigentes"' + (f.soloVigentes ? ' checked' : '')
@@ -644,7 +730,7 @@ function vistaTarifas() {
     + '<div id="forma"></div>'
     + '<div id="lista"><div class="vacio">Consultando…</div></div>';
 
-  ['t-ruta', 't-proveedor', 't-vigentes'].forEach(function (id) {
+  ['t-ruta', 't-proveedor', 't-movimiento', 't-vigentes'].forEach(function (id) {
     $(id).addEventListener('change', leerFiltroTarifas);
   });
   $('t-texto').addEventListener('input', function () {
@@ -661,6 +747,7 @@ function leerFiltroTarifas() {
   estado.filtroTarifas = {
     rutaId: valorDe('t-ruta'),
     proveedorId: valorDe('t-proveedor'),
+    movimiento: valorDe('t-movimiento'),
     texto: valorDe('t-texto'),
     soloVigentes: marcado('t-vigentes')
   };
@@ -691,11 +778,15 @@ function pintarTarifas() {
     return '<tr' + (t.estado !== 'activo' ? ' class="inactiva"' : '') + '>'
       + '<td><b>' + esc(t.proveedor) + '</b></td>'
       + '<td>' + esc(t.ruta) + '</td>'
-      + '<td>' + esc(t.mercanciaNombre) + '<div class="apagado">' + esc(t.equipoNombre) + '</div></td>'
-      + '<td class="num">' + dinero(t.tarifa) + '<div class="apagado">' + esc(t.moneda) + '</div></td>'
+      + '<td>' + esc(t.mercanciaNombre) + '<div class="apagado">' + esc(t.equipoNombre)
+      + ' · ' + esc(t.movimientoNombre) + '</div>'
+      + camposEnCelda(t) + '</td>'
+      + '<td class="num">' + dinero(t.tarifa) + '<div class="apagado">' + esc(t.moneda)
+      + (t.convertida ? ' × ' + t.tipoCambio : '') + '</div></td>'
       + '<td class="num"><b>' + dinero(t.costoTotal) + '</b>'
       + (t.costoPorKm ? '<div class="apagado">' + dinero(t.costoPorKm) + '/km</div>' : '') + '</td>'
-      + '<td class="num">' + tiempoTexto(t.tiempoHoras) + '</td>'
+      + '<td class="num">' + (t.sinTiempo ? '<span class="apagado">—</span>'
+          : tiempoTexto(t.tiempoHoras)) + '</td>'
       + '<td class="mono">' + esc(t.vigenciaDesde || '—') + '<br>' + esc(t.vigenciaHasta || '—') + '</td>'
       + '<td>' + (t.vencida ? '<span class="etiqueta malo">vencida</span>'
           : '<span class="etiqueta ' + (t.estado === 'activo' ? 'ok' : '') + '">' + esc(t.estado) + '</span>') + '</td>'
@@ -712,8 +803,11 @@ function pintarTarifas() {
       + '</tr>';
   }).join('');
 
-  pintarEn('lista', '<div class="tabla-envoltura"><table><thead><tr>'
-    + '<th>Proveedor</th><th>Ruta</th><th>Características</th>'
+  pintarEn('lista', (datos.tipoCambio && datos.tipoCambio.valor
+      ? '<p class="apagado">USD 1 = ' + esc(datos.tipoCambio.valor) + ' ' + esc(moneda())
+        + ' · ' + esc(datos.tipoCambio.origen) + '</p>' : '')
+    + '<div class="tabla-envoltura"><table><thead><tr>'
+    + '<th>Partner</th><th>Ruta</th><th>Características</th>'
     + '<th class="num">Tarifa</th><th class="num">Costo total</th><th class="num">Tiempo</th>'
     + '<th>Vigencia</th><th>Estado</th>' + (esAdmin() ? '<th></th>' : '')
     + '</tr></thead><tbody>' + filas + '</tbody></table></div>'
@@ -752,41 +846,56 @@ function pintarTarifas() {
 
 function formaTarifa(t) {
   var d = t || {
-    id: '', proveedorId: '', rutaId: '', mercancia: '', equipo: '', moneda: moneda(),
-    tarifa: '', combustiblePct: '', casetas: '', maniobras: '', otros: '',
-    tiempoHoras: '', capacidadTon: '', vigenciaDesde: hoyISO(), vigenciaHasta: '',
-    estado: 'activo', notas: ''
+    id: '', proveedorId: '', rutaId: '', mercancia: '', equipo: '', movimiento: '',
+    moneda: moneda(), tarifa: '', combustiblePct: '', casetas: '', maniobras: '',
+    otros: '', tiempoHoras: '', capacidadTon: '', vigenciaDesde: '', vigenciaHasta: '',
+    estado: 'activo', notas: '', extras: {}
   };
+  var extras = d.extras || {};
+  var personalizados = camposDe('tarifa');
 
   $('forma').innerHTML = '<div class="tarjeta">'
-    + '<div class="tarjeta-cab"><h3>' + (t ? 'Editar tarifa' : 'Nueva tarifa') + '</h3></div>'
+    + '<div class="tarjeta-cab"><h3>' + (t ? 'Editar tarifa' : 'Nueva tarifa') + '</h3>'
+    + (t ? '<span class="apagado mono">actualizada ' + esc(d.actualizado || '—') + '</span>' : '')
+    + '</div>'
     + '<div class="fila-campos">'
-    + '<label class="campo">Proveedor<select id="x-proveedor">'
+    + '<label class="campo">Partner<select id="x-proveedor">'
     + opcionesProveedores(d.proveedorId, 'Elige…') + '</select></label>'
     + '<label class="campo">Ruta<select id="x-ruta">'
     + opcionesRutas(d.rutaId, true).replace('Todas las rutas', 'Elige…') + '</select></label>'
-    + '<label class="campo">Tipo de mercancía<select id="x-mercancia">'
+    + '<label class="campo">Tipo de carga<select id="x-mercancia">'
     + opcionesCatalogo('mercancia', d.mercancia, 'Elige…') + '</select></label>'
-    + '<label class="campo">Tipo de equipo<select id="x-equipo">'
+    + '<label class="campo">Tipo de unidad<select id="x-equipo">'
     + opcionesCatalogo('equipo', d.equipo, 'Elige…') + '</select></label>'
+    + '<label class="campo">Tipo de movimiento<select id="x-movimiento">'
+    + opcionesCatalogo('movimiento', d.movimiento, 'Elige…') + '</select></label>'
     + '</div>'
     + '<div class="fila-campos">'
     + '<label class="campo">Moneda<select id="x-moneda">'
     + ['MXN', 'USD'].map(function (m) {
         return '<option value="' + m + '"' + (d.moneda === m ? ' selected' : '') + '>' + m + '</option>';
       }).join('') + '</select></label>'
-    + campoNumero('x-tarifa', 'Tarifa base', d.tarifa)
-    + campoNumero('x-combustible', 'Combustible %', d.combustiblePct)
-    + campoNumero('x-casetas', 'Casetas', d.casetas)
-    + campoNumero('x-maniobras', 'Maniobras', d.maniobras)
-    + campoNumero('x-otros', 'Otros cargos', d.otros)
-    + campoNumero('x-tiempo', 'Tiempo de entrega (horas)', d.tiempoHoras)
-    + campoNumero('x-capacidad', 'Capacidad (ton)', d.capacidadTon)
+    + campoNumero('x-tarifa', 'Tarifa', d.tarifa)
+    + campoNumero('x-combustible', 'Combustible % (opcional)', d.combustiblePct)
+    + campoNumero('x-casetas', 'Casetas (opcional)', d.casetas)
+    + campoNumero('x-maniobras', 'Maniobras (opcional)', d.maniobras)
+    + campoNumero('x-otros', 'Otros cargos (opcional)', d.otros)
+    + campoNumero('x-tiempo', 'Tiempo de entrega, horas (opcional)', d.tiempoHoras)
+    + campoNumero('x-capacidad', 'Capacidad ton (opcional)', d.capacidadTon)
     + '<label class="campo">Vigente desde<input type="date" id="x-desde" value="'
     + esc(d.vigenciaDesde) + '" /></label>'
     + '<label class="campo">Vigente hasta<input type="date" id="x-hasta" value="'
     + esc(d.vigenciaHasta) + '" /></label>'
     + '</div>'
+    + '<p class="apagado" id="x-cuenta"></p>'
+    + (personalizados.length
+        ? '<h3 style="margin:18px 0 0">Campos propios</h3><div class="fila-campos">'
+          + personalizados.filter(function (c) { return c.tipo !== 'si_no'; })
+              .map(function (c) { return campoPersonalizado(c, extras[c.clave]); }).join('')
+          + '</div>'
+          + personalizados.filter(function (c) { return c.tipo === 'si_no'; })
+              .map(function (c) { return campoPersonalizado(c, extras[c.clave]); }).join('')
+        : '')
     + '<label class="campo">Notas<textarea id="x-notas" style="min-height:52px">'
     + esc(d.notas) + '</textarea></label>'
     + '<label class="checkbox"><input type="checkbox" id="x-activo"'
@@ -795,6 +904,15 @@ function formaTarifa(t) {
     + '<button class="accion" id="x-guardar">Guardar</button>'
     + '<button class="suave" id="x-cancelar">Cancelar</button>'
     + '</div></div>';
+
+  // La cuenta se calcula mientras se captura: ver el costo total antes de
+  // guardar evita capturar un dólar como si fuera un peso.
+  ['x-tarifa', 'x-combustible', 'x-casetas', 'x-maniobras', 'x-otros', 'x-moneda']
+    .forEach(function (id) {
+      $(id).addEventListener('input', calcularCuenta);
+      $(id).addEventListener('change', calcularCuenta);
+    });
+  calcularCuenta();
 
   $('forma').scrollIntoView({ behavior: 'smooth', block: 'start' });
   $('x-cancelar').addEventListener('click', function () { $('forma').innerHTML = ''; });
@@ -805,6 +923,7 @@ function formaTarifa(t) {
       rutaId: valorDe('x-ruta'),
       mercancia: valorDe('x-mercancia'),
       equipo: valorDe('x-equipo'),
+      movimiento: valorDe('x-movimiento'),
       moneda: valorDe('x-moneda'),
       tarifa: valorDe('x-tarifa'),
       combustiblePct: valorDe('x-combustible'),
@@ -816,7 +935,8 @@ function formaTarifa(t) {
       vigenciaDesde: valorDe('x-desde'),
       vigenciaHasta: valorDe('x-hasta'),
       estado: marcado('x-activo') ? 'activo' : 'inactivo',
-      notas: valorDe('x-notas')
+      notas: valorDe('x-notas'),
+      extras: leerCamposPersonalizados('tarifa')
     };
     this.disabled = true;
     llamar('apiGuardarTarifa', [datos]).then(function () {
@@ -829,6 +949,41 @@ function formaTarifa(t) {
       if (boton) { boton.disabled = false; }
     });
   });
+}
+
+/**
+ * El costo total tal como quedaría al guardar, con la misma fórmula del
+ * servidor. Es solo un anticipo en pantalla: la cuenta buena la hace el
+ * servidor al guardar.
+ */
+function calcularCuenta() {
+  var salida = $('x-cuenta');
+  if (!salida) { return; }
+  var base = Number(valorDe('x-tarifa')) || 0;
+  var pct = Number(valorDe('x-combustible')) || 0;
+  var extra = (Number(valorDe('x-casetas')) || 0) + (Number(valorDe('x-maniobras')) || 0)
+    + (Number(valorDe('x-otros')) || 0);
+  var subtotal = base + (base * pct / 100) + extra;
+  var monedaElegida = valorDe('x-moneda');
+  var tc = (estado.inicial.tipoCambio && estado.inicial.tipoCambio.valor) || 0;
+  var convierte = monedaElegida !== moneda() && tc > 0;
+  var total = convierte ? subtotal * tc : subtotal;
+
+  salida.innerHTML = 'Costo total: <b>' + dinero(total) + ' ' + esc(moneda()) + '</b>'
+    + (convierte ? ' &nbsp;(' + dinero(subtotal) + ' ' + esc(monedaElegida)
+        + ' × ' + tc + ')' : '');
+}
+
+/** Los campos personalizados que tengan valor, en una línea chiquita. */
+function camposEnCelda(t) {
+  var partes = [];
+  camposDe('tarifa').forEach(function (campo) {
+    var valor = t.extrasTexto ? t.extrasTexto[campo.clave] : '';
+    if (valor) {
+      partes.push(campo.etiqueta + ': ' + valor);
+    }
+  });
+  return partes.length ? '<div class="apagado">' + esc(partes.join(' · ')) + '</div>' : '';
 }
 
 function campoNumero(id, etiqueta, valor) {
@@ -916,7 +1071,11 @@ function formaProveedor(p) {
     + campoTexto('p-correo', 'Correo', d.correo)
     + campoTexto('p-ciudad', 'Ciudad o plaza', d.ciudad)
     + campoNumero('p-calificacion', 'Calificación (0 a 5)', d.calificacion)
+    + camposDe('proveedor').filter(function (c) { return c.tipo !== 'si_no'; })
+        .map(function (c) { return campoPersonalizado(c, (d.extras || {})[c.clave]); }).join('')
     + '</div>'
+    + camposDe('proveedor').filter(function (c) { return c.tipo === 'si_no'; })
+        .map(function (c) { return campoPersonalizado(c, (d.extras || {})[c.clave]); }).join('')
     + '<label class="campo">Notas<textarea id="p-notas" style="min-height:52px">'
     + esc(d.notas) + '</textarea></label>'
     + '<label class="checkbox"><input type="checkbox" id="p-activo"'
@@ -935,7 +1094,8 @@ function formaProveedor(p) {
       correo: valorDe('p-correo'), ciudad: valorDe('p-ciudad'),
       calificacion: valorDe('p-calificacion'),
       estado: marcado('p-activo') ? 'activo' : 'inactivo',
-      notas: valorDe('p-notas')
+      notas: valorDe('p-notas'),
+      extras: leerCamposPersonalizados('proveedor')
     };
     this.disabled = true;
     llamar('apiGuardarProveedor', [datos]).then(function () {
@@ -1061,10 +1221,12 @@ function formaRuta(r) {
 
 function vistaCatalogos() {
   $('vista').innerHTML = '<h2 class="titulo">Catálogos</h2>'
-    + '<p class="sub">Los tipos de mercancía y de equipo con los que se clasifican las '
-    + 'tarifas. Solo se comparan entre sí las que comparten ruta, mercancía y equipo.</p>'
+    + '<p class="sub">Con esto se clasifican las tarifas. Solo compiten entre sí las que '
+    + 'comparten ruta, tipo de carga, tipo de unidad y tipo de movimiento: un one way '
+    + 'no se compara contra un redondo.</p>'
     + '<div id="forma"></div>'
-    + '<div id="lista-mercancia"></div><div id="lista-equipo"></div>';
+    + '<div id="lista-mercancia"></div><div id="lista-equipo"></div>'
+    + '<div id="lista-movimiento"></div>';
   pintarCatalogos();
 }
 
@@ -1074,7 +1236,8 @@ function pintarCatalogos() {
     if (!$('lista-mercancia')) {
       return;
     }
-    [['mercancia', 'Tipos de mercancía'], ['equipo', 'Tipos de equipo']].forEach(function (par) {
+    [['mercancia', 'Tipos de carga'], ['equipo', 'Tipos de unidad'],
+     ['movimiento', 'Tipos de movimiento']].forEach(function (par) {
       var tipo = par[0];
       var filas = (cat[tipo] || []).map(function (c) {
         return '<tr' + (c.estado !== 'activo' ? ' class="inactiva"' : '') + '>'
@@ -1122,7 +1285,8 @@ function formaCatalogo(c) {
   var esNuevo = !d.id;
   $('forma').innerHTML = '<div class="tarjeta">'
     + '<div class="tarjeta-cab"><h3>' + (esNuevo ? 'Nuevo' : 'Editar') + ' · '
-    + (d.tipo === 'equipo' ? 'tipo de equipo' : 'tipo de mercancía') + '</h3></div>'
+    + (d.tipo === 'equipo' ? 'tipo de unidad'
+        : (d.tipo === 'movimiento' ? 'tipo de movimiento' : 'tipo de carga')) + '</h3></div>'
     + '<div class="fila-campos">'
     + campoTexto('c-nombre', 'Nombre', d.nombre || '')
     + campoTexto('c-clave', 'Clave (opcional)', d.clave || '')
@@ -1151,6 +1315,127 @@ function formaCatalogo(c) {
       fallo(err);
       var boton = $('c-guardar');
       if (boton) { boton.disabled = false; }
+    });
+  });
+}
+
+
+/* ----------------------------- campos propios ------------------------------ */
+
+function vistaCampos() {
+  $('vista').innerHTML = '<h2 class="titulo">Campos propios</h2>'
+    + '<p class="sub">Las columnas que tu tarifario tiene y este sistema no traía: la '
+    + 'cuenta, el número de contrato, si la tarifa ya se revisó. Se capturan en cada '
+    + 'tarifa, se importan solas si el archivo trae una columna con ese nombre y salen '
+    + 'en las exportaciones.</p>'
+    + '<div id="forma"></div>'
+    + '<div id="lista-tarifa"></div><div id="lista-proveedor"></div>';
+  pintarCampos();
+}
+
+function pintarCampos() {
+  llamar('apiCampos').then(function (todos) {
+    if (!$('lista-tarifa')) { return; }
+    estado.inicial.campos = {
+      tarifa: todos.tarifa.filter(function (c) { return c.estado === 'activo'; }),
+      proveedor: todos.proveedor.filter(function (c) { return c.estado === 'activo'; })
+    };
+
+    [['tarifa', 'En cada tarifa'], ['proveedor', 'En cada proveedor']].forEach(function (par) {
+      var ambito = par[0];
+      var filas = (todos[ambito] || []).map(function (c) {
+        return '<tr' + (c.estado !== 'activo' ? ' class="inactiva"' : '') + '>'
+          + '<td><b>' + esc(c.etiqueta) + '</b><div class="apagado mono">' + esc(c.clave) + '</div></td>'
+          + '<td>' + esc(c.tipo) + (c.opciones.length
+              ? '<div class="apagado">' + esc(c.opciones.join(' · ')) + '</div>' : '') + '</td>'
+          + '<td>' + (c.compara ? '<span class="etiqueta acento">separa la comparación</span>'
+              : '<span class="apagado">no</span>') + '</td>'
+          + '<td class="num">' + c.orden + '</td>'
+          + '<td><span class="etiqueta ' + (c.estado === 'activo' ? 'ok' : '') + '">'
+          + esc(c.estado) + '</span></td>'
+          + '<td class="acciones">'
+          + '<button class="suave chico" data-editar="' + ambito + '|' + esc(c.id) + '">Editar</button>'
+          + '<button class="suave chico peligro" data-borrar="' + esc(c.id) + '">Borrar</button>'
+          + '</td></tr>';
+      }).join('');
+
+      pintarEn('lista-' + ambito, '<h3>' + par[1] + '</h3>'
+        + '<div class="tabla-envoltura"><table><thead><tr>'
+        + '<th>Campo</th><th>Tipo</th><th>Comparación</th><th class="num">Orden</th>'
+        + '<th>Estado</th><th></th></tr></thead><tbody>'
+        + (filas || '<tr><td colspan="6">Sin campos propios.</td></tr>')
+        + '</tbody></table></div>'
+        + '<div class="botones"><button class="suave" data-nuevo="' + ambito + '">Agregar campo</button></div>');
+    });
+
+    enlazar('button[data-nuevo]', 'click', function () {
+      formaCampo({ ambito: this.getAttribute('data-nuevo') });
+    });
+    enlazar('button[data-editar]', 'click', function () {
+      var partes = this.getAttribute('data-editar').split('|');
+      formaCampo((todos[partes[0]] || []).filter(function (c) { return c.id === partes[1]; })[0]);
+    });
+    enlazar('button[data-borrar]', 'click', function () {
+      if (!confirm('¿Borrar este campo? Lo capturado se queda guardado por si lo vuelves a crear.')) { return; }
+      llamar('apiBorrarCampo', [this.getAttribute('data-borrar')]).then(function (r) {
+        avisar(r.desactivado
+          ? 'Lo usan ' + r.registros + ' registros: lo desactivé en vez de borrarlo.'
+          : 'Campo borrado.');
+        recargarInicial().then(pintarCampos);
+      }).catch(fallo);
+    });
+  }).catch(fallo);
+}
+
+function formaCampo(c) {
+  var d = c || {};
+  var esNuevo = !d.id;
+  var tipos = [['texto', 'Texto'], ['numero', 'Número'], ['fecha', 'Fecha'],
+               ['lista', 'Lista de opciones'], ['si_no', 'Sí / no']];
+
+  $('forma').innerHTML = '<div class="tarjeta">'
+    + '<div class="tarjeta-cab"><h3>' + (esNuevo ? 'Nuevo campo' : 'Editar campo') + ' · '
+    + (d.ambito === 'proveedor' ? 'proveedores' : 'tarifas') + '</h3></div>'
+    + '<div class="fila-campos">'
+    + campoTexto('k-etiqueta', 'Nombre del campo', d.etiqueta || '')
+    + '<label class="campo">Tipo<select id="k-tipo"' + (esNuevo ? '' : ' disabled') + '>'
+    + tipos.map(function (t) {
+        return '<option value="' + t[0] + '"' + (d.tipo === t[0] ? ' selected' : '') + '>'
+          + t[1] + '</option>';
+      }).join('') + '</select></label>'
+    + campoTexto('k-opciones', 'Opciones, separadas por |', (d.opciones || []).join(' | '))
+    + campoNumero('k-orden', 'Orden', d.orden === undefined ? 99 : d.orden)
+    + '</div>'
+    + '<label class="checkbox"><input type="checkbox" id="k-compara"'
+    + (d.compara ? ' checked' : '') + ' /> Separa la comparación '
+    + '(las tarifas con distinto valor no compiten entre sí)</label>'
+    + '<label class="checkbox"><input type="checkbox" id="k-activo"'
+    + (d.estado === 'inactivo' ? '' : ' checked') + ' /> Activo</label>'
+    + (esNuevo ? '' : '<p class="apagado">La clave no se cambia: lo capturado dejaría de encontrarse.</p>')
+    + '<div class="botones">'
+    + '<button class="accion" id="k-guardar">Guardar</button>'
+    + '<button class="suave" id="k-cancelar">Cancelar</button>'
+    + '</div></div>';
+
+  $('forma').scrollIntoView({ behavior: 'smooth', block: 'start' });
+  $('k-cancelar').addEventListener('click', function () { $('forma').innerHTML = ''; });
+  $('k-guardar').addEventListener('click', function () {
+    var datos = {
+      id: d.id || '', ambito: d.ambito, etiqueta: valorDe('k-etiqueta'),
+      clave: d.clave || '', tipo: valorDe('k-tipo') || d.tipo || 'texto',
+      opciones: valorDe('k-opciones'), orden: valorDe('k-orden'),
+      compara: marcado('k-compara') ? 'SI' : 'NO',
+      estado: marcado('k-activo') ? 'activo' : 'inactivo'
+    };
+    this.disabled = true;
+    llamar('apiGuardarCampo', [datos]).then(function () {
+      avisar('Campo guardado.');
+      $('forma').innerHTML = '';
+      recargarInicial().then(pintarCampos);
+    }).catch(function (err) {
+      fallo(err);
+      var b = $('k-guardar');
+      if (b) { b.disabled = false; }
     });
   });
 }
@@ -1275,11 +1560,14 @@ function pintarInforme(informe) {
     var etiqueta = f.accion === 'error' ? '<span class="etiqueta malo">error</span>'
       : (f.accion === 'actualiza' ? '<span class="etiqueta aviso">actualiza</span>'
                                   : '<span class="etiqueta ok">alta</span>');
+    var avisos = f.avisos || [];
     return '<tr' + (f.accion === 'error' ? ' class="inactiva"' : '') + '>'
       + '<td class="num mono">' + f.n + '</td>'
       + '<td>' + etiqueta + '</td>'
       + '<td>' + esc(f.resumen) + '</td>'
-      + '<td>' + (f.problemas.length ? esc(f.problemas.join(' ')) : '') + '</td>'
+      + '<td>' + (f.problemas.length ? esc(f.problemas.join(' ')) : '')
+      + (avisos.length ? '<div class="apagado">' + esc(avisos.join(' ')) + '</div>' : '')
+      + '</td>'
       + '</tr>';
   }).join('');
 
@@ -1304,8 +1592,13 @@ function pintarInforme(informe) {
     + (r.errores
         ? '<div class="nota aviso">' + r.errores + ' renglones traen problemas. Si importas '
           + 'de todos modos, esos se saltan y el resto entra.</div>' : '')
+    + (r.repetidos
+        ? '<div class="nota aviso">' + r.repetidos + (r.repetidos === 1
+            ? ' renglón repite una combinación que ya venía en el archivo'
+            : ' renglones repiten combinaciones que ya venían en el archivo')
+          + '. De cada repetición se queda la última.</div>' : '')
     + '<div class="tabla-envoltura"><table><thead><tr>'
-    + '<th class="num">#</th><th>Acción</th><th>Renglón</th><th>Problemas</th>'
+    + '<th class="num">#</th><th>Acción</th><th>Renglón</th><th>Problemas y avisos</th>'
     + '</tr></thead><tbody>' + filas + '</tbody></table></div>'
     + (informe.filas.length > 200
         ? '<p class="apagado">Muestro los primeros 200 de ' + informe.filas.length + '.</p>' : '')
@@ -1409,8 +1702,15 @@ function vistaAjustes() {
     + campoNumero('a-peso', 'Peso del precio (%)', c.pesoPrecio || 70)
     + campoNumero('a-aviso', 'Avisar vencimientos con (días)', c.diasAvisoVencimiento || 30)
     + '</div>'
+    + '<label class="checkbox"><input type="checkbox" id="a-tc-auto"'
+    + (String(c.tipoCambioAuto).toUpperCase() === 'SI' ? ' checked' : '')
+    + ' /> Traer el tipo de cambio del día solo (GOOGLEFINANCE, una vez al día)</label>'
+    + '<p class="apagado" id="a-tc-estado">' + esc(textoTipoCambio()) + '</p>'
     + '<p class="apagado">El peso del tiempo es lo que falte para 100 %.</p>'
-    + '<div class="botones"><button class="accion" id="a-guardar">Guardar ajustes</button></div>'
+    + '<div class="botones">'
+    + '<button class="accion" id="a-guardar">Guardar ajustes</button>'
+    + '<button class="suave" id="a-tc-ahora">Actualizar tipo de cambio ahora</button>'
+    + '</div>'
     + '</div>'
     + '<h3>Quién puede entrar</h3>'
     + '<div id="forma"></div>'
@@ -1422,6 +1722,7 @@ function vistaAjustes() {
       empresa: valorDe('a-empresa'),
       monedaBase: valorDe('a-moneda'),
       tipoCambioUSD: valorDe('a-tc'),
+      tipoCambioAuto: marcado('a-tc-auto') ? 'SI' : 'NO',
       pesoPrecio: String(peso),
       pesoTiempo: String(100 - peso),
       diasAvisoVencimiento: valorDe('a-aviso')
@@ -1438,7 +1739,36 @@ function vistaAjustes() {
     });
   });
 
+  $('a-tc-ahora').addEventListener('click', function () {
+    var boton = this;
+    boton.disabled = true;
+    avisar('Consultando el tipo de cambio…');
+    llamar('apiActualizarTipoCambio').then(function (tc) {
+      estado.inicial.tipoCambio = tc;
+      if (tc.falloHoy) {
+        avisar('No pude consultarlo. Sigo usando ' + tc.valor + '.', true);
+      } else {
+        avisar('Tipo de cambio del día: ' + tc.valor);
+      }
+      recargarInicial().then(vistaAjustes);
+    }).catch(function (err) {
+      fallo(err);
+      boton.disabled = false;
+    });
+  });
+
   cargarUsuarios();
+}
+
+/** Una línea que dice con qué tipo de cambio se está trabajando y de dónde salió. */
+function textoTipoCambio() {
+  var tc = estado.inicial.tipoCambio;
+  if (!tc || !tc.valor) {
+    return 'Sin tipo de cambio capturado.';
+  }
+  return 'Ahora mismo: USD 1 = ' + tc.valor + ' ' + moneda()
+    + ' · ' + tc.origen + (tc.fecha ? ' · ' + tc.fecha : '')
+    + (tc.falloHoy ? ' · hoy no se pudo consultar' : '');
 }
 
 function cargarUsuarios() {

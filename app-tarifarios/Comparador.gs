@@ -41,6 +41,9 @@ function agrupar_(filtros) {
     if (f.equipo && normalizar_(t.equipo) !== normalizar_(f.equipo)) {
       return false;
     }
+    if (f.movimiento && normalizar_(t.movimiento) !== normalizar_(f.movimiento)) {
+      return false;
+    }
     if (f.proveedorId && t.proveedorId !== String(f.proveedorId)) {
       return false;
     }
@@ -73,9 +76,23 @@ function agrupar_(filtros) {
     return true;
   });
 
+  // Un grupo son las tarifas que de verdad compiten entre sí: misma ruta, misma
+  // carga, misma unidad, mismo movimiento —un one way no compite con un
+  // redondo— y mismo valor en los campos personalizados marcados como "separa
+  // la comparación", por ejemplo la cuenta.
+  var separadores = campos_('tarifa', true).filter(function (c) { return c.compara; });
   var mapa = {};
   candidatas.forEach(function (t) {
-    var clave = t.rutaId + '|' + normalizar_(t.mercancia) + '|' + normalizar_(t.equipo);
+    var clave = [t.rutaId, normalizar_(t.mercancia), normalizar_(t.equipo),
+                 normalizar_(t.movimiento)].join('|');
+    var etiquetas = [];
+    separadores.forEach(function (campo) {
+      clave += '|' + campo.clave + '=' + normalizar_(t.extras[campo.clave]);
+      etiquetas.push({
+        etiqueta: campo.etiqueta,
+        valor: t.extrasTexto[campo.clave] || '(sin ' + campo.etiqueta.toLowerCase() + ')'
+      });
+    });
     if (!mapa[clave]) {
       mapa[clave] = {
         clave: clave,
@@ -88,6 +105,9 @@ function agrupar_(filtros) {
         mercanciaNombre: t.mercanciaNombre,
         equipo: t.equipo,
         equipoNombre: t.equipoNombre,
+        movimiento: t.movimiento,
+        movimientoNombre: t.movimientoNombre,
+        etiquetas: etiquetas,
         opciones: []
       };
     }
@@ -102,6 +122,9 @@ function agrupar_(filtros) {
     if (a.ruta !== b.ruta) {
       return a.ruta < b.ruta ? -1 : 1;
     }
+    if (a.movimientoNombre !== b.movimientoNombre) {
+      return a.movimientoNombre < b.movimientoNombre ? -1 : 1;
+    }
     if (a.mercanciaNombre !== b.mercanciaNombre) {
       return a.mercanciaNombre < b.mercanciaNombre ? -1 : 1;
     }
@@ -112,6 +135,7 @@ function agrupar_(filtros) {
     grupos: grupos,
     fecha: fecha,
     monedaBase: String(cfg.monedaBase || 'MXN'),
+    tipoCambio: tipoCambioDelDia_(false),
     criterio: { pesoPrecio: pesoPrecio, pesoTiempo: pesoTiempo, orden: f.orden || 'puntaje' },
     descartadas: descartadas
   };
@@ -128,35 +152,47 @@ function agrupar_(filtros) {
 function calificarGrupo_(grupo, pesoPrecio, pesoTiempo, orden) {
   var opciones = grupo.opciones;
   var precios = opciones.map(function (o) { return o.costoTotal; });
+
+  // El tiempo de entrega es opcional y casi ningún tarifario lo trae. Si a
+  // alguna opción del grupo le falta, no se puede repartir el puntaje entre
+  // precio y tiempo sin inventar datos: el grupo entero se ordena solo por
+  // precio y se dice en pantalla.
+  var conTiempo = opciones.every(function (o) { return o.tiempoHoras > 0; });
+  if (!conTiempo) {
+    pesoPrecio = 100;
+    pesoTiempo = 0;
+  }
   var tiempos = opciones.map(function (o) { return o.tiempoHoras; });
   var minP = Math.min.apply(null, precios);
   var maxP = Math.max.apply(null, precios);
-  var minT = Math.min.apply(null, tiempos);
-  var maxT = Math.max.apply(null, tiempos);
+  var minT = conTiempo ? Math.min.apply(null, tiempos) : 0;
+  var maxT = conTiempo ? Math.max.apply(null, tiempos) : 0;
 
   opciones.forEach(function (o) {
     var normP = maxP > minP ? (o.costoTotal - minP) / (maxP - minP) : 0;
     var normT = maxT > minT ? (o.tiempoHoras - minT) / (maxT - minT) : 0;
     o.puntaje = redondear_(100 * (1 - (pesoPrecio * normP + pesoTiempo * normT) / 100), 1);
     o.esMasBarata = o.costoTotal === minP;
-    o.esMasRapida = o.tiempoHoras === minT;
+    o.esMasRapida = conTiempo && o.tiempoHoras === minT;
     o.sobreprecio = redondear_(o.costoTotal - minP);
     o.sobreprecioPct = minP > 0 ? redondear_((o.costoTotal - minP) * 100 / minP, 1) : 0;
-    o.horasDeMas = redondear_(o.tiempoHoras - minT, 1);
+    o.horasDeMas = conTiempo ? redondear_(o.tiempoHoras - minT, 1) : 0;
     o.tiempoTexto = tiempoTexto_(o.tiempoHoras);
   });
 
-  opciones.sort(comparador_(orden));
+  opciones.sort(comparador_(conTiempo ? orden : 'precio'));
 
   opciones.forEach(function (o, i) {
     o.posicion = i + 1;
-    o.motivo = motivo_(o);
+    o.motivo = motivo_(o, conTiempo);
   });
 
   var mejor = opciones[0];
   var peor = opciones[opciones.length - 1];
 
   grupo.opciones = opciones;
+  grupo.conTiempo = conTiempo;
+  grupo.sinTiempo = opciones.filter(function (o) { return o.sinTiempo; }).length;
   grupo.mejor = mejor;
   grupo.segunda = opciones.length > 1 ? opciones[1] : null;
   grupo.total = opciones.length;
@@ -214,7 +250,12 @@ function comparador_(orden) {
  * Una línea que explica la posición, para que la tabla no sea solo números.
  * @private
  */
-function motivo_(o) {
+function motivo_(o, conTiempo) {
+  if (!conTiempo) {
+    // Sin tiempos capturados solo se puede hablar de dinero.
+    return o.esMasBarata ? 'La más barata.'
+      : 'Cuesta ' + o.sobreprecioPct + ' % más que la más barata.';
+  }
   if (o.esMasBarata && o.esMasRapida) {
     return 'La más barata y la más rápida.';
   }
@@ -290,6 +331,10 @@ function apiMejoresOpciones(filtros) {
       mercanciaNombre: g.mercanciaNombre,
       equipo: g.equipo,
       equipoNombre: g.equipoNombre,
+      movimiento: g.movimiento,
+      movimientoNombre: g.movimientoNombre,
+      etiquetas: g.etiquetas,
+      conTiempo: g.conTiempo,
       opciones: g.total,
       proveedores: g.proveedores,
       proveedor: g.mejor.proveedor,
@@ -320,6 +365,7 @@ function apiMejoresOpciones(filtros) {
     mejores: mejores,
     fecha: datos.fecha,
     monedaBase: datos.monedaBase,
+    tipoCambio: datos.tipoCambio,
     criterio: datos.criterio,
     descartadas: datos.descartadas,
     resumen: {
@@ -343,12 +389,13 @@ function contarRutas_(mejores) {
  * incluidas las vencidas, para ver cómo se ha movido un proveedor.
  * @return {Object} {ruta, mercancia, equipo, historial}
  */
-function apiHistorial(rutaId, mercancia, equipo) {
+function apiHistorial(rutaId, mercancia, equipo, movimiento) {
   exigirSesion_();
   var lista = tarifasEnriquecidas_().filter(function (t) {
     return t.rutaId === String(rutaId)
       && normalizar_(t.mercancia) === normalizar_(mercancia)
-      && normalizar_(t.equipo) === normalizar_(equipo);
+      && normalizar_(t.equipo) === normalizar_(equipo)
+      && (!movimiento || normalizar_(t.movimiento) === normalizar_(movimiento));
   });
   lista.sort(function (a, b) {
     var da = a.vigenciaDesde || '0000-00-00';
@@ -363,6 +410,7 @@ function apiHistorial(rutaId, mercancia, equipo) {
     ruta: lista.length ? lista[0].ruta : '',
     mercanciaNombre: lista.length ? lista[0].mercanciaNombre : '',
     equipoNombre: lista.length ? lista[0].equipoNombre : '',
+    movimientoNombre: lista.length ? lista[0].movimientoNombre : '',
     historial: lista
   };
 }

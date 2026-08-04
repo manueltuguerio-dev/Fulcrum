@@ -35,13 +35,16 @@ instalar();
 ok('crea la hoja de cálculo', !!PropertiesService.getScriptProperties().getProperty(PROP_HOJA));
 ok('crea todas las pestañas', Object.keys(TABLAS).every((t) => !!hoja_(t)));
 ok('deja al instalador como admin', usuarioActual_().rol === 'admin');
-ok('carga el catálogo de equipo', catalogos_().equipo.length >= 7);
+ok('carga el catálogo de equipo', catalogos_().equipo.length >= 8);
 ok('trae full y sencillo', ['full', 'sencillo'].every(
   (c) => !!buscarCatalogo_('equipo', c)));
 ok('carga el catálogo de mercancía', catalogos_().mercancia.length >= 6);
 instalar();
 ok('reinstalar no duplica al admin', leerTodo_('Usuarios').length === 1);
-ok('reinstalar no duplica catálogos', catalogos_().equipo.length === 7);
+ok('reinstalar no duplica catálogos', catalogos_().equipo.length === 8);
+ok('carga el catálogo de movimiento', catalogos_().movimiento.length === 2);
+ok('carga los campos personalizados de fábrica',
+  campos_('tarifa', true).length === 2);
 
 console.log('\n2. Proveedores');
 const norte = apiGuardarProveedor({ nombre: 'Transportes del Norte', rfc: 'TNO950101AB1',
@@ -70,8 +73,9 @@ debeFallar('no repite la misma ruta con otro acento',
 
 console.log('\n4. Tarifas y costo total');
 const t1 = apiGuardarTarifa({ proveedorId: norte, rutaId: mtyGdl, mercancia: 'general',
-  equipo: 'full', moneda: 'MXN', tarifa: 38500, combustiblePct: 12, casetas: 2450,
-  tiempoHoras: 18, vigenciaDesde: hoy, vigenciaHasta: enUnAnio });
+  equipo: 'full', movimiento: 'redondo', moneda: 'MXN', tarifa: 38500,
+  combustiblePct: 12, casetas: 2450, tiempoHoras: 18, vigenciaDesde: hoy,
+  vigenciaHasta: enUnAnio });
 const tarifaUno = apiTarifas({}).tarifas.filter((t) => t.id === t1)[0];
 ok('suma combustible y casetas al costo total', tarifaUno.costoTotal === 45570,
   String(tarifaUno.costoTotal));
@@ -79,37 +83,51 @@ ok('calcula el costo por kilómetro', tarifaUno.costoPorKm === 58.42,
   String(tarifaUno.costoPorKm));
 
 const enDolares = apiGuardarTarifa({ proveedorId: golfo, rutaId: manzCdmx, mercancia: 'general',
-  equipo: 'sencillo', moneda: 'USD', tarifa: 1000, tiempoHoras: 20 });
+  equipo: 'sencillo', movimiento: 'oneway', moneda: 'USD', tarifa: 1000, tiempoHoras: 20 });
 const tarifaUsd = apiTarifas({}).tarifas.filter((t) => t.id === enDolares)[0];
 ok('convierte dólares a la moneda base', tarifaUsd.costoTotal === 17500,
   String(tarifaUsd.costoTotal));
 
-debeFallar('exige tiempo de entrega',
-  () => apiGuardarTarifa({ proveedorId: norte, rutaId: mtyGdl, mercancia: 'general',
-    equipo: 'sencillo', tarifa: 100, tiempoHoras: 0 }), 'tiempo de entrega');
+// El tiempo de entrega es opcional: el tarifario real no lo trae.
+const sinTiempo = apiGuardarTarifa({ proveedorId: bajio, rutaId: mtyGdl,
+  mercancia: 'general', equipo: 'sencillo', movimiento: 'redondo', tarifa: 24800 });
+ok('acepta tarifas sin tiempo de entrega', !!sinTiempo);
+ok('las marca como sin tiempo',
+  apiTarifas({}).tarifas.filter((t) => t.id === sinTiempo)[0].sinTiempo === true);
+
 debeFallar('exige un proveedor dado de alta',
   () => apiGuardarTarifa({ proveedorId: 'inventado', rutaId: mtyGdl, mercancia: 'general',
-    equipo: 'full', tarifa: 100, tiempoHoras: 5 }), 'proveedor dado de alta');
-debeFallar('exige un tipo de equipo del catálogo',
+    equipo: 'full', movimiento: 'redondo', tarifa: 100 }), 'proveedor dado de alta');
+debeFallar('exige un tipo de unidad del catálogo',
   () => apiGuardarTarifa({ proveedorId: norte, rutaId: mtyGdl, mercancia: 'general',
-    equipo: 'platillo volador', tarifa: 100, tiempoHoras: 5 }), 'tipo de equipo');
+    equipo: 'platillo volador', movimiento: 'redondo', tarifa: 100 }), 'tipo de unidad');
+debeFallar('exige el tipo de movimiento',
+  () => apiGuardarTarifa({ proveedorId: norte, rutaId: mtyGdl, mercancia: 'general',
+    equipo: 'full', movimiento: '', tarifa: 100 }), 'tipo de movimiento');
 debeFallar('no acepta la misma tarifa dos veces',
   () => apiGuardarTarifa({ proveedorId: norte, rutaId: mtyGdl, mercancia: 'general',
-    equipo: 'full', tarifa: 39000, tiempoHoras: 18, vigenciaDesde: hoy }), 'ya tiene una tarifa');
+    equipo: 'full', movimiento: 'redondo', tarifa: 39000, tiempoHoras: 18,
+    vigenciaDesde: hoy }), 'ya tiene una tarifa');
+ok('pero el mismo precio en one way sí es otra tarifa',
+  !!apiGuardarTarifa({ proveedorId: norte, rutaId: mtyGdl, mercancia: 'general',
+    equipo: 'full', movimiento: 'oneway', tarifa: 20400, vigenciaDesde: hoy }));
 debeFallar('no acepta vigencia al revés',
   () => apiGuardarTarifa({ proveedorId: bajio, rutaId: mtyGdl, mercancia: 'general',
-    equipo: 'full', tarifa: 100, tiempoHoras: 5, vigenciaDesde: enUnAnio,
+    equipo: 'full', movimiento: 'redondo', tarifa: 100, vigenciaDesde: enUnAnio,
     vigenciaHasta: hoy }), 'termina antes de empezar');
 
 console.log('\n5. Comparador: de la mejor a la peor');
 // Un tablero limpio: mismos tres competidores, precios y tiempos conocidos.
 const rutaPrueba = apiGuardarRuta({ origen: 'Laredo', destino: 'Querétaro', km: 1000 });
 const barata = apiGuardarTarifa({ proveedorId: norte, rutaId: rutaPrueba, mercancia: 'general',
-  equipo: 'full', tarifa: 100, tiempoHoras: 20, vigenciaDesde: hoy, vigenciaHasta: enUnAnio });
+  equipo: 'full', movimiento: 'redondo', tarifa: 100, tiempoHoras: 20,
+  vigenciaDesde: hoy, vigenciaHasta: enUnAnio });
 const rapida = apiGuardarTarifa({ proveedorId: bajio, rutaId: rutaPrueba, mercancia: 'general',
-  equipo: 'full', tarifa: 120, tiempoHoras: 10, vigenciaDesde: hoy, vigenciaHasta: enUnAnio });
+  equipo: 'full', movimiento: 'redondo', tarifa: 120, tiempoHoras: 10,
+  vigenciaDesde: hoy, vigenciaHasta: enUnAnio });
 const cara = apiGuardarTarifa({ proveedorId: golfo, rutaId: rutaPrueba, mercancia: 'general',
-  equipo: 'full', tarifa: 200, tiempoHoras: 30, vigenciaDesde: hoy, vigenciaHasta: enUnAnio });
+  equipo: 'full', movimiento: 'redondo', tarifa: 200, tiempoHoras: 30,
+  vigenciaDesde: hoy, vigenciaHasta: enUnAnio });
 
 const comp = apiComparar({ rutaId: rutaPrueba });
 ok('arma un solo grupo por ruta y características', comp.grupos.length === 1);
@@ -142,7 +160,8 @@ ok('con el tiempo al 100 % gana la más rápida',
   soloTiempo.grupos[0].mejor.id === rapida);
 
 apiGuardarTarifa({ proveedorId: norte, rutaId: rutaPrueba, mercancia: 'general',
-  equipo: 'sencillo', tarifa: 60, tiempoHoras: 24, vigenciaDesde: hoy, vigenciaHasta: enUnAnio });
+  equipo: 'sencillo', movimiento: 'redondo', tarifa: 60, tiempoHoras: 24,
+  vigenciaDesde: hoy, vigenciaHasta: enUnAnio });
 ok('separa los grupos por tipo de equipo',
   apiComparar({ rutaId: rutaPrueba }).grupos.length === 2);
 ok('filtrar por equipo deja un solo grupo',
@@ -150,8 +169,8 @@ ok('filtrar por equipo deja un solo grupo',
 
 console.log('\n6. Vigencias');
 const vencida = apiGuardarTarifa({ proveedorId: golfo, rutaId: rutaPrueba, mercancia: 'general',
-  equipo: 'sencillo', tarifa: 10, tiempoHoras: 5, vigenciaDesde: sumarDias_(hoy, -60),
-  vigenciaHasta: ayer });
+  equipo: 'sencillo', movimiento: 'redondo', tarifa: 10, tiempoHoras: 5,
+  vigenciaDesde: sumarDias_(hoy, -60), vigenciaHasta: ayer });
 const conVencidas = apiComparar({ rutaId: rutaPrueba, equipo: 'sencillo' });
 ok('deja fuera las tarifas vencidas', conVencidas.grupos[0].opciones.length === 1);
 ok('reporta cuántas descartó', conVencidas.descartadas.vencidas === 1);
@@ -162,7 +181,8 @@ ok('el filtro "solo vigentes" deja fuera las vencidas',
   apiTarifas({ soloVigentes: true }).tarifas.every((t) => !t.vencida));
 
 const futura = apiGuardarTarifa({ proveedorId: golfo, rutaId: rutaPrueba, mercancia: 'general',
-  equipo: 'torton', tarifa: 90, tiempoHoras: 22, vigenciaDesde: sumarDias_(hoy, 30) });
+  equipo: 'torton', movimiento: 'redondo', tarifa: 90, tiempoHoras: 22,
+  vigenciaDesde: sumarDias_(hoy, 30) });
 ok('y las que todavía no arrancan',
   apiTarifas({ soloVigentes: true }).tarifas.every((t) => t.id !== futura));
 ok('el comparador de hoy tampoco las toma',
@@ -175,13 +195,13 @@ apiBorrarTarifa(vencida);
 
 console.log('\n7. Mejores opciones');
 const mejores = apiMejoresOpciones({});
-ok('devuelve una línea por combinación', mejores.mejores.length === 4, String(mejores.mejores.length));
+ok('devuelve una línea por combinación', mejores.mejores.length === 6, String(mejores.mejores.length));
 const lineaPrueba = mejores.mejores.filter((m) => m.ruta === 'Laredo → Querétaro'
   && m.equipo === 'full')[0];
 ok('la mejor de la ruta de prueba es la más rápida', lineaPrueba.proveedor === 'Fletes Bajío');
 ok('trae al segundo lugar', lineaPrueba.segundo === 'Transportes del Norte');
 ok('cuenta las opciones de la combinación', lineaPrueba.opciones === 3);
-ok('detecta las combinaciones sin competencia', mejores.resumen.sinCompetencia === 3,
+ok('detecta las combinaciones sin competencia', mejores.resumen.sinCompetencia === 5,
   String(mejores.resumen.sinCompetencia));
 ok('suma el ahorro de todas las combinaciones', mejores.resumen.ahorroTotal === 80);
 ok('cuenta las rutas involucradas', mejores.resumen.rutas === 3);
@@ -192,7 +212,7 @@ const csv = [
   'Transportes del Norte;Monterrey;Saltillo;General;Full;$12,500.00;10;450;6;01/01/2026;31/12/2026',
   'Fletes Bajío;Monterrey;Saltillo;General;Full;11,900;12;450;8;01/01/2026;31/12/2026',
   'Mudanzas Express;Monterrey;Saltillo;General;Torton;9,300;10;450;9;01/01/2026;31/12/2026',
-  'Fletes Bajío;Monterrey;Saltillo;General;Full;10,000;12;450;;01/01/2026;31/12/2026'
+  'Fletes Bajío;Monterrey;Saltillo;General;;10,000;12;450;;01/01/2026;31/12/2026'
 ].join('\n');
 
 const informe = apiImportarRevisar('tarifas', csv, {});
@@ -201,7 +221,9 @@ ok('reconoce las columnas con acentos y mayúsculas',
   informe.reconocidas.indexOf('mercancia') !== -1
   && informe.reconocidas.indexOf('tiempoHoras') !== -1);
 ok('cuenta cuatro renglones', informe.resumen.total === 4);
-ok('marca el renglón sin tiempo como error', informe.resumen.errores === 1);
+ok('marca el renglón sin unidad como error', informe.resumen.errores === 1);
+ok('el tiempo de entrega vacío ya no es error',
+  informe.filas[1].problemas.length === 0);
 ok('avisa qué proveedores va a dar de alta', informe.nuevos.proveedores.length === 1
   && informe.nuevos.proveedores[0] === 'Mudanzas Express');
 ok('avisa qué rutas va a dar de alta', informe.nuevos.rutas.length === 1);
@@ -245,7 +267,9 @@ ok('importa proveedores pegados desde Excel (tabuladores)', impProv.altas === 1)
 ok('no pierde la calificación', proveedorPorNombre_('Logística Peninsular').calificacion === 4.2);
 
 const plantilla = apiPlantilla('tarifas');
-ok('genera plantilla con encabezados', plantilla.contenido.split('\n')[0].indexOf('proveedor') === 0);
+ok('genera plantilla con encabezados', plantilla.contenido.split('\n')[0].indexOf('partner') === 0);
+ok('la plantilla incluye los campos personalizados',
+  plantilla.contenido.split('\n')[0].indexOf('Cuenta') !== -1);
 ok('la plantilla se puede volver a importar',
   apiImportarRevisar('tarifas', plantilla.contenido, {}).resumen.errores === 0);
 
@@ -277,7 +301,8 @@ ok('el usuario de consulta sí puede comparar', apiComparar({}).grupos.length > 
 ok('el usuario de consulta sí puede exportar', !!apiExportarCsv('mejores', {}).contenido);
 debeFallar('el usuario de consulta no puede capturar tarifas',
   () => apiGuardarTarifa({ proveedorId: norte, rutaId: mtyGdl, mercancia: 'general',
-    equipo: 'torton', tarifa: 1, tiempoHoras: 1 }), 'solo para el administrador');
+    equipo: 'torton', movimiento: 'redondo', tarifa: 1, tiempoHoras: 1 }),
+  'solo para el administrador');
 debeFallar('el usuario de consulta no puede importar',
   () => apiImportarAplicar('tarifas', csv, {}), 'solo para el administrador');
 sim.comoUsuario('nadie@fuera.com');
@@ -313,7 +338,169 @@ const sinTarifas = apiGuardarProveedor({ nombre: 'Prueba efímera' });
 ok('un proveedor sin tarifas sí se borra',
   apiBorrarProveedor(sinTarifas).borrado === true);
 
-console.log('\n13. Verificación final');
+console.log('\n14. Tipo de cambio del día');
+const tc = tipoCambioDelDia_(false);
+ok('sin GOOGLEFINANCE se queda con el valor manual', tc.valor === 20,
+  JSON.stringify(tc));
+ok('y dice que no pudo consultarlo', tc.falloHoy === true || tc.origen === 'manual');
+apiGuardarConfig({ tipoCambioAuto: 'NO', tipoCambioUSD: '19.80' });
+ok('con el automático apagado manda el valor capturado',
+  tipoCambioDelDia_(false).valor === 19.8);
+ok('el tipo de cambio nuevo se aplica al comparar',
+  apiTarifas({}).tarifas.filter((t) => t.id === enDolares)[0].costoTotal === 19800);
+ok('la tarifa en dólares dice con qué se convirtió',
+  apiTarifas({}).tarifas.filter((t) => t.id === enDolares)[0].tipoCambio === 19.8);
+ok('la tarifa en pesos no trae tipo de cambio',
+  apiTarifas({}).tarifas.filter((t) => t.id === t1)[0].tipoCambio === 0);
+ok('el comparativo publica el tipo de cambio usado',
+  apiComparar({}).tipoCambio.valor === 19.8);
+
+console.log('\n15. Campos personalizados');
+const campoCuenta = buscarCampo_('tarifa', 'cuenta');
+ok('la cuenta viene de fábrica', !!campoCuenta);
+const campoTipo = apiGuardarCampo({ ambito: 'tarifa', etiqueta: 'Tipo de contrato',
+  tipo: 'lista', opciones: 'Spot | Anual | Licitación', orden: 3 });
+ok('se puede agregar un campo de lista', !!campoTipo);
+debeFallar('una lista sin opciones no se guarda',
+  () => apiGuardarCampo({ ambito: 'tarifa', etiqueta: 'Vacío', tipo: 'lista' }),
+  'necesita sus opciones');
+debeFallar('no se repiten claves',
+  () => apiGuardarCampo({ ambito: 'tarifa', etiqueta: 'Cuenta' }), 'Ya hay un campo');
+
+const conCuenta = apiGuardarTarifa({ proveedorId: bajio, rutaId: rutaPrueba,
+  mercancia: 'general', equipo: 'plataforma', movimiento: 'redondo', tarifa: 500,
+  vigenciaDesde: hoy, extras: { cuenta: 'TUNY', revisada: 'SI',
+                                tipodecontrato: 'Anual', inventado: 'x' } });
+const guardada = apiTarifas({}).tarifas.filter((t) => t.id === conCuenta)[0];
+ok('guarda el valor del campo', guardada.extras.cuenta === 'TUNY');
+ok('normaliza el sí/no', guardada.extras.revisada === 'SI');
+ok('respeta las opciones de la lista', guardada.extras.tipodecontrato === 'Anual');
+ok('ignora lo que no es un campo definido', guardada.extras.inventado === undefined);
+ok('lo muestra en texto', guardada.extrasTexto.revisada === 'Sí');
+ok('se puede buscar por el valor del campo',
+  apiTarifas({ texto: 'TUNY' }).tarifas.length === 1);
+debeFallar('una opción fuera de la lista no pasa',
+  () => { const id = apiGuardarTarifa({ proveedorId: golfo, rutaId: rutaPrueba,
+      mercancia: 'general', equipo: 'plataforma', movimiento: 'redondo', tarifa: 510,
+      vigenciaDesde: hoy, extras: { tipodecontrato: 'Inventado' } });
+    const t = apiTarifas({}).tarifas.filter((x) => x.id === id)[0];
+    if (t.extras.tipodecontrato !== undefined) { throw new Error('se coló'); }
+    throw new Error('descartada'); }, 'descartada');
+
+// Un campo que separa la comparación parte el tablero en dos.
+apiGuardarCampo({ id: campoCuenta.id, ambito: 'tarifa', etiqueta: 'Cuenta',
+  clave: 'cuenta', tipo: 'texto', compara: 'SI', orden: 1 });
+const conSeparacion = apiComparar({ rutaId: rutaPrueba, equipo: 'plataforma' });
+ok('las tarifas de una cuenta no compiten contra las de otra',
+  conSeparacion.grupos.length === 2, String(conSeparacion.grupos.length));
+ok('el grupo dice de qué cuenta es',
+  conSeparacion.grupos.some((g) => g.etiquetas.some((e) => e.valor === 'TUNY')));
+apiGuardarCampo({ id: campoCuenta.id, ambito: 'tarifa', etiqueta: 'Cuenta',
+  clave: 'cuenta', tipo: 'texto', compara: 'NO', orden: 1 });
+ok('al quitar la separación vuelven a competir',
+  apiComparar({ rutaId: rutaPrueba, equipo: 'plataforma' }).grupos.length === 1);
+
+console.log('\n16. El tarifario ejecutivo real');
+const real = require('fs').readFileSync(__dirname + '/tarifario-ejecutivo.csv', 'utf8');
+const informeReal = apiImportarRevisar('tarifas', real, {});
+ok('reconoce las columnas del tarifario ejecutivo',
+  ['proveedor', 'origen', 'destino', 'mercancia', 'movimiento', 'equipo', 'moneda',
+   'tarifa', 'vigenciaHasta'].every((c) => informeReal.reconocidas.indexOf(c) !== -1),
+  informeReal.reconocidas.join(', '));
+ok('mapea "REVISIÓN DE TARIFA" al campo personalizado',
+  informeReal.reconocidas.indexOf('extra:revisada') !== -1);
+ok('ignora la columna de numeración', informeReal.ignoradas.indexOf('No.') !== -1);
+// El archivo real trae un renglón sin unidad ni tarifa —una ruta apartada sin
+// precio— y dos renglones con la misma combinación. Las dos cosas se reportan.
+ok('marca el renglón incompleto', informeReal.resumen.errores === 1,
+  JSON.stringify(informeReal.filas.filter((f) => f.problemas.length).map((f) => f.n)));
+ok('dice qué le falta', informeReal.filas.filter((f) => f.problemas.length)[0]
+  .problemas.join(' ').indexOf('tarifa') !== -1);
+ok('avisa de la combinación repetida', informeReal.resumen.repetidos === 1,
+  String(informeReal.resumen.repetidos));
+ok('y dice contra qué renglón choca',
+  informeReal.filas.some((f) => f.avisos.length
+    && f.avisos[0].indexOf('Repite la combinación') === 0));
+ok('da de alta los partners que faltan', informeReal.nuevos.proveedores.length > 0);
+
+const aplicadoReal = apiImportarAplicar('tarifas', real, {});
+ok('importa los 24 renglones aprovechables', aplicadoReal.altas === 24,
+  JSON.stringify(aplicadoReal));
+ok('y omite el incompleto', aplicadoReal.omitidas === 1);
+const altamira = apiTarifas({ texto: 'ALTAMIRA' }).tarifas;
+ok('separa redondo de one way',
+  altamira.some((t) => t.movimiento === 'redondo')
+  && altamira.some((t) => t.movimiento === 'oneway'));
+ok('lee la revisión de tarifa',
+  altamira.some((t) => t.extras.revisada === 'SI')
+  && altamira.some((t) => t.extras.revisada === 'NO'));
+ok('respeta las notas con comas y comillas',
+  altamira.some((t) => t.notas.indexOf('drop off, considerar maniobras') !== -1));
+
+const laredo = apiTarifas({ texto: 'Laredo' }).tarifas.filter((t) => t.moneda === 'USD');
+ok('trae las tarifas en dólares', laredo.length > 0);
+ok('las convierte con el tipo de cambio',
+  laredo[0].costoTotal === redondear_(laredo[0].tarifa * 19.8),
+  laredo[0].tarifa + ' USD -> ' + laredo[0].costoTotal);
+
+const compReal = apiComparar({ texto: 'ALTAMIRA - MONTERREY' });
+ok('compara sin tiempos capturados', compReal.grupos.length > 0);
+const grupoReal = compReal.grupos.filter((g) => g.total > 1)[0];
+ok('avisa que ese grupo no tiene tiempos', grupoReal.conTiempo === false);
+ok('y lo ordena solo por precio',
+  grupoReal.opciones[0].costoTotal <= grupoReal.opciones[1].costoTotal);
+ok('el motivo habla solo de dinero',
+  grupoReal.mejor.motivo === 'La más barata.', grupoReal.mejor.motivo);
+ok('un redondo nunca cae en el mismo tablero que un one way',
+  compReal.grupos.every((g) => g.opciones.every(
+    (o) => o.movimiento === g.movimiento)));
+
+const antesDeReimportar = leerTodo_('Tarifas').length;
+const reimportado = apiImportarAplicar('tarifas', real, {});
+ok('reimportar el mismo archivo no duplica nada',
+  reimportado.altas === 0 && leerTodo_('Tarifas').length === antesDeReimportar,
+  JSON.stringify(reimportado));
+
+console.log('\n17. Editar, duplicar y eliminar');
+const paraEditar = altamira[0];
+apiGuardarTarifa({ id: paraEditar.id, proveedorId: paraEditar.proveedorId,
+  rutaId: paraEditar.rutaId, mercancia: paraEditar.mercancia, equipo: paraEditar.equipo,
+  movimiento: paraEditar.movimiento, moneda: paraEditar.moneda, tarifa: 99999,
+  vigenciaDesde: paraEditar.vigenciaDesde, extras: paraEditar.extras });
+ok('editar cambia el precio',
+  apiTarifas({}).tarifas.filter((t) => t.id === paraEditar.id)[0].tarifa === 99999);
+const copia = apiDuplicarTarifa(paraEditar.id);
+const laCopia = apiTarifas({}).tarifas.filter((t) => t.id === copia)[0];
+ok('duplicar deja la copia inactiva', laCopia.estado === 'inactivo');
+ok('y sin vigencia, para que no compita', laCopia.vigenciaDesde === '');
+ok('la copia conserva los campos personalizados',
+  JSON.stringify(laCopia.extras) === JSON.stringify(paraEditar.extras));
+debeFallar('no se duplica dos veces sin editar',
+  () => apiDuplicarTarifa(paraEditar.id), 'Ya hay una copia');
+ok('la copia inactiva no estorba a la original',
+  apiComparar({ texto: 'ALTAMIRA' }).grupos.every(
+    (g) => g.opciones.every((o) => o.id !== copia)));
+apiCambiarEstadoTarifa(copia, true);
+ok('se puede activar', apiTarifas({}).tarifas
+  .filter((t) => t.id === copia)[0].estado === 'activo');
+const antesDeBorrar = leerTodo_('Tarifas').length;
+apiBorrarTarifa(copia);
+ok('y eliminar', leerTodo_('Tarifas').length === antesDeBorrar - 1);
+
+console.log('\n18. Migración de instalaciones viejas');
+// Así se ve una tarifa capturada antes de que existiera el tipo de movimiento.
+insertar_('Tarifas', { id: nuevoId_(), proveedorId: norte, rutaId: mtyGdl,
+  mercancia: 'general', equipo: 'rabon', moneda: 'MXN', tarifa: 100,
+  tiempoHoras: 0, estado: 'activo', movimiento: '', extras: '' });
+ok('hay una tarifa sin movimiento',
+  leerTodo_('Tarifas').some((t) => texto_(t.movimiento) === ''));
+instalar();
+ok('reinstalar la marca como redondo',
+  leerTodo_('Tarifas').every((t) => texto_(t.movimiento) !== ''));
+ok('y no toca las que ya lo traían',
+  apiTarifas({}).tarifas.some((t) => t.movimiento === 'oneway'));
+
+console.log('\n19. Verificación final');
 ok('verificar() dice que todo está listo', verificar() === true);
 
 console.log('\n' + pasadas + ' pasadas, ' + fallidas + ' fallidas\n');
