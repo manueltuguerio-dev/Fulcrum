@@ -34,7 +34,28 @@ Tiempo estimado: 15 minutos.
 ## Requisitos
 
 - Una cuenta de Google (personal o de Workspace de TLTERMINALS).
-- Los archivos de la carpeta `app-tarifarios/`.
+- Los archivos de la carpeta `app-tarifarios/`, o el ZIP ya armado.
+
+### El ZIP, si prefieres no andar buscando archivos
+
+```bash
+python3 armar_paquete.py
+```
+
+Deja `TARIFARIOS-appscript.zip` con todo lo que se pega en Apps Script, en dos
+presentaciones —eliges una— más las plantillas de importación:
+
+| Dentro del ZIP | Qué es |
+|---|---|
+| `opcion-A-diez-archivos/` | Los 14 archivos tal como están en el proyecto. Recomendada si alguien va a darle mantenimiento |
+| `opcion-B-un-archivo/` | Lo mismo con todo el código junto en `Codigo.gs`: 5 archivos en vez de 14. Se instala más rápido |
+| `plantillas/` | CSV de ejemplo para pedirle su tarifario a un transportista |
+
+Las dos opciones son el mismo sistema y pasan las mismas pruebas. **Usa una
+sola**: cargar las dos duplicaría cada función.
+
+Si eliges la opción B, en el Paso 2 pegas un solo archivo en vez de diez; los
+pasos 3 en adelante son iguales.
 
 ### Qué archivo va dónde
 

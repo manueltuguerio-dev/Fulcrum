@@ -197,9 +197,15 @@ global.DriveApp = {
 };
 
 // ------------------------------------------------------- cargar el código real
-['Db.gs', 'Sesion.gs', 'TipoCambio.gs', 'Campos.gs', 'Catalogos.gs', 'Tarifas.gs',
- 'Comparador.gs', 'Importar.gs', 'Exportar.gs', 'Code.gs'].forEach((archivo) => {
-  const codigo = fs.readFileSync(path.join(RAIZ, archivo), 'utf8');
+// Normalmente carga los diez .gs del proyecto. Con ARCHIVO_UNICO carga en su
+// lugar la versión de todo-en-uno, para comprobar que esa también sirve.
+const ARCHIVOS = process.env.ARCHIVO_UNICO
+  ? [process.env.ARCHIVO_UNICO]
+  : ['Db.gs', 'Sesion.gs', 'TipoCambio.gs', 'Campos.gs', 'Catalogos.gs', 'Tarifas.gs',
+     'Comparador.gs', 'Importar.gs', 'Exportar.gs', 'Code.gs'];
+
+ARCHIVOS.forEach((archivo) => {
+  const codigo = fs.readFileSync(path.isAbsolute(archivo) ? archivo : path.join(RAIZ, archivo), 'utf8');
   try {
     (0, eval)(codigo);
   } catch (err) {
