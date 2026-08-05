@@ -101,7 +101,19 @@ var COL_TEM = ['Etapa', 'Tiempo estimado (min)'];
    UTILIDADES
    ================================================================ */
 
-function ss_() { return SpreadsheetApp.getActiveSpreadsheet(); }
+function ss_() {
+  var active = SpreadsheetApp.getActiveSpreadsheet();
+  if (active) return active;
+  // Script autónomo: buscar o crear la hoja y guardar su ID
+  var props = PropertiesService.getScriptProperties();
+  var id = props.getProperty('LOGITIME_SS_ID');
+  if (id) {
+    try { return SpreadsheetApp.openById(id); } catch (e) { /* ID obsoleto, crear nueva */ }
+  }
+  var ss = SpreadsheetApp.create('LogiTime — Base de datos');
+  props.setProperty('LOGITIME_SS_ID', ss.getId());
+  return ss;
+}
 
 function hoja_(nombre, columnas) {
   var ss = ss_(), sh = ss.getSheetByName(nombre);
