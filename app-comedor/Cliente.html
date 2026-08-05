@@ -23,7 +23,35 @@ function olvidarToken() {
   try { window.localStorage.removeItem(LLAVE_TOKEN); } catch (e) { return; }
 }
 
-function $(id) { return document.getElementById(id); }
+/**
+ * Busca un elemento por id. Si ya no está en la página devuelve un objeto
+ * inofensivo en vez de null.
+ *
+ * Por qué: las respuestas del servidor llegan después. Si el usuario cambia de
+ * pestaña mientras una está en camino, el código que la esperaba intenta pintar
+ * sobre elementos que ya se fueron. Antes eso reventaba con "Cannot set
+ * properties of null"; ahora simplemente no hace nada, que es lo correcto
+ * cuando el usuario ya está viendo otra cosa.
+ */
+function $(id) {
+  return document.getElementById(id) || nodoAusente();
+}
+
+function nodoAusente() {
+  var vacio = {
+    innerHTML: '', textContent: '', value: '', checked: false, disabled: false,
+    files: null, style: {},
+    classList: { add: function () {}, remove: function () {}, contains: function () { return false; } },
+    addEventListener: function () {},
+    insertAdjacentHTML: function () {},
+    scrollIntoView: function () {},
+    getAttribute: function () { return null; },
+    setAttribute: function () {},
+    focus: function () {},
+    ausente: true
+  };
+  return vacio;
+}
 
 function esc(texto) {
   return String(texto === null || texto === undefined ? '' : texto)
@@ -50,7 +78,7 @@ function llamar(nombre, args) {
 
 var temporizadorAviso = null;
 function avisar(mensaje, malo) {
-  var caja = $('aviso');
+  var caja = $('notificacion');
   caja.textContent = mensaje;
   caja.className = malo ? 'malo' : '';
   clearTimeout(temporizadorAviso);
@@ -679,7 +707,7 @@ function cargarMenuAdmin() {
       + '<div class="fila-campos">'
       + '<label class="campo">Hora corte<input type="time" id="horaCorte" value="'
       + esc(menu.horaCorte) + '"></label>'
-      + '<label class="campo">Aviso del día<input type="text" id="aviso" value="'
+      + '<label class="campo">Aviso del día<input type="text" id="avisoDia" value="'
       + esc(menu.aviso) + '" placeholder="Opcional"></label></div>'
       + '<div class="botones"><button class="suave" id="guardarMenu">Guardar</button>'
       + (menu.estado === 'publicado' ? ''
@@ -714,7 +742,7 @@ function cargarMenuAdmin() {
     $('contenido').innerHTML = html;
 
     $('guardarMenu').addEventListener('click', function () {
-      llamar('apiActualizarMenu', [fecha, $('horaCorte').value, $('aviso').value])
+      llamar('apiActualizarMenu', [fecha, $('horaCorte').value, $('avisoDia').value])
         .then(function () { avisar('Menú actualizado.'); cargarMenuAdmin(); }).catch(fallo);
     });
     if ($('publicar')) {

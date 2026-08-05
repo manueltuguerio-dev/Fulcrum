@@ -141,13 +141,24 @@ var NOMBRES = __NOMBRES__;
 function Corredor() { this.__ok = null; this.__mal = null; }
 Corredor.prototype.withSuccessHandler = function (f) { this.__ok = f; return this; };
 Corredor.prototype.withFailureHandler = function (f) { this.__mal = f; return this; };
+window.__retardo = 0;
 Corredor.prototype.ejecutar = function (token, nombre, args) {
   var self = this;
   if (NOMBRES.indexOf(nombre) === -1) {
     window.__errores.push('funcion no declarada en el despachador: ' + nombre);
   }
   var datos = RESPUESTAS.hasOwnProperty(nombre) ? RESPUESTAS[nombre] : true;
-  setTimeout(function () { self.__ok(JSON.parse(JSON.stringify(datos))); }, 0);
+  setTimeout(function () { self.__ok(JSON.parse(JSON.stringify(datos))); }, window.__retardo);
+};
+window.__idsRepetidos = function () {
+  var vistos = {};
+  var repetidos = [];
+  var nodos = document.querySelectorAll('[id]');
+  for (var i = 0; i < nodos.length; i++) {
+    var id = nodos[i].id;
+    if (vistos[id]) { repetidos.push(id); } else { vistos[id] = true; }
+  }
+  return repetidos;
 };
 window.google = { script: {} };
 Object.defineProperty(window.google.script, 'run', {
@@ -171,6 +182,14 @@ def armar(con_sonda):
     if con_sonda:
         sonda = """
 <script>
+// Los fallos del servidor no llegan como excepción: se muestran como aviso
+// rojo. Sin envolver avisar(), la sonda no los ve.
+var avisarOriginal = window.avisar;
+window.avisar = function (mensaje, malo) {
+  if (malo) { window.__errores.push('aviso de error: ' + mensaje); }
+  return avisarOriginal.apply(null, arguments);
+};
+
 setTimeout(function () {
   var vistas = ['pedir', 'mios', 'hoy', 'menu', 'platillos', 'empleados', 'reportes', 'ajustes'];
   var i = 0;
@@ -181,9 +200,25 @@ setTimeout(function () {
         if (!document.getElementById('guardar')) {
           window.__errores.push('el formulario de pedido no se armo');
         }
+        var repetidos = window.__idsRepetidos();
+        if (repetidos.length) {
+          window.__errores.push('el formulario repite ids: ' + repetidos.join(', '));
+        }
       } catch (e) { window.__errores.push('formulario: ' + e.message); }
-      document.body.innerHTML = '<pre id="salida">'
-        + (window.__errores.length ? window.__errores.join('\\n') : 'SIN ERRORES') + '</pre>';
+
+      // Carrera: se pide una vista lenta y se cambia de pestaña antes de que
+      // llegue la respuesta. Era lo que producía el error de innerHTML.
+      window.__retardo = 400;
+      try {
+        estado.vista = 'menu'; pintarBarra(); pintar();
+        setTimeout(function () { estado.vista = 'reportes'; pintarBarra(); pintar(); }, 40);
+        setTimeout(function () { estado.vista = 'pedir'; pintarBarra(); pintar(); }, 90);
+      } catch (e) { window.__errores.push('carrera: ' + e.message); }
+
+      setTimeout(function () {
+        document.body.innerHTML = '<pre id="salida">'
+          + (window.__errores.length ? window.__errores.join('\\n') : 'SIN ERRORES') + '</pre>';
+      }, 1200);
       return;
     }
     var v = vistas[i++];
@@ -195,6 +230,10 @@ setTimeout(function () {
       setTimeout(function () {
         if (document.getElementById('vista').innerHTML.length < 40) {
           window.__errores.push('la vista ' + v + ' quedo vacia');
+        }
+        var repetidos = window.__idsRepetidos();
+        if (repetidos.length) {
+          window.__errores.push('la vista ' + v + ' repite ids: ' + repetidos.join(', '));
         }
         siguiente();
       }, 160);
