@@ -659,6 +659,16 @@ function _crearEtapa(shEta, idManiobra, folio, numEtapa, nombreEtapa, tiempoEst)
    MANIOBRAS
    ================================================================ */
 
+// Formatea observaciones + campos extra personalizados
+function _fmtObs(data) {
+  var extra = data.campos_extra || {};
+  var keys  = Object.keys(extra).filter(function (k) { return String(extra[k] || '').trim(); });
+  var prefix = keys.length
+    ? '[' + keys.map(function (k) { return k + ': ' + extra[k]; }).join(' | ') + '] '
+    : '';
+  return prefix + (data.observaciones || '');
+}
+
 function iniciarManiobra(data) {
   var sh      = hoja_(HOJA, COLUMNAS);
   var shEta   = hoja_(HOJA_ETA, COL_ETA);
@@ -683,7 +693,7 @@ function iniciarManiobra(data) {
     [].concat(data.ayudantes || []).join('; '),
     'en_curso', ahora, '', 0, '', '', '', 0, '', '', '',
     data.dano_origen ? 'SÍ' : 'NO', data.dano_origen_desc || '',
-    'NO', '', data.observaciones || '', 'EN CURSO', usuario_(), ahora
+    'NO', '', _fmtObs(data), 'EN CURSO', usuario_(), ahora
   ]);
 
   var tiempoEst = tiempos[primeraEta] || 0;
@@ -721,7 +731,7 @@ function registrarManiobra(data) {
     total, demora, data.causa_demora || '', efectivo, minPieza,
     data.dano_origen ? 'SÍ' : 'NO', data.dano_origen_desc || '',
     data.dano_maniobra ? 'SÍ' : 'NO', data.dano_maniobra_desc || '',
-    data.observaciones || '', semaforo_(total, cfg), usuario_(), new Date()
+    _fmtObs(data), semaforo_(total, cfg), usuario_(), new Date()
   ]);
   return { ok: true, id: id, folio: folio, tiempo_total_min: total };
 }
@@ -735,7 +745,7 @@ function eliminarManiobra(id) {
   // Eliminar etapas del registro y limpiar Properties
   if (shEta.getLastRow() >= 2) {
     var eta = shEta.getRange(2, 1, shEta.getLastRow() - 1, 2).getValues();
-    var props = PropertiesService.getDocumentProperties();
+    var props = PropertiesService.getScriptProperties();
     for (var i = eta.length - 1; i >= 0; i--) {
       if (String(eta[i][1]) === String(id)) {
         props.deleteProperty('pausa_etapa_' + String(eta[i][0]));
@@ -779,7 +789,7 @@ function getManiobras(filtros) {
 function getManiobrasEnCurso() {
   var shM   = hoja_(HOJA, COLUMNAS);
   var shEta = hoja_(HOJA_ETA, COL_ETA);
-  var props = PropertiesService.getDocumentProperties();
+  var props = PropertiesService.getScriptProperties();
 
   if (shM.getLastRow() < 2) return [];
   var mansVals = shM.getRange(2, 1, shM.getLastRow() - 1, COLUMNAS.length).getValues();
@@ -859,30 +869,34 @@ function pausarEtapa(idEtapa, causa) {
   var fila    = buscarFila_(shEta, idEtapa);
   if (fila < 0) throw new Error('Etapa no encontrada');
 
-  var props   = PropertiesService.getDocumentProperties();
+  // Lectura única de toda la fila (evita múltiples llamadas API)
+  var rowData = shEta.getRange(fila, 1, 1, COL_ETA.length).getValues()[0];
+  var estado  = String(rowData[5]  || '');  // col 6 Estado
+  var idMan   = String(rowData[1]  || '');  // col 2 ID_maniobra
+  var acumPrev= Number(rowData[14] || 0);   // col 15 Pausa_acum_seg
+
+  var props   = PropertiesService.getScriptProperties();
   var propKey = 'pausa_etapa_' + idEtapa;
-  var estado  = shEta.getRange(fila, 6).getValue();
-  var idMan   = String(shEta.getRange(fila, 2).getValue());
   var shM     = hoja_(HOJA, COLUMNAS);
   var filaM   = buscarFila_(shM, idMan);
+  var nuevoEstado;
 
   if (estado === 'en_pausa') {
-    // Reanudar
     var desde = Number(props.getProperty(propKey) || 0);
-    var acum  = Number(shEta.getRange(fila, 15).getValue() || 0);
-    if (desde) acum += Math.round((new Date().getTime() - desde) / 1000);
+    var acum  = acumPrev + (desde ? Math.round((Date.now() - desde) / 1000) : 0);
     shEta.getRange(fila, 15).setValue(acum);
-    shEta.getRange(fila, 6).setValue('en_curso');
+    shEta.getRange(fila,  6).setValue('en_curso');
     props.deleteProperty(propKey);
     if (filaM > 0) shM.getRange(filaM, 21).setValue('en_curso');
+    nuevoEstado = 'en_curso';
   } else {
-    // Pausar
-    props.setProperty(propKey, String(new Date().getTime()));
+    props.setProperty(propKey, String(Date.now()));
     shEta.getRange(fila, 6).setValue('en_pausa');
     if (causa) shEta.getRange(fila, 16).setValue(causa);
     if (filaM > 0) shM.getRange(filaM, 21).setValue('en_pausa');
+    nuevoEstado = 'en_pausa';
   }
-  return { ok: true, estado: shEta.getRange(fila, 6).getValue() };
+  return { ok: true, estado: nuevoEstado };
 }
 
 function finalizarEtapa(idEtapa, extras) {
@@ -891,34 +905,39 @@ function finalizarEtapa(idEtapa, extras) {
   var fila    = buscarFila_(shEta, idEtapa);
   if (fila < 0) throw new Error('Etapa no encontrada');
 
-  var props   = PropertiesService.getDocumentProperties();
+  // Lectura única de toda la fila
+  var rowData    = shEta.getRange(fila, 1, 1, COL_ETA.length).getValues()[0];
+  var idManiobra = String(rowData[1] || '');   // col 2
+  var folio      = String(rowData[2] || '');   // col 3
+  var numEtapa   = Number(rowData[3] || 0);    // col 4
+  var horaInicio = String(rowData[7] || '');   // col 8
+  var tiempoEst  = Number(rowData[11] || 0);  // col 12
+  var acum       = Number(rowData[14] || 0);  // col 15
+
+  var props   = PropertiesService.getScriptProperties();
   var propKey = 'pausa_etapa_' + idEtapa;
-  var acum    = Number(shEta.getRange(fila, 15).getValue() || 0);
   var desde   = Number(props.getProperty(propKey) || 0);
-  if (desde) { acum += Math.round((new Date().getTime() - desde) / 1000); props.deleteProperty(propKey); }
+  if (desde) { acum += Math.round((Date.now() - desde) / 1000); props.deleteProperty(propKey); }
 
-  var ahora      = new Date();
-  var horaInicio = String(shEta.getRange(fila, 8).getValue() || '');
-  var horaFin    = hhmm_(ahora);
-  var tiempoMin  = minutosEntre(horaInicio, horaFin);
-  var tiempoEst  = Number(shEta.getRange(fila, 12).getValue() || 0);
-  var pausaMins  = Math.round(acum / 60);
-  var demora     = Number(extras.demora_min || 0) + pausaMins;
-  var efectivo   = (tiempoMin !== '') ? Math.max(0, tiempoMin - demora) : 0;
-  var retraso    = (tiempoEst > 0 && tiempoMin !== '') ? Math.max(0, tiempoMin - tiempoEst) : 0;
+  var ahora     = new Date();
+  var horaFin   = hhmm_(ahora);
+  var tiempoMin = minutosEntre(horaInicio, horaFin);
+  var pausaMins = Math.round(acum / 60);
+  var demora    = Number(extras.demora_min || 0) + pausaMins;
+  var efectivo  = (tiempoMin !== '') ? Math.max(0, tiempoMin - demora) : 0;
+  var retraso   = (tiempoEst > 0 && tiempoMin !== '') ? Math.max(0, tiempoMin - tiempoEst) : 0;
 
-  shEta.getRange(fila,  6).setValue('finalizada');
-  shEta.getRange(fila,  9).setValue(ahora);
-  shEta.getRange(fila, 10).setValue(horaFin);
-  shEta.getRange(fila, 11).setValue(tiempoMin);
-  shEta.getRange(fila, 13).setValue(retraso);
-  shEta.getRange(fila, 15).setValue(acum);
-  if (extras.causa_demora)  shEta.getRange(fila, 16).setValue(extras.causa_demora);
-  if (extras.observaciones) shEta.getRange(fila, 17).setValue(extras.observaciones);
-
-  var idManiobra = String(shEta.getRange(fila, 2).getValue());
-  var folio      = String(shEta.getRange(fila, 3).getValue());
-  var numEtapa   = Number(shEta.getRange(fila, 4).getValue());
+  // Escritura en batch: modificar array y escribir en una sola llamada
+  var updRow = rowData.slice();
+  updRow[5]  = 'finalizada';
+  updRow[8]  = ahora;
+  updRow[9]  = horaFin;
+  updRow[10] = tiempoMin;
+  updRow[12] = retraso;
+  updRow[14] = acum;
+  if (extras.causa_demora)  updRow[15] = extras.causa_demora;
+  if (extras.observaciones) updRow[16] = extras.observaciones;
+  shEta.getRange(fila, 1, 1, COL_ETA.length).setValues([updRow]);
 
   return _avanzarOManiobra(idManiobra, folio, numEtapa, extras);
 }
@@ -928,15 +947,17 @@ function marcarEtapaNoAplica(idEtapa) {
   var fila  = buscarFila_(shEta, idEtapa);
   if (fila < 0) throw new Error('Etapa no encontrada');
 
-  var props = PropertiesService.getDocumentProperties();
+  var props = PropertiesService.getScriptProperties();
   props.deleteProperty('pausa_etapa_' + idEtapa);
+
+  // Lectura única de fila para extraer datos necesarios
+  var rowData    = shEta.getRange(fila, 1, 1, COL_ETA.length).getValues()[0];
+  var idManiobra = String(rowData[1] || '');
+  var folio      = String(rowData[2] || '');
+  var numEtapa   = Number(rowData[3] || 0);
 
   shEta.getRange(fila,  6).setValue('no_aplica');
   shEta.getRange(fila, 14).setValue('SÍ');
-
-  var idManiobra = String(shEta.getRange(fila, 2).getValue());
-  var folio      = String(shEta.getRange(fila, 3).getValue());
-  var numEtapa   = Number(shEta.getRange(fila, 4).getValue());
 
   return _avanzarOManiobra(idManiobra, folio, numEtapa, {});
 }
@@ -1142,6 +1163,59 @@ function serie(periodo, dias) {
     var m = mapa[k];
     return { periodo: k, maniobras: m.maniobras, promedio_min: m.con ? Math.round(m.suma / m.con) : 0, demora_min: m.demora };
   });
+}
+
+function getDetalleEtapas(dias) {
+  dias = Number(dias || 30);
+  var shEta   = hoja_(HOJA_ETA, COL_ETA);
+  var limite  = new Date(); limite.setDate(limite.getDate() - dias);
+  var tz      = Session.getScriptTimeZone();
+  var porEtapa = {};
+  var movimientos = [];
+
+  if (shEta.getLastRow() >= 2) {
+    var etaVals = shEta.getRange(2, 1, shEta.getLastRow() - 1, COL_ETA.length).getValues();
+    etaVals.forEach(function (r) {
+      if (String(r[5]) !== 'finalizada') return;
+      var dt = r[6] instanceof Date ? r[6] : new Date(String(r[6]));
+      if (isNaN(dt.getTime()) || dt < limite) return;
+
+      var nombre    = String(r[4] || '');
+      var tiempoMin = Number(r[10] || 0);
+      var tiempoEst = Number(r[11] || 0);
+      var retraso   = Number(r[12] || 0);
+
+      if (!porEtapa[nombre]) {
+        porEtapa[nombre] = { nombre: nombre, count: 0, sumaTiempo: 0, sumaEst: 0, sumaRetraso: 0, conEst: 0 };
+      }
+      var pe = porEtapa[nombre];
+      pe.count++; pe.sumaTiempo += tiempoMin; pe.sumaRetraso += retraso;
+      if (tiempoEst > 0) { pe.sumaEst += tiempoEst; pe.conEst++; }
+
+      movimientos.push({
+        folio:         String(r[2] || ''),
+        fecha:         r[6] instanceof Date ? Utilities.formatDate(r[6], tz, 'yyyy-MM-dd') : String(r[6] || ''),
+        etapa:         nombre,
+        tiempo_min:    tiempoMin,
+        tiempo_est_min: tiempoEst,
+        retraso_min:   retraso
+      });
+    });
+  }
+
+  var porEtapaArr = Object.keys(porEtapa).map(function (k) {
+    var e = porEtapa[k];
+    return {
+      nombre:               e.nombre,
+      count:                e.count,
+      promedio_min:         e.count  ? Math.round(e.sumaTiempo  / e.count)  : 0,
+      promedio_est_min:     e.conEst ? Math.round(e.sumaEst     / e.conEst) : 0,
+      promedio_retraso_min: e.count  ? Math.round(e.sumaRetraso / e.count)  : 0
+    };
+  }).sort(function (a, b) { return b.count - a.count; });
+
+  movimientos.sort(function (a, b) { return a.fecha > b.fecha ? -1 : 1; });
+  return { porEtapa: porEtapaArr, movimientos: movimientos.slice(0, 150) };
 }
 
 /* ================================================================

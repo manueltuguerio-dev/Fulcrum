@@ -25,6 +25,15 @@
     .tab-panel { display: none; }
     .tab-panel.active { display: block; }
     .loading-msg { color: var(--muted); font-size: 13px; padding: 20px 0; text-align: center; }
+    .kpi         { font-size: 28px; font-weight: 700; color: var(--txt); margin: 6px 0 2px; }
+    .kpi-sub     { font-size: 12px; color: var(--muted); }
+    .section-title { font-size: 11px; font-weight: 700; color: var(--muted); text-transform: uppercase;
+                     letter-spacing: .08em; margin: 0 0 12px; }
+    table        { width: 100%; border-collapse: collapse; }
+    th           { text-align: left; font-size: 11px; color: var(--muted); padding: 6px 8px;
+                   border-bottom: 1px solid var(--line); white-space: nowrap; }
+    td           { padding: 7px 8px; border-bottom: 1px solid var(--line); font-size: 13px; }
+    tr:last-child td { border-bottom: none; }
   </style>
 </head>
 <body>
@@ -36,7 +45,7 @@
   background:var(--bg);
 ">
   <div style="
-    background:var(--surface);border:1px solid var(--border);border-radius:16px;
+    background:var(--card);border:1px solid var(--line);border-radius:16px;
     padding:36px 32px;width:92%;max-width:380px;box-shadow:var(--shadow);
   ">
     <div style="text-align:center;margin-bottom:28px">
@@ -125,6 +134,7 @@
     <button onclick="showTab('flujo',this)">Por flujo</button>
     <button onclick="showTab('etapa',this)">Por etapa</button>
     <button onclick="showTab('empleado',this)">Por empleado</button>
+    <button onclick="showTab('detalle-etapa',this)">Detalle de tiempos</button>
   </div>
 
   <!-- Tendencia -->
@@ -182,6 +192,27 @@
       <div class="scroll"><table id="t-empleado"></table></div>
       <div class="row" style="margin-top:10px">
         <button class="ghost sm" onclick="descargarCSV('t-empleado','por_empleado')">Descargar CSV</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Detalle por etapa (desde ETAPAS) -->
+  <div id="tab-detalle-etapa" class="tab-panel">
+    <div class="card">
+      <h2>Detalle de tiempos por etapa</h2>
+      <p style="font-size:13px;color:var(--muted);margin-bottom:12px">
+        Promedios reales registrados en ETAPAS vs tiempo estimado, con demoras.
+      </p>
+      <div class="scroll"><table id="t-det-eta"></table></div>
+      <div class="row" style="margin-top:10px">
+        <button class="ghost sm" onclick="descargarCSV('t-det-eta','detalle_etapas')">Descargar CSV</button>
+      </div>
+    </div>
+    <div class="card">
+      <h2>Últimas maniobras en detalle</h2>
+      <div class="scroll"><table id="t-det-man"></table></div>
+      <div class="row" style="margin-top:10px">
+        <button class="ghost sm" onclick="descargarCSV('t-det-man','movimientos')">Descargar CSV</button>
       </div>
     </div>
   </div>
@@ -336,6 +367,35 @@ function cargarSerie() {
     .serie(periodo, dias);
 }
 
+/* ── Detalle de tiempos por etapa ── */
+function cargarDetalleEtapas(dias) {
+  $('t-det-eta').innerHTML = '<tr><td colspan="5" class="loading-msg">Cargando estadísticas de etapas…</td></tr>';
+  $('t-det-man').innerHTML = '<tr><td colspan="6" class="loading-msg">Cargando movimientos…</td></tr>';
+  google.script.run
+    .withSuccessHandler(function(res) {
+      renderTabla('t-det-eta', res.porEtapa, [
+        ['Etapa',            'nombre'],
+        ['Registros',        'count'],
+        ['Promedio real',    'promedio_min',          'min'],
+        ['Estimado',         'promedio_est_min',       'min'],
+        ['Retraso promedio', 'promedio_retraso_min',   'min']
+      ]);
+      renderTabla('t-det-man', res.movimientos, [
+        ['Folio',       'folio'],
+        ['Fecha',       'fecha'],
+        ['Etapa',       'etapa'],
+        ['Tiempo real', 'tiempo_min',     'min'],
+        ['Estimado',    'tiempo_est_min', 'min'],
+        ['Retraso',     'retraso_min',    'min']
+      ]);
+    })
+    .withFailureHandler(function(e) {
+      $('t-det-eta').innerHTML = '<tr><td colspan="5" style="color:var(--red)">Error: ' + (e.message || e) + '</td></tr>';
+      $('t-det-man').innerHTML = '';
+    })
+    .getDetalleEtapas(Number(dias));
+}
+
 /* ── Main loader ── */
 function cargar() {
   var dias = $('sel-dias').value;
@@ -354,6 +414,7 @@ function cargar() {
     .indicadores(dias);
 
   cargarSerie();
+  cargarDetalleEtapas(dias);
 }
 
 /* ── Tab navigation ── */

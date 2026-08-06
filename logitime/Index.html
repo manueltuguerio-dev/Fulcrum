@@ -112,8 +112,14 @@
       </div>
     </div>
 
+    <!-- Campos adicionales de catálogos personalizados -->
+    <div class="card" id="card-campos-extra" style="display:none">
+      <h2>5 · Campos adicionales</h2>
+      <div class="grid" id="grid-campos-extra"></div>
+    </div>
+
     <div class="card">
-      <h2>5 · Daños y observaciones</h2>
+      <h2>6 · Daños y observaciones</h2>
       <div class="grid">
         <div><label>¿Daño de origen?</label>
           <select id="dano_origen"><option value="">No</option><option value="1">Sí</option></select></div>
@@ -538,6 +544,7 @@ function init() {
       opts('f_cliente',      c.CLIENTES,       'Todos');
       opts('f_flujo',        c.FLUJOS,         'Todos');
       opts('modal-causa',    c.CAUSAS_DEMORA,  '—');
+      renderCamposExtra(c);
       onFlujoChange();
     })
     .withFailureHandler(function (e) { toast('Error cargando catálogos: ' + e.message, 'err'); })
@@ -563,6 +570,43 @@ function onFlujoChange() {
 }
 
 /* ══════════════════════════════════════════════
+   CAMPOS ADICIONALES (CATÁLOGOS PERSONALIZADOS)
+══════════════════════════════════════════════ */
+var BUILTIN_CATS = [
+  'TURNOS','FLUJOS','CLIENTES','TIPOS_EQUIPO','TIPOS_MONTACARGAS',
+  'MATERIALES','PRESENTACIONES','UNIDADES_MEDIDA','CAUSAS_DEMORA',
+  'EMPLEADOS','TIEMPOS_EST','ETAPAS_FLUJO','ETAPAS'
+];
+
+function renderCamposExtra(c) {
+  var extras = Object.keys(c).filter(function (k) { return BUILTIN_CATS.indexOf(k) === -1; });
+  var card = $('card-campos-extra');
+  var grid = $('grid-campos-extra');
+  if (!card || !grid) return;
+  if (!extras.length) { card.style.display = 'none'; return; }
+  grid.innerHTML = extras.map(function (k) {
+    var lista = c[k] || [];
+    return '<div><label>' + k + '</label>' +
+      '<select id="ce-' + k + '">' +
+        '<option value="">— Selecciona —</option>' +
+        lista.map(function (v) { return '<option>' + v + '</option>'; }).join('') +
+      '</select></div>';
+  }).join('');
+  card.style.display = '';
+}
+
+function getCamposExtraPayload() {
+  var card = $('card-campos-extra');
+  if (!card || card.style.display === 'none') return {};
+  var out = {};
+  card.querySelectorAll('select[id^="ce-"]').forEach(function (sel) {
+    var key = sel.id.slice(3); // strip 'ce-'
+    if (sel.value) out[key] = sel.value;
+  });
+  return out;
+}
+
+/* ══════════════════════════════════════════════
    PAYLOAD
 ══════════════════════════════════════════════ */
 function payload() {
@@ -576,7 +620,8 @@ function payload() {
     tipo_montacargas: $('tipo_montacargas').value, num_montacargas: $('num_montacargas').value,
     montacarguistas: multi('montacarguistas'), ayudantes: multi('ayudantes'),
     dano_origen: !!$('dano_origen').value, dano_origen_desc: $('dano_origen_desc').value,
-    observaciones: $('observaciones').value
+    observaciones: $('observaciones').value,
+    campos_extra: getCamposExtraPayload()
   };
 }
 
