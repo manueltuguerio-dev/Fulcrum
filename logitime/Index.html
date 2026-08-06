@@ -5,14 +5,56 @@
   <?!= include('Estilos') ?>
 </head>
 <body>
+
+<!-- ══════ LOGIN OVERLAY ══════ -->
+<div id="login-overlay" style="
+  position:fixed;inset:0;z-index:999;
+  display:flex;align-items:center;justify-content:center;
+  background:var(--bg);
+">
+  <div style="
+    background:var(--card);border:1px solid var(--line);border-radius:16px;
+    padding:36px 32px;width:92%;max-width:380px;box-shadow:var(--shadow);
+  ">
+    <div style="text-align:center;margin-bottom:28px">
+      <div style="
+        width:52px;height:52px;border-radius:14px;background:var(--brand);
+        display:inline-flex;align-items:center;justify-content:center;margin-bottom:12px;
+      ">
+        <svg width="26" height="26" viewBox="0 0 24 24" fill="#fff"><path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm0 18c-4.41 0-8-3.59-8-8s3.59-8 8-8 8 3.59 8 8-3.59 8-8 8zm.5-13H11v6l5.25 3.15.75-1.23-4.5-2.67V7z"/></svg>
+      </div>
+      <div style="font-size:20px;font-weight:700;margin-bottom:4px">LogiTime</div>
+      <div style="font-size:13px;color:var(--muted)">Inicia sesión para continuar</div>
+    </div>
+    <div style="display:flex;flex-direction:column;gap:14px">
+      <div>
+        <label>Correo</label>
+        <input id="l-email" type="email" placeholder="usuario@empresa.com" autocomplete="username">
+      </div>
+      <div>
+        <label>PIN</label>
+        <input id="l-pin" type="password" placeholder="••••" maxlength="10" autocomplete="current-password"
+               onkeydown="if(event.key==='Enter')doLogin()">
+      </div>
+      <div id="l-err" style="display:none;color:var(--red);font-size:13px;text-align:center;background:rgba(229,72,77,.1);border-radius:8px;padding:8px 12px"></div>
+      <button id="l-btn" onclick="doLogin()" style="margin-top:4px">Entrar</button>
+    </div>
+    <p style="font-size:12px;color:var(--muted);text-align:center;margin-top:18px">
+      ¿Olvidaste tu PIN? Pide al administrador que lo restablezca en la hoja USUARIOS.
+    </p>
+  </div>
+</div>
+
 <div class="wrap">
 
   <!-- ── Encabezado ─────────────────────────────────────── -->
   <header>
     <h1>LogiTime · Maniobras</h1>
     <div class="row">
+      <span id="usr-badge" style="font-size:12px;color:var(--muted);display:none"></span>
       <button id="theme-btn" class="ghost" onclick="toggleTheme()" title="Cambiar tema">🌙</button>
       <a href="?page=dashboard"><button class="ghost">Dashboard ↗</button></a>
+      <button class="ghost sm" id="logout-btn" style="display:none" onclick="logout()">Cerrar sesión</button>
     </div>
   </header>
 
@@ -307,10 +349,71 @@ function tab(n) {
 }
 
 /* ══════════════════════════════════════════════
+   LOGIN
+══════════════════════════════════════════════ */
+var USR = null;
+
+function doLogin() {
+  var email = ($('l-email').value || '').trim();
+  var pin   = ($('l-pin').value   || '').trim();
+  var err   = $('l-err');
+  var btn   = $('l-btn');
+  if (!email || !pin) { err.textContent = 'Ingresa tu correo y PIN'; err.style.display = ''; return; }
+  btn.disabled = true; btn.textContent = 'Verificando…';
+  err.style.display = 'none';
+  google.script.run
+    .withSuccessHandler(function(r) {
+      btn.disabled = false; btn.textContent = 'Entrar';
+      if (r.ok) {
+        USR = r;
+        try { sessionStorage.setItem('lt_usr', JSON.stringify(r)); } catch(e) {}
+        aplicarSesion();
+      } else {
+        err.textContent = r.msg || 'Credenciales incorrectas';
+        err.style.display = '';
+        $('l-pin').value = '';
+        $('l-pin').focus();
+      }
+    })
+    .withFailureHandler(function(e) {
+      btn.disabled = false; btn.textContent = 'Entrar';
+      err.textContent = 'Error de conexión: ' + (e.message || e);
+      err.style.display = '';
+    })
+    .login(email, pin);
+}
+
+function logout() {
+  try { sessionStorage.removeItem('lt_usr'); } catch(e) {}
+  USR = null;
+  $('login-overlay').style.display = 'flex';
+  $('usr-badge').style.display  = 'none';
+  $('logout-btn').style.display = 'none';
+  $('l-pin').value = '';
+}
+
+function aplicarSesion() {
+  $('login-overlay').style.display = 'none';
+  var badge = $('usr-badge');
+  badge.textContent = USR.nombre + ' · ' + USR.rol;
+  badge.style.display = '';
+  $('logout-btn').style.display = '';
+  // Si es DASHBOARD, redirigir
+  if (USR.rol === 'DASHBOARD') { window.location.href = '?page=Dashboard'; return; }
+}
+
+/* ══════════════════════════════════════════════
    INICIALIZACIÓN
 ══════════════════════════════════════════════ */
 function init() {
   initTheme();
+
+  // Verificar sesión guardada
+  try {
+    var guardada = sessionStorage.getItem('lt_usr');
+    if (guardada) { USR = JSON.parse(guardada); aplicarSesion(); }
+  } catch(e) {}
+  // Si no hay sesión, el overlay ya está visible (display:flex por defecto)
   $('fecha').value  = hoy();
   $('i_fecha').value = hoy();
 

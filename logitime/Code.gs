@@ -24,6 +24,7 @@ var HOJA_INC  = 'INCIDENCIAS';
 var HOJA_ETA  = 'ETAPAS';
 var HOJA_CFG  = 'CONFIG';
 var HOJA_TEMS = 'TIEMPOS_EST';
+var HOJA_USR  = 'USUARIOS';
 
 var DEFAULT_CONFIG = {
   TURNO_MATUTINO_INICIO:   '06:00',
@@ -92,6 +93,8 @@ var COL_ETA = [
 ];
 
 var COL_EMP = ['ID', 'Nombre', 'Posición', 'Montacargas', 'Activo'];
+// USUARIOS: ID · Email · Nombre · PIN · Rol (MASTER|OPERADOR|DASHBOARD) · Activo · Timestamp
+var COL_USR = ['ID', 'Email', 'Nombre', 'PIN', 'Rol', 'Activo', 'Timestamp'];
 var COL_INC = ['ID', 'Fecha', 'Folio maniobra', 'Empleado', 'Tipo', 'Severidad',
                'Descripción', 'Estado', 'Resolución', 'Registrado por', 'Timestamp'];
 var COL_CFG = ['Clave', 'Valor', 'Descripción'];
@@ -129,6 +132,74 @@ function hoja_(nombre, columnas) {
 function uuid_()    { return Utilities.getUuid(); }
 function usuario_() {
   try { return Session.getActiveUser().getEmail() || 'anónimo'; } catch (e) { return 'anónimo'; }
+}
+
+/* ================================================================
+   LOGIN / USUARIOS
+   ================================================================ */
+
+function login(email, pin) {
+  if (!email || !pin) return { ok: false, msg: 'Email y PIN son requeridos' };
+  var sh = ss_().getSheetByName(HOJA_USR);
+  if (!sh || sh.getLastRow() < 2) return { ok: false, msg: 'Sin usuarios configurados. Ejecuta setup() en el editor.' };
+  var rows = sh.getRange(2, 1, sh.getLastRow() - 1, COL_USR.length).getValues();
+  for (var i = 0; i < rows.length; i++) {
+    var r = rows[i];
+    // COL_USR: 0:ID 1:Email 2:Nombre 3:PIN 4:Rol 5:Activo 6:Timestamp
+    var matchEmail = String(r[1]).toLowerCase().trim() === String(email).toLowerCase().trim();
+    var matchPin   = String(r[3]).trim() === String(pin).trim();
+    var activo     = r[5] === true || r[5] === 'TRUE' || r[5] === 1;
+    if (matchEmail && matchPin && activo) {
+      return { ok: true, email: String(r[1]).trim(), nombre: String(r[2]).trim(), rol: String(r[4]).trim() };
+    }
+  }
+  return { ok: false, msg: 'Email o PIN incorrectos' };
+}
+
+function getUsuarios() {
+  var sh = ss_().getSheetByName(HOJA_USR);
+  if (!sh || sh.getLastRow() < 2) return [];
+  return sh.getRange(2, 1, sh.getLastRow() - 1, COL_USR.length).getValues().map(function(r) {
+    return { id: r[0], email: r[1], nombre: r[2], rol: r[4], activo: r[5] };
+  });
+}
+
+function crearUsuario(data) {
+  var sh = hoja_(HOJA_USR, COL_USR);
+  var pin = String(data.pin || '').trim();
+  if (!data.email || !data.nombre || !pin || !data.rol) return { ok: false, msg: 'Faltan datos' };
+  // Verificar que no exista ya
+  if (sh.getLastRow() >= 2) {
+    var emails = sh.getRange(2, 2, sh.getLastRow() - 1, 1).getValues();
+    for (var i = 0; i < emails.length; i++) {
+      if (String(emails[i][0]).toLowerCase() === data.email.toLowerCase()) return { ok: false, msg: 'El email ya existe' };
+    }
+  }
+  sh.appendRow([uuid_(), data.email, data.nombre, pin, data.rol, true, new Date()]);
+  return { ok: true };
+}
+
+function cambiarPin(email, pinActual, pinNuevo) {
+  var sh = ss_().getSheetByName(HOJA_USR);
+  if (!sh || sh.getLastRow() < 2) return { ok: false, msg: 'Sin usuarios' };
+  var rows = sh.getRange(2, 1, sh.getLastRow() - 1, COL_USR.length).getValues();
+  for (var i = 0; i < rows.length; i++) {
+    if (String(rows[i][1]).toLowerCase() === email.toLowerCase() && String(rows[i][3]) === String(pinActual)) {
+      sh.getRange(i + 2, 4).setValue(pinNuevo);
+      return { ok: true };
+    }
+  }
+  return { ok: false, msg: 'PIN actual incorrecto' };
+}
+
+function toggleUsuario(id, activo) {
+  var sh = ss_().getSheetByName(HOJA_USR);
+  if (!sh || sh.getLastRow() < 2) return { ok: false };
+  var ids = sh.getRange(2, 1, sh.getLastRow() - 1, 1).getValues();
+  for (var i = 0; i < ids.length; i++) {
+    if (String(ids[i][0]) === String(id)) { sh.getRange(i + 2, 6).setValue(activo); return { ok: true }; }
+  }
+  return { ok: false };
 }
 
 function hhmm_(fecha) {
@@ -259,8 +330,14 @@ function setup() {
     });
   }
 
+  // USUARIOS — cuenta master pre-cargada
+  var uSh = hoja_(HOJA_USR, COL_USR);
+  if (uSh.getLastRow() < 2) {
+    uSh.appendRow([uuid_(), 'mrodriguez@tlterminals.com', 'M. Rodríguez', '1234', 'MASTER', true, new Date()]);
+  }
+
   configurarTriggers();
-  return '✓ Setup completo. Hojas: MANIOBRAS · ETAPAS · CATALOGOS · TIEMPOS_EST · EMPLEADOS · INCIDENCIAS · CONFIG';
+  return '✓ Setup completo. Hojas: MANIOBRAS · ETAPAS · CATALOGOS · TIEMPOS_EST · EMPLEADOS · INCIDENCIAS · CONFIG · USUARIOS';
 }
 
 /* ================================================================
