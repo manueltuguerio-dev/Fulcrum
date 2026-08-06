@@ -65,6 +65,7 @@
     <button               data-tab="lista"        onclick="tab('lista')">Listado</button>
     <button               data-tab="empleados"    onclick="tab('empleados')">Empleados</button>
     <button               data-tab="incidencias"  onclick="tab('incidencias')">Incidencias</button>
+    <button id="tab-btn-admin" data-tab="admin" onclick="tab('admin')" style="display:none">Admin ⚙</button>
   </div>
 
   <!-- ════════════════ NUEVA MANIOBRA ═══════════════════ -->
@@ -232,6 +233,95 @@
     <div class="card"><div class="scroll"><table id="tabla_inc"></table></div></div>
   </section>
 
+
+  <!-- ════════════════ ADMINISTRACIÓN (MASTER) ═══════════════ -->
+  <section id="tab-admin" class="hidden">
+    <div class="tabs" style="border-radius:12px;overflow:hidden;margin-bottom:0">
+      <button id="adm-btn-cat" class="active" onclick="admTab('cat')">Catálogos</button>
+      <button id="adm-btn-usr"                onclick="admTab('usr')">Usuarios</button>
+      <button id="adm-btn-tem"                onclick="admTab('tem')">Tiempos estimados</button>
+    </div>
+
+    <!-- ── Catálogos ── -->
+    <div id="adm-cat">
+      <div class="card">
+        <div class="row" style="justify-content:space-between;margin-bottom:14px">
+          <h2 style="margin:0">Catálogos</h2>
+          <button onclick="admNuevoCat()">+ Nuevo tipo</button>
+        </div>
+        <div id="adm-cat-tipos" style="display:flex;flex-wrap:wrap;gap:8px">
+          <span class="muted" style="font-size:13px">Cargando…</span>
+        </div>
+      </div>
+      <div id="adm-cat-editor" class="card hidden">
+        <div class="row" style="justify-content:space-between;margin-bottom:14px">
+          <h2 id="adm-cat-titulo" style="margin:0">Catálogo</h2>
+          <div class="row" style="gap:8px">
+            <button class="danger sm" onclick="admEliminarCat()">Eliminar tipo</button>
+            <button class="ghost sm" onclick="admCerrarCat()">Cerrar ✕</button>
+          </div>
+        </div>
+        <div id="adm-cat-items" style="max-height:320px;overflow-y:auto;padding-right:4px"></div>
+        <div class="row" style="margin-top:12px;gap:8px">
+          <input id="adm-cat-nuevo-item" placeholder="Nuevo valor…" style="flex:1"
+                 onkeydown="if(event.key==='Enter')admAgregarItem()">
+          <button onclick="admAgregarItem()">Agregar</button>
+        </div>
+        <div class="row" style="margin-top:12px;justify-content:flex-end">
+          <button class="success" onclick="admGuardarCat()">Guardar catálogo</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- ── Usuarios ── -->
+    <div id="adm-usr" class="hidden">
+      <div class="card">
+        <div class="row" style="justify-content:space-between;margin-bottom:14px">
+          <h2 style="margin:0">Usuarios</h2>
+          <button onclick="admToggleFormUsr()">+ Nuevo usuario</button>
+        </div>
+        <div id="adm-usr-form" class="hidden" style="border:1px solid var(--line);border-radius:12px;padding:16px;margin-bottom:16px">
+          <div style="font-weight:700;font-size:14px;margin-bottom:12px">Nuevo usuario</div>
+          <div class="grid">
+            <div><label>Email</label><input id="adm-u-email" type="email" placeholder="usuario@empresa.com"></div>
+            <div><label>Nombre</label><input id="adm-u-nombre"></div>
+            <div><label>PIN</label><input id="adm-u-pin" type="password" maxlength="10" placeholder="Mín. 4 caracteres"></div>
+            <div><label>Rol</label>
+              <select id="adm-u-rol">
+                <option>OPERADOR</option><option>DASHBOARD</option><option>MASTER</option>
+              </select>
+            </div>
+          </div>
+          <div class="row" style="margin-top:10px;gap:8px;justify-content:flex-end">
+            <button class="ghost sm" onclick="admCancelarUsr()">Cancelar</button>
+            <button class="success" onclick="admCrearUsr()">Crear usuario</button>
+          </div>
+        </div>
+        <div class="scroll"><table id="adm-tabla-usr"></table></div>
+      </div>
+    </div>
+
+    <!-- ── Tiempos estimados ── -->
+    <div id="adm-tem" class="hidden">
+      <div class="card">
+        <div class="row" style="justify-content:space-between;margin-bottom:8px">
+          <h2 style="margin:0">Tiempos estimados por etapa</h2>
+          <button class="success" onclick="admGuardarTiempos()">Guardar cambios</button>
+        </div>
+        <p class="muted" style="font-size:13px;margin-bottom:14px">
+          Referencia para el cronómetro de cada etapa. Aplica a maniobras iniciadas después de guardar.
+        </p>
+        <div class="scroll"><table id="adm-tabla-tem"></table></div>
+        <div class="row" style="margin-top:12px;gap:8px">
+          <input id="adm-tem-etapa" placeholder="Nombre de etapa…" style="flex:2">
+          <input id="adm-tem-min" type="number" placeholder="Minutos" style="flex:1;min-width:80px" min="0">
+          <button onclick="admAgregarEtapa()">Agregar</button>
+        </div>
+      </div>
+    </div>
+
+  </section>
+
 </div><!-- /wrap -->
 
 <!-- ── Modal finalizar etapa ──────────────────────────────── -->
@@ -329,23 +419,21 @@ function toggleTheme() {
    PESTAÑAS
 ══════════════════════════════════════════════ */
 function tab(n) {
-  ['nueva', 'curso', 'lista', 'empleados', 'incidencias'].forEach(function (k) {
-    $('tab-' + k).classList.toggle('hidden', k !== n);
+  ['nueva', 'curso', 'lista', 'empleados', 'incidencias', 'admin'].forEach(function (k) {
+    var el = $('tab-' + k);
+    if (el) el.classList.toggle('hidden', k !== n);
   });
-  document.querySelectorAll('.tabs button').forEach(function (b) {
+  document.querySelectorAll('.tabs button[data-tab]').forEach(function (b) {
     b.classList.toggle('active', b.dataset.tab === n);
   });
 
-  // Detener auto-refresco al salir de "En curso"
   if (_cursoInterval) { clearInterval(_cursoInterval); _cursoInterval = null; }
 
-  if (n === 'curso') {
-    cargarCurso();
-    _cursoInterval = setInterval(cargarCurso, 30000);
-  }
+  if (n === 'curso')       { cargarCurso(); _cursoInterval = setInterval(cargarCurso, 30000); }
   if (n === 'lista')       cargarLista();
   if (n === 'empleados')   cargarEmpleados();
   if (n === 'incidencias') cargarIncidencias();
+  if (n === 'admin')       admTab('cat');
 }
 
 /* ══════════════════════════════════════════════
@@ -398,8 +486,9 @@ function aplicarSesion() {
   badge.textContent = USR.nombre + ' · ' + USR.rol;
   badge.style.display = '';
   $('logout-btn').style.display = '';
-  // Si es DASHBOARD, redirigir
   if (USR.rol === 'DASHBOARD') { window.location.href = '?page=Dashboard'; return; }
+  var adminBtn = $('tab-btn-admin');
+  if (adminBtn) adminBtn.style.display = USR.rol === 'MASTER' ? '' : 'none';
 }
 
 /* ══════════════════════════════════════════════
@@ -867,6 +956,248 @@ function borrarIncidencia(id) {
   google.script.run
     .withSuccessHandler(function () { cargarIncidencias(); toast('Incidencia eliminada', 'ok'); })
     .eliminarIncidencia(id);
+}
+
+/* ══════════════════════════════════════════════
+   ADMINISTRACIÓN (MASTER)
+══════════════════════════════════════════════ */
+var _admCatalogos = [];
+var _admCatActivo = null;
+var _admCatItems  = [];
+var _admTiempos   = [];
+
+function admTab(sub) {
+  ['cat', 'usr', 'tem'].forEach(function (k) {
+    var el = $('adm-' + k);
+    if (el) el.classList.toggle('hidden', k !== sub);
+    var btn = $('adm-btn-' + k);
+    if (btn) btn.classList.toggle('active', k === sub);
+  });
+  if (sub === 'cat') cargarAdmCat();
+  if (sub === 'usr') cargarAdmUsr();
+  if (sub === 'tem') cargarAdmTem();
+}
+
+/* ── Catálogos ─────────────────────────────── */
+function cargarAdmCat() {
+  google.script.run
+    .withSuccessHandler(function (lista) {
+      _admCatalogos = lista;
+      var cont = $('adm-cat-tipos');
+      if (!lista.length) { cont.innerHTML = '<span class="muted">Sin catálogos. Ejecuta setup() en el editor.</span>'; return; }
+      cont.innerHTML = lista.map(function (c, i) {
+        return '<button class="ghost sm" onclick="admEditarCat(' + i + ')">' +
+          c.tipo + ' <span style="opacity:.6">(' + c.items.length + ')</span></button>';
+      }).join('');
+    })
+    .withFailureHandler(function (e) { toast('Error cargando catálogos: ' + e.message, 'err'); })
+    .getCatalogosAdmin();
+}
+
+function admEditarCat(idx) {
+  var c = _admCatalogos[idx];
+  if (!c) return;
+  _admCatActivo = c;
+  _admCatItems  = c.items.slice();
+  $('adm-cat-titulo').textContent = 'Catálogo: ' + c.tipo;
+  renderAdmCatItems();
+  $('adm-cat-editor').classList.remove('hidden');
+  $('adm-cat-nuevo-item').value = '';
+}
+
+function renderAdmCatItems() {
+  $('adm-cat-items').innerHTML = _admCatItems.length
+    ? _admCatItems.map(function (v, i) {
+        return '<div class="row" style="gap:6px;margin-bottom:6px">' +
+          '<input value="' + esc(v) + '" oninput="_admCatItems[' + i + ']=this.value" style="flex:1">' +
+          '<button class="danger sm" onclick="_admCatItems.splice(' + i + ',1);renderAdmCatItems()">✕</button>' +
+        '</div>';
+      }).join('')
+    : '<div class="muted" style="font-size:13px;padding:8px 0">Sin elementos. Agrega el primero abajo.</div>';
+}
+
+function admAgregarItem() {
+  var v = ($('adm-cat-nuevo-item').value || '').trim();
+  if (!v) return;
+  _admCatItems.push(v);
+  renderAdmCatItems();
+  $('adm-cat-nuevo-item').value = '';
+  $('adm-cat-nuevo-item').focus();
+}
+
+function admGuardarCat() {
+  if (!_admCatActivo) return;
+  var items = _admCatItems.map(function (v) { return String(v || '').trim(); }).filter(Boolean);
+  google.script.run
+    .withSuccessHandler(function () { toast('✓ Catálogo guardado', 'ok'); cargarAdmCat(); })
+    .withFailureHandler(function (e) { toast('Error: ' + e.message, 'err'); })
+    .guardarCatalogo(_admCatActivo.tipo, items);
+}
+
+function admEliminarCat() {
+  if (!_admCatActivo) return;
+  if (!confirm('¿Eliminar el catálogo "' + _admCatActivo.tipo + '"? No se puede deshacer.')) return;
+  google.script.run
+    .withSuccessHandler(function () { toast('Catálogo eliminado', 'ok'); admCerrarCat(); cargarAdmCat(); })
+    .withFailureHandler(function (e) { toast('Error: ' + e.message, 'err'); })
+    .eliminarCatalogo(_admCatActivo.tipo);
+}
+
+function admCerrarCat() {
+  _admCatActivo = null;
+  _admCatItems  = [];
+  $('adm-cat-editor').classList.add('hidden');
+}
+
+function admNuevoCat() {
+  var tipo = prompt('Nombre del nuevo tipo de catálogo\n(ej: ZONAS, TRANSPORTISTAS):');
+  if (!tipo || !tipo.trim()) return;
+  _admCatActivo = { tipo: tipo.trim().toUpperCase().replace(/\s+/g, '_'), items: [] };
+  _admCatItems  = [];
+  $('adm-cat-titulo').textContent = 'Nuevo catálogo: ' + _admCatActivo.tipo;
+  renderAdmCatItems();
+  $('adm-cat-editor').classList.remove('hidden');
+  $('adm-cat-nuevo-item').value = '';
+  $('adm-cat-nuevo-item').focus();
+}
+
+/* ── Usuarios ──────────────────────────────── */
+function cargarAdmUsr() {
+  google.script.run
+    .withSuccessHandler(function (lista) {
+      $('adm-tabla-usr').innerHTML =
+        '<tr><th>Email</th><th>Nombre</th><th>Rol</th><th>Estado</th><th>Acciones</th></tr>' +
+        lista.map(function (u) {
+          var activo = u.activo === true || u.activo === 'TRUE' || u.activo === 1;
+          var uid = esc(u.id);
+          return '<tr>' +
+            '<td style="font-size:12px">' + esc(u.email) + '</td>' +
+            '<td><input id="u-nom-' + uid + '" value="' + esc(u.nombre) + '" style="width:100%;min-width:100px"></td>' +
+            '<td><select id="u-rol-' + uid + '">' +
+              ['OPERADOR', 'DASHBOARD', 'MASTER'].map(function (r) {
+                return '<option' + (u.rol === r ? ' selected' : '') + '>' + r + '</option>';
+              }).join('') +
+            '</select></td>' +
+            '<td><span class="badge ' + (activo ? 'VERDE' : 'ROJO') + '">' + (activo ? 'Activo' : 'Inactivo') + '</span></td>' +
+            '<td style="white-space:nowrap;min-width:260px">' +
+              '<button class="ghost sm" onclick="admGuardarUsr(\'' + uid + '\')">Guardar</button> ' +
+              '<button class="warn sm" onclick="admToggleUsr(\'' + uid + '\',' + (!activo) + ')">' + (activo ? 'Desactivar' : 'Activar') + '</button> ' +
+              '<button class="ghost sm" onclick="admResetPin(\'' + uid + '\')">Reset PIN</button> ' +
+              '<button class="danger sm" onclick="admEliminarUsr(\'' + uid + '\')">Eliminar</button>' +
+            '</td></tr>';
+        }).join('');
+    })
+    .withFailureHandler(function (e) { toast('Error: ' + e.message, 'err'); })
+    .getUsuarios();
+}
+
+function admToggleFormUsr() {
+  $('adm-usr-form').classList.toggle('hidden');
+}
+
+function admCancelarUsr() {
+  $('adm-usr-form').classList.add('hidden');
+  $('adm-u-email').value = $('adm-u-nombre').value = $('adm-u-pin').value = '';
+}
+
+function admCrearUsr() {
+  var d = {
+    email:  ($('adm-u-email').value  || '').trim(),
+    nombre: ($('adm-u-nombre').value || '').trim(),
+    pin:    ($('adm-u-pin').value    || '').trim(),
+    rol:    $('adm-u-rol').value
+  };
+  if (!d.email || !d.nombre || !d.pin) { toast('Email, nombre y PIN son obligatorios', 'err'); return; }
+  if (d.pin.length < 4) { toast('PIN mínimo 4 caracteres', 'err'); return; }
+  google.script.run
+    .withSuccessHandler(function (r) {
+      if (r.ok) { toast('✓ Usuario creado', 'ok'); admCancelarUsr(); cargarAdmUsr(); }
+      else toast('Error: ' + (r.msg || 'No se pudo crear'), 'err');
+    })
+    .withFailureHandler(function (e) { toast('Error: ' + e.message, 'err'); })
+    .crearUsuario(d);
+}
+
+function admGuardarUsr(id) {
+  var nomEl = $('u-nom-' + id), rolEl = $('u-rol-' + id);
+  var data = { nombre: nomEl ? nomEl.value : '', rol: rolEl ? rolEl.value : '' };
+  google.script.run
+    .withSuccessHandler(function (r) {
+      if (r.ok) { toast('✓ Usuario actualizado', 'ok'); cargarAdmUsr(); }
+      else toast('Error al actualizar', 'err');
+    })
+    .withFailureHandler(function (e) { toast('Error: ' + e.message, 'err'); })
+    .actualizarUsuario(id, data);
+}
+
+function admToggleUsr(id, activo) {
+  google.script.run
+    .withSuccessHandler(function () { toast(activo ? '✓ Usuario activado' : 'Usuario desactivado', 'ok'); cargarAdmUsr(); })
+    .withFailureHandler(function (e) { toast('Error: ' + e.message, 'err'); })
+    .toggleUsuario(id, activo);
+}
+
+function admResetPin(id) {
+  var pin = prompt('Nuevo PIN para este usuario (mín. 4 caracteres):');
+  if (pin === null) return;
+  if (!pin.trim() || pin.trim().length < 4) { toast('PIN muy corto (mín. 4)', 'err'); return; }
+  google.script.run
+    .withSuccessHandler(function (r) {
+      if (r.ok) toast('✓ PIN restablecido', 'ok');
+      else toast('Error: ' + (r.msg || 'No se pudo restablecer'), 'err');
+    })
+    .withFailureHandler(function (e) { toast('Error: ' + e.message, 'err'); })
+    .resetPinAdmin(id, pin.trim());
+}
+
+function admEliminarUsr(id) {
+  if (!confirm('¿Eliminar este usuario? Esta acción no se puede deshacer.')) return;
+  google.script.run
+    .withSuccessHandler(function () { toast('Usuario eliminado', 'ok'); cargarAdmUsr(); })
+    .withFailureHandler(function (e) { toast('Error: ' + e.message, 'err'); })
+    .eliminarUsuario(id);
+}
+
+/* ── Tiempos estimados ─────────────────────── */
+function cargarAdmTem() {
+  google.script.run
+    .withSuccessHandler(function (mapa) {
+      _admTiempos = Object.keys(mapa).map(function (k) { return { etapa: k, minutos: mapa[k] }; });
+      renderAdmTiempos();
+    })
+    .withFailureHandler(function (e) { toast('Error: ' + e.message, 'err'); })
+    .getTimeposEstimados();
+}
+
+function renderAdmTiempos() {
+  $('adm-tabla-tem').innerHTML =
+    '<tr><th>Etapa</th><th>Minutos estimados</th><th></th></tr>' +
+    _admTiempos.map(function (t, i) {
+      return '<tr>' +
+        '<td><input value="' + esc(t.etapa) + '" oninput="_admTiempos[' + i + '].etapa=this.value" style="width:100%;min-width:120px"></td>' +
+        '<td><input type="number" value="' + t.minutos + '" min="0" oninput="_admTiempos[' + i + '].minutos=Number(this.value)" style="width:80px"></td>' +
+        '<td><button class="danger sm" onclick="_admTiempos.splice(' + i + ',1);renderAdmTiempos()">✕</button></td>' +
+      '</tr>';
+    }).join('');
+}
+
+function admAgregarEtapa() {
+  var etapa = ($('adm-tem-etapa').value || '').trim();
+  var min   = Number($('adm-tem-min').value || 0);
+  if (!etapa) { $('adm-tem-etapa').focus(); return; }
+  _admTiempos.push({ etapa: etapa, minutos: min });
+  renderAdmTiempos();
+  $('adm-tem-etapa').value = '';
+  $('adm-tem-min').value   = '';
+  $('adm-tem-etapa').focus();
+}
+
+function admGuardarTiempos() {
+  var items = _admTiempos.filter(function (t) { return String(t.etapa || '').trim(); });
+  google.script.run
+    .withSuccessHandler(function () { toast('✓ Tiempos estimados guardados', 'ok'); })
+    .withFailureHandler(function (e) { toast('Error: ' + e.message, 'err'); })
+    .guardarTiemposEst(items);
 }
 
 /* ══════════════════════════════════════════════

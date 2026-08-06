@@ -497,6 +497,110 @@ function agregarCatalogo(catalogo, valor) {
 }
 
 /* ================================================================
+   ADMINISTRACIÓN (MASTER)
+   ================================================================ */
+
+function getCatalogosAdmin() {
+  var cs = ss_().getSheetByName(HOJA_CAT);
+  if (!cs) return [];
+  var vals = cs.getDataRange().getValues();
+  var out = [];
+  if (vals.length) {
+    for (var c = 0; c < vals[0].length; c++) {
+      var key = String(vals[0][c] || '').trim();
+      if (!key) continue;
+      var items = [];
+      for (var r = 1; r < vals.length; r++) {
+        var v = String(vals[r][c] || '').trim();
+        if (v) items.push(v);
+      }
+      out.push({ tipo: key, items: items });
+    }
+  }
+  return out;
+}
+
+function guardarCatalogo(tipo, items) {
+  var cs = ss_().getSheetByName(HOJA_CAT);
+  if (!cs) { setup(); cs = ss_().getSheetByName(HOJA_CAT); }
+  var vals = cs.getDataRange().getValues();
+  var col = -1;
+  for (var c = 0; c < vals[0].length; c++) {
+    if (String(vals[0][c]).trim() === tipo) { col = c + 1; break; }
+  }
+  if (col === -1) {
+    col = vals[0].length + 1;
+    cs.getRange(1, col).setValue(tipo).setFontWeight('bold').setBackground('#0f2748').setFontColor('#ffffff');
+  } else {
+    if (cs.getMaxRows() > 1) cs.getRange(2, col, cs.getMaxRows() - 1, 1).clearContent();
+  }
+  if (items && items.length) {
+    cs.getRange(2, col, items.length, 1).setValues(items.map(function (v) { return [v]; }));
+  }
+  return { ok: true };
+}
+
+function eliminarCatalogo(tipo) {
+  var cs = ss_().getSheetByName(HOJA_CAT);
+  if (!cs) return { ok: false };
+  var vals = cs.getDataRange().getValues();
+  for (var c = 0; c < vals[0].length; c++) {
+    if (String(vals[0][c]).trim() === tipo) { cs.deleteColumn(c + 1); return { ok: true }; }
+  }
+  return { ok: false };
+}
+
+function actualizarUsuario(id, data) {
+  var sh = ss_().getSheetByName(HOJA_USR);
+  if (!sh || sh.getLastRow() < 2) return { ok: false };
+  var ids = sh.getRange(2, 1, sh.getLastRow() - 1, 1).getValues();
+  for (var i = 0; i < ids.length; i++) {
+    if (String(ids[i][0]) === String(id)) {
+      var fila = i + 2;
+      if (data.nombre) sh.getRange(fila, 3).setValue(data.nombre);
+      if (data.rol)    sh.getRange(fila, 5).setValue(data.rol);
+      return { ok: true };
+    }
+  }
+  return { ok: false };
+}
+
+function resetPinAdmin(id, pinNuevo) {
+  if (!pinNuevo || String(pinNuevo).trim().length < 4) return { ok: false, msg: 'PIN mínimo 4 caracteres' };
+  var sh = ss_().getSheetByName(HOJA_USR);
+  if (!sh || sh.getLastRow() < 2) return { ok: false };
+  var ids = sh.getRange(2, 1, sh.getLastRow() - 1, 1).getValues();
+  for (var i = 0; i < ids.length; i++) {
+    if (String(ids[i][0]) === String(id)) {
+      sh.getRange(i + 2, 4).setValue(String(pinNuevo).trim());
+      return { ok: true };
+    }
+  }
+  return { ok: false };
+}
+
+function eliminarUsuario(id) {
+  var sh = ss_().getSheetByName(HOJA_USR);
+  if (!sh || sh.getLastRow() < 2) return { ok: false };
+  var ids = sh.getRange(2, 1, sh.getLastRow() - 1, 1).getValues();
+  for (var i = 0; i < ids.length; i++) {
+    if (String(ids[i][0]) === String(id)) { sh.deleteRow(i + 2); return { ok: true }; }
+  }
+  return { ok: false };
+}
+
+function guardarTiemposEst(items) {
+  var sh = hoja_(HOJA_TEMS, COL_TEM);
+  if (sh.getLastRow() > 1) sh.getRange(2, 1, sh.getLastRow() - 1, 2).clearContent();
+  if (items && items.length) {
+    sh.getRange(2, 1, items.length, 2).setValues(
+      items.map(function (it) { return [it.etapa, Number(it.minutos || 0)]; })
+    );
+  }
+  return { ok: true };
+}
+
+/* ================================================================
    EMPLEADOS
    ================================================================ */
 
