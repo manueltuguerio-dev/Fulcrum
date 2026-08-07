@@ -7,90 +7,118 @@
   <title>LogiTime — Indicadores</title>
   <?!= include('Estilos') ?>
   <style>
-    .kpi-grid { display: grid; gap: 12px; grid-template-columns: repeat(auto-fit, minmax(170px, 1fr)); margin-bottom: 16px; }
-    .semaforo-row { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
-    .semaforo-item { display: flex; align-items: center; gap: 5px; font-size: 13px; }
-    .dot { width: 10px; height: 10px; border-radius: 50%; flex-shrink: 0; }
-    .dot-verde { background: var(--green); }
-    .dot-ambar { background: var(--amber); }
-    .dot-rojo  { background: var(--red); }
-    .chart-bar-wrap { display: flex; flex-direction: column; gap: 6px; }
-    .bar-row { display: flex; align-items: center; gap: 8px; font-size: 12px; }
-    .bar-label { width: 130px; flex-shrink: 0; color: var(--muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-    .bar-track { flex: 1; height: 8px; background: var(--line); border-radius: 4px; overflow: hidden; }
-    .bar-fill  { height: 100%; background: var(--brand); border-radius: 4px; transition: width .4s; }
-    .bar-val   { width: 55px; text-align: right; flex-shrink: 0; color: var(--txt); }
-    .filters   { display: flex; gap: 8px; flex-wrap: wrap; align-items: flex-end; }
-    .filters > div { display: flex; flex-direction: column; gap: 4px; min-width: 140px; }
-    .tab-panel { display: none; }
-    .tab-panel.active { display: block; }
-    .loading-msg { color: var(--muted); font-size: 13px; padding: 20px 0; text-align: center; }
-    .kpi         { font-size: 28px; font-weight: 700; color: var(--txt); margin: 6px 0 2px; }
-    .kpi-sub     { font-size: 12px; color: var(--muted); }
-    .section-title { font-size: 11px; font-weight: 700; color: var(--muted); text-transform: uppercase;
-                     letter-spacing: .08em; margin: 0 0 12px; }
-    table        { width: 100%; border-collapse: collapse; }
-    th           { text-align: left; font-size: 11px; color: var(--muted); padding: 6px 8px;
-                   border-bottom: 1px solid var(--line); white-space: nowrap; }
-    td           { padding: 7px 8px; border-bottom: 1px solid var(--line); font-size: 13px; }
-    tr:last-child td { border-bottom: none; }
+    /* ── Dashboard-specific styles ──────────────────────────── */
+    .kpi-grid      { display:grid;gap:12px;grid-template-columns:repeat(auto-fill,minmax(170px,1fr));margin-bottom:16px; }
+    .kpi-val       { font-size:26px;font-weight:700;color:var(--txt);margin:6px 0 2px;line-height:1; }
+    .kpi-lbl       { font-size:11px;color:var(--muted);text-transform:uppercase;letter-spacing:.06em; }
+    .kpi-sub       { font-size:12px;color:var(--muted);margin-top:3px; }
+
+    .sem-row       { display:flex;gap:8px;align-items:center;flex-wrap:wrap; }
+    .sem-item      { display:flex;align-items:center;gap:5px;font-size:13px; }
+    .dot           { width:9px;height:9px;border-radius:50%;flex-shrink:0; }
+    .dot-verde     { background:var(--green); }
+    .dot-ambar     { background:var(--amber); }
+    .dot-rojo      { background:var(--red); }
+
+    .bar-wrap      { display:flex;flex-direction:column;gap:6px; }
+    .bar-row       { display:flex;align-items:center;gap:8px;font-size:12px; }
+    .bar-label     { width:140px;flex-shrink:0;color:var(--muted);overflow:hidden;text-overflow:ellipsis;white-space:nowrap; }
+    .bar-track     { flex:1;height:7px;background:var(--line);border-radius:4px;overflow:hidden; }
+    .bar-fill      { height:100%;background:var(--brand);border-radius:4px;transition:width .4s ease; }
+    .bar-val       { width:52px;text-align:right;flex-shrink:0;color:var(--txt);font-size:11px; }
+
+    .filters       { display:flex;gap:10px;flex-wrap:wrap;align-items:flex-end; }
+    .filters > div { display:flex;flex-direction:column;gap:4px;min-width:140px; }
+
+    .tab-panel     { display:none; }
+    .tab-panel.active { display:block; }
+
+    .loading-row   { color:var(--muted);font-size:13px;padding:24px;text-align:center; }
+
+    table          { width:100%;border-collapse:collapse; }
+    th             { text-align:left;font-size:11px;color:var(--muted);padding:6px 8px;
+                     border-bottom:1px solid var(--line);white-space:nowrap;text-transform:uppercase;letter-spacing:.04em; }
+    td             { padding:7px 8px;border-bottom:1px solid var(--line);font-size:13px; }
+    tr:last-child td { border-bottom:none; }
+
+    .auto-refresh-bar { display:flex;align-items:center;gap:8px;font-size:12px;color:var(--muted); }
+    .refresh-circle   { width:8px;height:8px;border-radius:50%;border:2px solid var(--brand);border-top-color:transparent;
+                        animation:spin 1.2s linear infinite;flex-shrink:0; }
+    @keyframes spin { to { transform:rotate(360deg); } }
+    .refresh-circle.idle { animation:none;background:var(--green);border:none; }
+
+    .empty-state   { text-align:center;padding:30px 20px;color:var(--muted);font-size:13px; }
   </style>
 </head>
 <body>
 
-<!-- ══════ LOGIN OVERLAY ══════ -->
+<!-- ══════════════════════════════════════════════
+     LOGIN OVERLAY
+══════════════════════════════════════════════ -->
 <div id="login-overlay" style="
   position:fixed;inset:0;z-index:999;
   display:flex;align-items:center;justify-content:center;
   background:var(--bg);
 ">
-  <div style="
-    background:var(--card);border:1px solid var(--line);border-radius:16px;
-    padding:36px 32px;width:92%;max-width:380px;box-shadow:var(--shadow);
-  ">
+  <div style="background:var(--card);border:1px solid var(--line);border-radius:16px;
+              padding:36px 32px;width:92%;max-width:380px;box-shadow:var(--shadow);">
     <div style="text-align:center;margin-bottom:28px">
-      <div style="
-        width:52px;height:52px;border-radius:14px;background:var(--brand);
-        display:inline-flex;align-items:center;justify-content:center;margin-bottom:12px;
-      ">
-        <svg width="26" height="26" viewBox="0 0 24 24" fill="#fff"><path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm0 18c-4.41 0-8-3.59-8-8s3.59-8 8-8 8 3.59 8 8-3.59 8-8 8zm.5-13H11v6l5.25 3.15.75-1.23-4.5-2.67V7z"/></svg>
+      <div style="width:52px;height:52px;border-radius:14px;background:var(--brand);
+                  display:inline-flex;align-items:center;justify-content:center;margin-bottom:12px;">
+        <svg width="26" height="26" viewBox="0 0 24 24" fill="#fff">
+          <path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm0 18c-4.41 0-8-3.59-8-8s3.59-8 8-8 8 3.59 8 8-3.59 8-8 8zm.5-13H11v6l5.25 3.15.75-1.23-4.5-2.67V7z"/>
+        </svg>
       </div>
-      <div style="font-size:20px;font-weight:700;margin-bottom:4px">LogiTime</div>
-      <div style="font-size:13px;color:var(--muted)">Inicia sesión para continuar</div>
+      <div style="font-size:22px;font-weight:700;margin-bottom:4px">LogiTime</div>
+      <div style="font-size:13px;color:var(--muted)">Indicadores de operación</div>
     </div>
     <div style="display:flex;flex-direction:column;gap:14px">
       <div>
-        <label>Correo</label>
+        <label>Correo electrónico</label>
         <input id="l-email" type="email" placeholder="usuario@empresa.com" autocomplete="username">
       </div>
       <div>
-        <label>PIN</label>
+        <label>PIN de acceso</label>
         <input id="l-pin" type="password" placeholder="••••" maxlength="10" autocomplete="current-password"
                onkeydown="if(event.key==='Enter')doLogin()">
       </div>
-      <div id="l-err" style="display:none;color:var(--red);font-size:13px;text-align:center;background:rgba(229,72,77,.1);border-radius:8px;padding:8px 12px"></div>
-      <button id="l-btn" onclick="doLogin()" style="margin-top:4px">Entrar</button>
+      <div id="l-err" style="display:none;color:var(--red);font-size:13px;text-align:center;
+                              background:rgba(229,72,77,.1);border-radius:8px;padding:8px 12px"></div>
+      <button id="l-btn" onclick="doLogin()" style="margin-top:4px">Iniciar sesión</button>
     </div>
-    <p style="font-size:12px;color:var(--muted);text-align:center;margin-top:18px">
-      ¿Olvidaste tu PIN? Pide al administrador que lo restablezca en la hoja USUARIOS.
+    <p style="font-size:12px;color:var(--muted);text-align:center;margin-top:18px;margin-bottom:0">
+      ¿Olvidaste tu PIN? Solicita al administrador que lo restablezca.
     </p>
   </div>
 </div>
 
 <div class="wrap">
 
-  <!-- Header -->
+  <!-- ── Encabezado ──────────────────────────────────────────── -->
   <header>
-    <h1>LogiTime — Indicadores</h1>
-    <div class="row" style="gap:10px">
+    <div style="display:flex;align-items:center;gap:12px">
+      <div style="width:34px;height:34px;border-radius:9px;background:var(--brand);
+                  display:flex;align-items:center;justify-content:center;flex-shrink:0">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="#fff">
+          <path d="M19 3H5c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h14c1.1 0 2-.9 2-2V5c0-1.1-.9-2-2-2zm-5 14H7v-2h7v2zm3-4H7v-2h10v2zm0-4H7V7h10v2z"/>
+        </svg>
+      </div>
+      <div>
+        <h1 style="font-size:17px;margin:0">LogiTime — Indicadores</h1>
+        <div style="font-size:11px;color:var(--muted);margin-top:1px">Panel de análisis operativo</div>
+      </div>
+    </div>
+    <div class="row" style="gap:6px">
       <span id="usr-badge" style="font-size:12px;color:var(--muted);display:none"></span>
-      <a href="?page=Index"><button class="ghost sm">← Operaciones</button></a>
+      <a href="?page=Index" style="text-decoration:none">
+        <button class="ghost sm">← Operaciones</button>
+      </a>
       <button id="theme-btn" class="ghost" onclick="toggleTheme()" title="Cambiar tema">☀️</button>
-      <button class="ghost sm" id="logout-btn" style="display:none" onclick="logout()">Cerrar sesión</button>
+      <button class="ghost sm" id="logout-btn" style="display:none" onclick="logout()">Salir</button>
     </div>
   </header>
 
-  <!-- Filters -->
+  <!-- ── Filtros ─────────────────────────────────────────────── -->
   <div class="card" style="margin-bottom:16px">
     <div class="filters">
       <div>
@@ -111,30 +139,38 @@
         </select>
       </div>
       <div style="align-self:flex-end">
-        <button onclick="cargar()" class="ghost sm">Actualizar</button>
+        <button onclick="cargar()" class="ghost sm">↺ Actualizar</button>
+      </div>
+      <div style="align-self:flex-end;margin-left:auto">
+        <div class="auto-refresh-bar" id="refresh-status">
+          <span id="refresh-spinner" class="refresh-circle idle"></span>
+          <span id="refresh-label">Listo</span>
+        </div>
       </div>
     </div>
   </div>
 
-  <!-- KPI cards -->
+  <!-- ── KPI cards ───────────────────────────────────────────── -->
   <div class="kpi-grid" id="kpi-grid">
-    <div class="card" style="margin:0"><div class="loading-msg">Cargando…</div></div>
+    <div class="card" style="margin:0">
+      <div class="loading-row">Inicia sesión para ver los indicadores</div>
+    </div>
   </div>
 
-  <!-- Semáforo summary -->
+  <!-- ── Semáforo ────────────────────────────────────────────── -->
   <div class="card" id="card-semaforo" style="margin-bottom:16px;display:none">
     <h2>Semáforo de tiempos</h2>
-    <div class="semaforo-row" id="sem-row"></div>
+    <div class="sem-row" id="sem-row"></div>
   </div>
 
-  <!-- Tabs -->
-  <div class="tabs" id="tabs">
+  <!-- ── Tabs de análisis ────────────────────────────────────── -->
+  <div class="tabs" id="dash-tabs">
     <button class="active" onclick="showTab('tendencia',this)">Tendencia</button>
     <button onclick="showTab('cliente',this)">Por cliente</button>
     <button onclick="showTab('flujo',this)">Por flujo</button>
     <button onclick="showTab('etapa',this)">Por etapa</button>
     <button onclick="showTab('empleado',this)">Por empleado</button>
-    <button onclick="showTab('detalle-etapa',this)">Detalle de tiempos</button>
+    <button onclick="showTab('detalle-eta',this)">Detalle de tiempos</button>
   </div>
 
   <!-- Tendencia -->
@@ -151,8 +187,8 @@
   <!-- Por cliente -->
   <div id="tab-cliente" class="tab-panel">
     <div class="card">
-      <h2>Por cliente</h2>
-      <div id="bars-cliente" class="chart-bar-wrap" style="margin-bottom:12px"></div>
+      <h2>Maniobras por cliente</h2>
+      <div id="bars-cliente" class="bar-wrap" style="margin-bottom:12px"></div>
       <div class="scroll"><table id="t-cliente"></table></div>
       <div class="row" style="margin-top:10px">
         <button class="ghost sm" onclick="descargarCSV('t-cliente','por_cliente')">Descargar CSV</button>
@@ -163,8 +199,8 @@
   <!-- Por flujo -->
   <div id="tab-flujo" class="tab-panel">
     <div class="card">
-      <h2>Por tipo de flujo</h2>
-      <div id="bars-flujo" class="chart-bar-wrap" style="margin-bottom:12px"></div>
+      <h2>Maniobras por tipo de flujo</h2>
+      <div id="bars-flujo" class="bar-wrap" style="margin-bottom:12px"></div>
       <div class="scroll"><table id="t-flujo"></table></div>
       <div class="row" style="margin-top:10px">
         <button class="ghost sm" onclick="descargarCSV('t-flujo','por_flujo')">Descargar CSV</button>
@@ -175,8 +211,8 @@
   <!-- Por etapa -->
   <div id="tab-etapa" class="tab-panel">
     <div class="card">
-      <h2>Por etapa</h2>
-      <div id="bars-etapa" class="chart-bar-wrap" style="margin-bottom:12px"></div>
+      <h2>Maniobras por etapa</h2>
+      <div id="bars-etapa" class="bar-wrap" style="margin-bottom:12px"></div>
       <div class="scroll"><table id="t-etapa"></table></div>
       <div class="row" style="margin-top:10px">
         <button class="ghost sm" onclick="descargarCSV('t-etapa','por_etapa')">Descargar CSV</button>
@@ -187,8 +223,8 @@
   <!-- Por empleado -->
   <div id="tab-empleado" class="tab-panel">
     <div class="card">
-      <h2>Por empleado</h2>
-      <div id="bars-empleado" class="chart-bar-wrap" style="margin-bottom:12px"></div>
+      <h2>Participación por empleado</h2>
+      <div id="bars-empleado" class="bar-wrap" style="margin-bottom:12px"></div>
       <div class="scroll"><table id="t-empleado"></table></div>
       <div class="row" style="margin-top:10px">
         <button class="ghost sm" onclick="descargarCSV('t-empleado','por_empleado')">Descargar CSV</button>
@@ -196,12 +232,12 @@
     </div>
   </div>
 
-  <!-- Detalle por etapa (desde ETAPAS) -->
-  <div id="tab-detalle-etapa" class="tab-panel">
+  <!-- Detalle por etapa -->
+  <div id="tab-detalle-eta" class="tab-panel">
     <div class="card">
-      <h2>Detalle de tiempos por etapa</h2>
-      <p style="font-size:13px;color:var(--muted);margin-bottom:12px">
-        Promedios reales registrados en ETAPAS vs tiempo estimado, con demoras.
+      <h2>Tiempos reales vs estimados por etapa</h2>
+      <p style="font-size:13px;color:var(--muted);margin:0 0 12px">
+        Promedios de todas las etapas finalizadas en el período seleccionado.
       </p>
       <div class="scroll"><table id="t-det-eta"></table></div>
       <div class="row" style="margin-top:10px">
@@ -209,7 +245,7 @@
       </div>
     </div>
     <div class="card">
-      <h2>Últimas maniobras en detalle</h2>
+      <h2>Movimientos recientes</h2>
       <div class="scroll"><table id="t-det-man"></table></div>
       <div class="row" style="margin-top:10px">
         <button class="ghost sm" onclick="descargarCSV('t-det-man','movimientos')">Descargar CSV</button>
@@ -222,40 +258,39 @@
 <div id="toast" class="toast"></div>
 
 <script>
-/* ── Theme ── */
-function initTheme() {
-  var saved = localStorage.getItem('lt_theme');
-  var theme = saved || (window.matchMedia('(prefers-color-scheme: light)').matches ? 'light' : 'dark');
-  applyTheme(theme);
-}
-function applyTheme(t) {
-  document.documentElement.setAttribute('data-theme', t);
-  document.getElementById('theme-btn').textContent = t === 'light' ? '🌙' : '☀️';
-  localStorage.setItem('lt_theme', t);
-}
-function toggleTheme() {
-  var curr = document.documentElement.getAttribute('data-theme') || 'dark';
-  applyTheme(curr === 'dark' ? 'light' : 'dark');
-}
+/* ══════════════════════════════════════════════
+   ESTADO GLOBAL
+══════════════════════════════════════════════ */
+var USR = null;
+var _autoRefreshInterval = null;
+var AUTO_REFRESH_SEC = 120; // 2 minutos
 
-/* ── Toast ── */
-function toast(msg, tipo) {
-  var el = document.getElementById('toast');
-  el.textContent = msg;
-  el.className = 'toast show ' + (tipo || '');
-  setTimeout(function() { el.className = 'toast'; }, 3000);
-}
-
-/* ── Helpers ── */
+/* ══════════════════════════════════════════════
+   UTILIDADES
+══════════════════════════════════════════════ */
 function $(id) { return document.getElementById(id); }
+
+function toast(msg, tipo) {
+  var el = $('toast');
+  el.textContent = msg;
+  el.className   = 'toast show ' + (tipo || '');
+  clearTimeout(el._t);
+  el._t = setTimeout(function() { el.className = 'toast'; }, 3800);
+}
+
+function esc(s) {
+  return String(s === null || s === undefined ? '' : s)
+    .replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;')
+    .replace(/"/g,'&quot;').replace(/'/g,'&#39;');
+}
 
 function fmtMin(min) {
   if (min === undefined || min === null || min === '') return '—';
   var m = Math.round(Number(min));
   if (isNaN(m)) return '—';
-  var h = Math.floor(m / 60);
-  var mm = m % 60;
-  return h > 0 ? h + 'h ' + mm + 'm' : mm + ' min';
+  if (m === 0)  return '0 min';
+  var h = Math.floor(m / 60), mm = m % 60;
+  return h > 0 ? h + 'h ' + (mm ? mm + 'min' : '') : mm + ' min';
 }
 
 function fmtNum(n) {
@@ -263,78 +298,204 @@ function fmtNum(n) {
   return String(n);
 }
 
-/* ── Table renderer ── */
+function setRefreshStatus(loading) {
+  var spinner = $('refresh-spinner');
+  var label   = $('refresh-label');
+  if (!spinner || !label) return;
+  if (loading) {
+    spinner.className = 'refresh-circle';
+    label.textContent = 'Cargando…';
+  } else {
+    spinner.className = 'refresh-circle idle';
+    var ts = new Date().toLocaleTimeString('es-MX', { hour:'2-digit', minute:'2-digit' });
+    label.textContent = 'Actualizado ' + ts;
+  }
+}
+
+/* ══════════════════════════════════════════════
+   TEMA CLARO / OSCURO
+══════════════════════════════════════════════ */
+function initTheme() {
+  var saved = localStorage.getItem('lt_theme');
+  var theme = saved || (window.matchMedia('(prefers-color-scheme: light)').matches ? 'light' : 'dark');
+  applyTheme(theme);
+}
+
+function applyTheme(t) {
+  document.documentElement.setAttribute('data-theme', t);
+  var btn = $('theme-btn');
+  if (btn) btn.textContent = t === 'light' ? '🌙' : '☀️';
+  localStorage.setItem('lt_theme', t);
+}
+
+function toggleTheme() {
+  var curr = document.documentElement.getAttribute('data-theme') || 'dark';
+  applyTheme(curr === 'dark' ? 'light' : 'dark');
+}
+
+/* ══════════════════════════════════════════════
+   LOGIN
+══════════════════════════════════════════════ */
+function doLogin() {
+  var email = ($('l-email').value || '').trim();
+  var pin   = ($('l-pin').value   || '').trim();
+  var err   = $('l-err');
+  var btn   = $('l-btn');
+  if (!email || !pin) {
+    err.textContent   = 'Ingresa tu correo electrónico y PIN';
+    err.style.display = '';
+    return;
+  }
+  btn.disabled    = true;
+  btn.textContent = 'Verificando…';
+  err.style.display = 'none';
+
+  google.script.run
+    .withSuccessHandler(function(r) {
+      btn.disabled    = false;
+      btn.textContent = 'Iniciar sesión';
+      if (r.ok) {
+        USR = r;
+        try { sessionStorage.setItem('lt_usr', JSON.stringify(r)); } catch(e) {}
+        aplicarSesion();
+      } else {
+        err.textContent   = r.msg || 'Credenciales incorrectas';
+        err.style.display = '';
+        $('l-pin').value  = '';
+        $('l-pin').focus();
+      }
+    })
+    .withFailureHandler(function(e) {
+      btn.disabled    = false;
+      btn.textContent = 'Iniciar sesión';
+      err.textContent   = 'Error de conexión: ' + (e.message || e);
+      err.style.display = '';
+    })
+    .login(email, pin);
+}
+
+function logout() {
+  try { sessionStorage.removeItem('lt_usr'); } catch(e) {}
+  USR = null;
+  if (_autoRefreshInterval) { clearInterval(_autoRefreshInterval); _autoRefreshInterval = null; }
+  $('login-overlay').style.display = 'flex';
+  $('usr-badge').style.display     = 'none';
+  $('logout-btn').style.display    = 'none';
+  $('l-pin').value = '';
+}
+
+function aplicarSesion() {
+  $('login-overlay').style.display = 'none';
+  var badge = $('usr-badge');
+  badge.textContent   = (USR.nombre || USR.email) + ' · ' + USR.rol;
+  badge.style.display = '';
+  $('logout-btn').style.display = '';
+
+  // Cargar datos SOLO después de autenticarse correctamente
+  cargar();
+
+  // Auto-refresh cada 2 minutos
+  if (_autoRefreshInterval) clearInterval(_autoRefreshInterval);
+  _autoRefreshInterval = setInterval(cargar, AUTO_REFRESH_SEC * 1000);
+}
+
+/* ══════════════════════════════════════════════
+   TABS
+══════════════════════════════════════════════ */
+function showTab(name, btn) {
+  document.querySelectorAll('.tab-panel').forEach(function(p) { p.classList.remove('active'); });
+  document.querySelectorAll('#dash-tabs button').forEach(function(b) { b.classList.remove('active'); });
+  var panel = $('tab-' + name);
+  if (panel) panel.classList.add('active');
+  if (btn) btn.classList.add('active');
+}
+
+/* ══════════════════════════════════════════════
+   RENDER — TABLA GENÉRICA
+══════════════════════════════════════════════ */
 function renderTabla(tableId, rows, cols) {
   var t = $(tableId);
   if (!t) return;
-  if (!rows || rows.length === 0) {
-    t.innerHTML = '<tr><td colspan="' + cols.length + '" style="color:var(--muted);text-align:center">Sin datos</td></tr>';
+  if (!rows || !rows.length) {
+    t.innerHTML = '<tr><td colspan="' + cols.length + '" class="empty-state">Sin datos para el período seleccionado</td></tr>';
     return;
   }
-  var html = '<tr>' + cols.map(function(c) { return '<th>' + c[0] + '</th>'; }).join('') + '</tr>';
+  var html = '<tr>' + cols.map(function(c) { return '<th>' + esc(c[0]) + '</th>'; }).join('') + '</tr>';
   html += rows.map(function(r) {
     return '<tr>' + cols.map(function(c) {
       var v = r[c[1]];
-      if (c[2] === 'min') v = fmtMin(v);
-      else if (c[2] === 'badge') v = v ? '<span class="badge ' + v + '">' + v + '</span>' : '—';
-      else v = (v === undefined || v === null || v === '') ? '—' : v;
+      if      (c[2] === 'min')   v = fmtMin(v);
+      else if (c[2] === 'badge') v = v ? '<span class="badge ' + esc(v) + '">' + esc(v) + '</span>' : '—';
+      else v = (v === undefined || v === null || v === '') ? '—' : esc(String(v));
       return '<td>' + v + '</td>';
     }).join('') + '</tr>';
   }).join('');
   t.innerHTML = html;
 }
 
-/* ── Bar chart renderer ── */
+/* ══════════════════════════════════════════════
+   RENDER — BARRAS
+══════════════════════════════════════════════ */
 function renderBars(containerId, rows, labelKey, valueKey) {
   var el = $(containerId);
-  if (!el || !rows || rows.length === 0) { if (el) el.innerHTML = ''; return; }
+  if (!el) return;
+  if (!rows || !rows.length) { el.innerHTML = ''; return; }
   var max = rows.reduce(function(m, r) { return Math.max(m, Number(r[valueKey]) || 0); }, 0);
   el.innerHTML = rows.slice(0, 12).map(function(r) {
     var pct = max > 0 ? Math.round((Number(r[valueKey]) || 0) / max * 100) : 0;
     return '<div class="bar-row">' +
-      '<span class="bar-label" title="' + (r[labelKey] || '') + '">' + (r[labelKey] || '—') + '</span>' +
+      '<span class="bar-label" title="' + esc(r[labelKey] || '') + '">' + esc(r[labelKey] || '—') + '</span>' +
       '<div class="bar-track"><div class="bar-fill" style="width:' + pct + '%"></div></div>' +
       '<span class="bar-val">' + fmtNum(r[valueKey]) + '</span>' +
     '</div>';
   }).join('');
 }
 
-/* ── KPI renderer ── */
+/* ══════════════════════════════════════════════
+   RENDER — KPIs
+══════════════════════════════════════════════ */
 function renderKPIs(k) {
   var g = $('kpi-grid');
-  if (!k) { g.innerHTML = '<div class="card" style="margin:0"><div class="loading-msg">Sin datos</div></div>'; return; }
-  function card(label, val, sub) {
+  if (!k) {
+    g.innerHTML =
+      '<div class="card" style="margin:0"><div class="empty-state">' +
+        'Sin maniobras finalizadas en el período seleccionado.<br>' +
+        '<span style="font-size:12px">Los indicadores aparecerán cuando se completen maniobras.</span>' +
+      '</div></div>';
+    return;
+  }
+
+  function kpiCard(lbl, val, sub) {
     return '<div class="card" style="margin:0">' +
-      '<div class="muted">' + label + '</div>' +
-      '<div class="kpi">' + val + '</div>' +
-      (sub ? '<div class="muted" style="margin-top:4px">' + sub + '</div>' : '') +
+      '<div class="kpi-lbl">' + esc(lbl) + '</div>' +
+      '<div class="kpi-val">' + val + '</div>' +
+      (sub ? '<div class="kpi-sub">' + esc(sub) + '</div>' : '') +
     '</div>';
   }
-  g.innerHTML =
-    card('Maniobras finalizadas', fmtNum(k.maniobras)) +
-    card('En curso ahora', fmtNum(k.en_curso)) +
-    card('Promedio total', fmtMin(k.promedio_min)) +
-    card('Promedio efectivo', fmtMin(k.promedio_efectivo_min)) +
-    card('Demora acumulada', fmtMin(k.demora_total_min)) +
-    card('Maniobras con daño', fmtNum(k.danos));
 
-  var sem = k.semaforo || {};
-  var semRow = $('sem-row');
+  g.innerHTML =
+    kpiCard('Maniobras finalizadas',  fmtNum(k.maniobras),                 'en el período') +
+    kpiCard('En curso ahora',         fmtNum(k.en_curso),                   'maniobras activas') +
+    kpiCard('Tiempo promedio total',  fmtMin(k.promedio_min),              'por maniobra') +
+    kpiCard('Tiempo efectivo prom.',  fmtMin(k.promedio_efectivo_min),     'sin demoras') +
+    kpiCard('Demora acumulada',       fmtMin(k.demora_total_min),          'total período') +
+    kpiCard('Con daños reportados',   fmtNum(k.danos),                      'maniobras');
+
+  var sem   = k.semaforo || {};
   var total = (sem.VERDE || 0) + (sem['ÁMBAR'] || sem.AMBAR || 0) + (sem.ROJO || 0);
-  semRow.innerHTML = [
-    ['dot-verde', 'Verde', sem.VERDE || 0],
-    ['dot-ambar', 'Ámbar', sem['ÁMBAR'] || sem.AMBAR || 0],
-    ['dot-rojo',  'Rojo',  sem.ROJO  || 0]
+  $('sem-row').innerHTML = [
+    ['dot-verde', 'Verde',  sem.VERDE  || 0],
+    ['dot-ambar', 'Ámbar',  sem['ÁMBAR'] || sem.AMBAR || 0],
+    ['dot-rojo',  'Rojo',   sem.ROJO   || 0]
   ].map(function(s) {
     var pct = total > 0 ? ' (' + Math.round(s[2] / total * 100) + '%)' : '';
-    return '<div class="semaforo-item">' +
+    return '<div class="sem-item">' +
       '<span class="dot ' + s[0] + '"></span>' +
       '<span>' + s[1] + ': <strong>' + s[2] + '</strong>' + pct + '</span>' +
     '</div>';
-  }).join('<span style="color:var(--line);margin:0 4px">|</span>');
+  }).join('<span style="color:var(--line);margin:0 6px">|</span>');
   $('card-semaforo').style.display = '';
 
-  /* breakdowns */
   var cols = [['Nombre','nombre'],['Maniobras','maniobras'],['Promedio','promedio_min','min']];
   renderTabla('t-cliente',  k.por_cliente,  cols);
   renderTabla('t-flujo',    k.por_flujo,    cols);
@@ -346,12 +507,14 @@ function renderKPIs(k) {
   renderBars('bars-empleado', k.por_empleado, 'nombre', 'maniobras');
 }
 
-/* ── Serie (tendencia) ── */
+/* ══════════════════════════════════════════════
+   SERIE (TENDENCIA)
+══════════════════════════════════════════════ */
 function cargarSerie() {
-  var dias = $('sel-dias').value;
+  var dias    = $('sel-dias').value;
   var periodo = $('sel-periodo').value;
-  renderTabla('t-serie', null, []);
-  $('t-serie').innerHTML = '<tr><td class="loading-msg">Cargando tendencia…</td></tr>';
+  $('t-serie').innerHTML = '<tr><td class="loading-row">Cargando tendencia…</td></tr>';
+
   google.script.run
     .withSuccessHandler(function(rows) {
       renderTabla('t-serie', rows, [
@@ -362,23 +525,26 @@ function cargarSerie() {
       ]);
     })
     .withFailureHandler(function(e) {
-      $('t-serie').innerHTML = '<tr><td style="color:var(--red)">Error: ' + (e.message || e) + '</td></tr>';
+      $('t-serie').innerHTML = '<tr><td style="color:var(--red);padding:16px">Error: ' + esc(e.message || e) + '</td></tr>';
     })
     .serie(periodo, dias);
 }
 
-/* ── Detalle de tiempos por etapa ── */
+/* ══════════════════════════════════════════════
+   DETALLE DE TIEMPOS POR ETAPA
+══════════════════════════════════════════════ */
 function cargarDetalleEtapas(dias) {
-  $('t-det-eta').innerHTML = '<tr><td colspan="5" class="loading-msg">Cargando estadísticas de etapas…</td></tr>';
-  $('t-det-man').innerHTML = '<tr><td colspan="6" class="loading-msg">Cargando movimientos…</td></tr>';
+  $('t-det-eta').innerHTML = '<tr><td colspan="5" class="loading-row">Cargando estadísticas de etapas…</td></tr>';
+  $('t-det-man').innerHTML = '<tr><td colspan="6" class="loading-row">Cargando movimientos…</td></tr>';
+
   google.script.run
     .withSuccessHandler(function(res) {
       renderTabla('t-det-eta', res.porEtapa, [
         ['Etapa',            'nombre'],
         ['Registros',        'count'],
-        ['Promedio real',    'promedio_min',          'min'],
-        ['Estimado',         'promedio_est_min',       'min'],
-        ['Retraso promedio', 'promedio_retraso_min',   'min']
+        ['Promedio real',    'promedio_min',         'min'],
+        ['Estimado',         'promedio_est_min',      'min'],
+        ['Retraso promedio', 'promedio_retraso_min',  'min']
       ]);
       renderTabla('t-det-man', res.movimientos, [
         ['Folio',       'folio'],
@@ -390,26 +556,37 @@ function cargarDetalleEtapas(dias) {
       ]);
     })
     .withFailureHandler(function(e) {
-      $('t-det-eta').innerHTML = '<tr><td colspan="5" style="color:var(--red)">Error: ' + (e.message || e) + '</td></tr>';
+      $('t-det-eta').innerHTML = '<tr><td colspan="5" style="color:var(--red);padding:16px">Error: ' + esc(e.message || e) + '</td></tr>';
       $('t-det-man').innerHTML = '';
     })
     .getDetalleEtapas(Number(dias));
 }
 
-/* ── Main loader ── */
+/* ══════════════════════════════════════════════
+   CARGA PRINCIPAL
+   IMPORTANTE: Solo se llama desde aplicarSesion()
+   después de que el usuario se autenticó.
+══════════════════════════════════════════════ */
 function cargar() {
   var dias = $('sel-dias').value;
-  $('kpi-grid').innerHTML = '<div class="card" style="margin:0"><div class="loading-msg">Cargando indicadores…</div></div>';
+  setRefreshStatus(true);
+
+  $('kpi-grid').innerHTML =
+    '<div class="card" style="margin:0"><div class="loading-row">Cargando indicadores…</div></div>';
   $('card-semaforo').style.display = 'none';
 
   google.script.run
     .withSuccessHandler(function(k) {
       renderKPIs(k);
+      setRefreshStatus(false);
     })
     .withFailureHandler(function(e) {
-      $('kpi-grid').innerHTML = '<div class="card" style="margin:0;border-color:var(--red)">' +
-        '<div style="color:var(--red)">Error al cargar: ' + (e.message || e) + '</div></div>';
+      $('kpi-grid').innerHTML =
+        '<div class="card" style="margin:0;border-color:var(--red)">' +
+          '<div style="color:var(--red);padding:16px">Error: ' + esc(e.message || e) + '</div>' +
+        '</div>';
       toast('Error al cargar indicadores', 'err');
+      setRefreshStatus(false);
     })
     .indicadores(dias);
 
@@ -417,15 +594,9 @@ function cargar() {
   cargarDetalleEtapas(dias);
 }
 
-/* ── Tab navigation ── */
-function showTab(name, btn) {
-  document.querySelectorAll('.tab-panel').forEach(function(p) { p.classList.remove('active'); });
-  document.querySelectorAll('#tabs button').forEach(function(b) { b.classList.remove('active'); });
-  $('tab-' + name).classList.add('active');
-  if (btn) btn.classList.add('active');
-}
-
-/* ── CSV export ── */
+/* ══════════════════════════════════════════════
+   CSV EXPORT
+══════════════════════════════════════════════ */
 function descargarCSV(tableId, nombre) {
   var rows = document.querySelectorAll('#' + tableId + ' tr');
   if (!rows.length) { toast('Sin datos para exportar', 'err'); return; }
@@ -434,73 +605,27 @@ function descargarCSV(tableId, nombre) {
       return '"' + td.textContent.replace(/"/g, '""') + '"';
     }).join(',');
   }).join('\n');
-  var a = document.createElement('a');
-  a.href = 'data:text/csv;charset=utf-8,' + encodeURIComponent('﻿' + csv);
+  var a     = document.createElement('a');
+  a.href    = 'data:text/csv;charset=utf-8,' + encodeURIComponent('﻿' + csv);
   a.download = nombre + '_' + new Date().toISOString().slice(0,10) + '.csv';
   a.click();
 }
 
-/* ── Login ── */
-var USR = null;
-
-function doLogin() {
-  var email = ($('l-email').value || '').trim();
-  var pin   = ($('l-pin').value   || '').trim();
-  var err   = $('l-err');
-  var btn   = $('l-btn');
-  if (!email || !pin) { err.textContent = 'Ingresa tu correo y PIN'; err.style.display = ''; return; }
-  btn.disabled = true; btn.textContent = 'Verificando…';
-  err.style.display = 'none';
-  google.script.run
-    .withSuccessHandler(function(r) {
-      btn.disabled = false; btn.textContent = 'Entrar';
-      if (r.ok) {
-        USR = r;
-        try { sessionStorage.setItem('lt_usr', JSON.stringify(r)); } catch(e) {}
-        aplicarSesion();
-      } else {
-        err.textContent = r.msg || 'Credenciales incorrectas';
-        err.style.display = '';
-        $('l-pin').value = '';
-        $('l-pin').focus();
-      }
-    })
-    .withFailureHandler(function(e) {
-      btn.disabled = false; btn.textContent = 'Entrar';
-      err.textContent = 'Error de conexión: ' + (e.message || e);
-      err.style.display = '';
-    })
-    .login(email, pin);
-}
-
-function logout() {
-  try { sessionStorage.removeItem('lt_usr'); } catch(e) {}
-  USR = null;
-  $('login-overlay').style.display = 'flex';
-  $('usr-badge').style.display  = 'none';
-  $('logout-btn').style.display = 'none';
-  $('l-pin').value = '';
-}
-
-function aplicarSesion() {
-  $('login-overlay').style.display = 'none';
-  var badge = $('usr-badge');
-  badge.textContent = USR.nombre + ' · ' + USR.rol;
-  badge.style.display = '';
-  $('logout-btn').style.display = '';
-}
-
-/* ── Init ── */
+/* ══════════════════════════════════════════════
+   ARRANQUE
+══════════════════════════════════════════════ */
 initTheme();
 
 (function() {
   try {
     var guardada = sessionStorage.getItem('lt_usr');
-    if (guardada) { USR = JSON.parse(guardada); aplicarSesion(); }
+    if (guardada) {
+      USR = JSON.parse(guardada);
+      aplicarSesion();
+    }
+    // Si no hay sesión en storage, el login overlay ya está visible
   } catch(e) {}
 })();
-
-cargar();
 </script>
 </body>
 </html>
