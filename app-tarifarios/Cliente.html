@@ -1,0 +1,2199 @@
+<script>
+var estado = {
+  inicial: null,
+  vista: 'comparar',
+  filtros: { rutaId: '', mercancia: '', equipo: '', movimiento: '', moneda: '',
+             texto: '', extras: {}, fecha: '', orden: 'puntaje', pesoPrecio: '',
+             incluirVencidas: false, proveedorId: '' },
+  comparacion: null,
+  mejores: null,
+  tarifas: null,
+  filtroTarifas: { rutaId: '', proveedorId: '', mercancia: '', equipo: '',
+                   movimiento: '', moneda: '', estado: '', texto: '', extras: {} },
+  filtroProveedores: { texto: '', estado: '', extras: {} },
+  filtroRutas: { texto: '', estado: '' },
+  borrador: null,
+  importacion: { tipo: 'tarifas', texto: '', informe: null, crearFaltantes: true },
+  usuarios: null
+};
+
+var LLAVE_TOKEN = 'tarifarios-tlterminals-token';
+
+// El token llega en la liga personal (?t=…) y de ahí en adelante vive en el
+// navegador. Es lo que identifica a quien entra con un correo externo.
+var TOKEN = (function () {
+  var deLaLiga = (typeof TOKEN_INICIAL === 'string') ? TOKEN_INICIAL : '';
+  try {
+    if (deLaLiga) {
+      window.localStorage.setItem(LLAVE_TOKEN, deLaLiga);
+      return deLaLiga;
+    }
+    return window.localStorage.getItem(LLAVE_TOKEN) || '';
+  } catch (e) {
+    return deLaLiga;
+  }
+})();
+
+function olvidarToken() {
+  try { window.localStorage.removeItem(LLAVE_TOKEN); } catch (e) { return; }
+}
+
+function $(id) { return document.getElementById(id); }
+
+/**
+ * Escribe dentro de un contenedor si todavía existe. Las respuestas del
+ * servidor tardan, y para cuando llegan puede que ya te hayas cambiado de
+ * pestaña: sin esto, la respuesta vieja truena contra una pantalla que ya no
+ * está.
+ * @return {boolean} false si el contenedor ya no existe.
+ */
+function pintarEn(id, html) {
+  var nodo = $(id);
+  if (!nodo) {
+    return false;
+  }
+  nodo.innerHTML = html;
+  return true;
+}
+
+function esc(texto) {
+  return String(texto === null || texto === undefined ? '' : texto)
+    .replace(/&/g, '&amp;').replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+}
+
+function moneda() {
+  return (estado.inicial && estado.inicial.config && estado.inicial.config.monedaBase) || 'MXN';
+}
+
+function dinero(n) {
+  var v = Number(n) || 0;
+  var texto = Math.abs(v).toLocaleString('es-MX', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+  return (v < 0 ? '-$' : '$') + texto;
+}
+
+function entero(n) {
+  return (Number(n) || 0).toLocaleString('es-MX');
+}
+
+function llamar(nombre, args) {
+  return new Promise(function (resolver, rechazar) {
+    var corredor = google.script.run
+      .withSuccessHandler(resolver)
+      .withFailureHandler(rechazar);
+    if (typeof corredor.ejecutar !== 'function') {
+      rechazar(new Error('No pude comunicarme con el servidor.'));
+      return;
+    }
+    corredor.ejecutar(TOKEN, nombre, args || []);
+  });
+}
+
+var temporizadorAviso = null;
+function avisar(mensaje, malo) {
+  var caja = $('aviso');
+  caja.textContent = mensaje;
+  caja.className = malo ? 'malo' : '';
+  clearTimeout(temporizadorAviso);
+  temporizadorAviso = setTimeout(function () { caja.classList.add('oculto'); }, malo ? 8000 : 3500);
+  caja.classList.remove('oculto');
+}
+
+function fallo(err) {
+  avisar(err && err.message ? err.message : 'Algo salió mal.', true);
+}
+
+function enlazar(selector, evento, manejador) {
+  var nodos = document.querySelectorAll(selector);
+  for (var i = nodos.length - 1; i >= 0; i--) {
+    nodos[i].addEventListener(evento, manejador);
+  }
+}
+
+function valorDe(id) {
+  var nodo = $(id);
+  return nodo ? String(nodo.value).trim() : '';
+}
+
+function marcado(id) {
+  var nodo = $(id);
+  return nodo ? !!nodo.checked : false;
+}
+
+function esAdmin() {
+  return estado.inicial && estado.inicial.usuario && estado.inicial.usuario.rol === 'admin';
+}
+
+/**
+ * Botones de filtro: una fila de fichas donde solo una queda elegida. Se usa
+ * para lo que tiene pocas opciones —movimiento, moneda, situación—, donde un
+ * botón se ve y se aprieta más rápido que abrir una lista.
+ *
+ * @param {string} id Prefijo de los botones.
+ * @param {string} titulo Encabezado de la fila.
+ * @param {Array} opciones Pares [valor, texto]. El valor '' es "todos".
+ * @param {string} elegido Valor activo.
+ * @return {string}
+ */
+function fichas(id, titulo, opciones, elegido) {
+  return '<div><span class="titulo-fichas">' + esc(titulo) + '</span>'
+    + '<div class="fichas" data-fichas="' + id + '">'
+    + opciones.map(function (o) {
+        return '<button type="button" data-ficha="' + id + '" data-valor="' + esc(o[0]) + '"'
+          + (String(elegido || '') === String(o[0]) ? ' class="elegida"' : '')
+          + '>' + esc(o[1]) + '</button>';
+      }).join('')
+    + '</div></div>';
+}
+
+/** Fichas armadas a partir de un catálogo. */
+function fichasCatalogo(id, titulo, tipo, elegido, etiquetaTodos) {
+  var lista = (estado.inicial.catalogos[tipo] || []).filter(function (c) {
+    return c.estado === 'activo' || c.clave === elegido;
+  });
+  if (lista.length < 2) {
+    return '';
+  }
+  return fichas(id, titulo, [['', etiquetaTodos]].concat(lista.map(function (c) {
+    return [c.clave, c.nombre];
+  })), elegido);
+}
+
+/**
+ * Conecta las fichas de un contenedor. Al apretar una, se marca y se avisa.
+ * @param {Function} alCambiar Recibe (id, valor).
+ */
+function enlazarFichas(alCambiar) {
+  enlazar('button[data-ficha]', 'click', function () {
+    var id = this.getAttribute('data-ficha');
+    var valor = this.getAttribute('data-valor');
+    var hermanas = document.querySelectorAll('[data-fichas="' + id + '"] button');
+    for (var i = 0; i < hermanas.length; i++) {
+      hermanas[i].classList.remove('elegida');
+    }
+    this.classList.add('elegida');
+    alCambiar(id, valor);
+  });
+}
+
+function valorFicha(id, previo) {
+  var elegida = document.querySelector('[data-fichas="' + id + '"] button.elegida');
+  return elegida ? elegida.getAttribute('data-valor') : (previo || '');
+}
+
+/**
+ * Un control de filtro por cada campo propio: lista y sí/no como menú, el
+ * resto como caja de texto.
+ */
+function filtrosDeCampos(prefijo, ambito, valores) {
+  var actuales = valores || {};
+  return camposDe(ambito).map(function (campo) {
+    var id = prefijo + '-' + campo.clave;
+    var v = actuales[campo.clave] || '';
+    if (campo.tipo === 'lista' || campo.tipo === 'si_no') {
+      var opciones = campo.tipo === 'si_no' ? ['SI', 'NO'] : campo.opciones;
+      return '<label class="campo">' + esc(campo.etiqueta) + '<select id="' + id + '">'
+        + '<option value="">Todos</option>'
+        + opciones.map(function (o) {
+            var texto = campo.tipo === 'si_no' ? (o === 'SI' ? 'Sí' : 'No') : o;
+            return '<option value="' + esc(o) + '"' + (v === o ? ' selected' : '') + '>'
+              + esc(texto) + '</option>';
+          }).join('')
+        + '</select></label>';
+    }
+    return '<label class="campo">' + esc(campo.etiqueta)
+      + '<input id="' + id + '" value="' + esc(v) + '" placeholder="cualquiera" /></label>';
+  }).join('');
+}
+
+function leerFiltrosDeCampos(prefijo, ambito) {
+  var salida = {};
+  camposDe(ambito).forEach(function (campo) {
+    var nodo = $(prefijo + '-' + campo.clave);
+    if (nodo && String(nodo.value).trim()) {
+      salida[campo.clave] = String(nodo.value).trim();
+    }
+  });
+  return salida;
+}
+
+function camposDe(ambito) {
+  var todos = (estado.inicial && estado.inicial.campos) || {};
+  return todos[ambito] || [];
+}
+
+/**
+ * Dibuja un campo personalizado según su tipo. La clave del campo va en el id
+ * para poder leerlo después sin llevar registro aparte.
+ */
+function campoPersonalizado(campo, valor) {
+  var id = 'extra-' + campo.clave;
+  var v = valor === undefined || valor === null ? '' : valor;
+  if (campo.tipo === 'si_no') {
+    return '<label class="checkbox"><input type="checkbox" id="' + id + '"'
+      + (String(v).toUpperCase() === 'SI' ? ' checked' : '') + ' /> '
+      + esc(campo.etiqueta) + '</label>';
+  }
+  if (campo.tipo === 'lista') {
+    return '<label class="campo">' + esc(campo.etiqueta) + '<select id="' + id + '">'
+      + '<option value="">—</option>'
+      + campo.opciones.map(function (o) {
+          return '<option value="' + esc(o) + '"' + (String(v) === o ? ' selected' : '')
+            + '>' + esc(o) + '</option>';
+        }).join('')
+      + '</select></label>';
+  }
+  if (campo.tipo === 'numero') {
+    return campoNumero(id, campo.etiqueta, v);
+  }
+  if (campo.tipo === 'fecha') {
+    return '<label class="campo">' + esc(campo.etiqueta)
+      + '<input type="date" id="' + id + '" value="' + esc(v) + '" /></label>';
+  }
+  return campoTexto(id, campo.etiqueta, v);
+}
+
+function leerCamposPersonalizados(ambito) {
+  var salida = {};
+  camposDe(ambito).forEach(function (campo) {
+    var nodo = $('extra-' + campo.clave);
+    if (!nodo) { return; }
+    salida[campo.clave] = campo.tipo === 'si_no' ? (nodo.checked ? 'SI' : 'NO') : nodo.value;
+  });
+  return salida;
+}
+
+/** El tipo de cambio con el que se está comparando ahora mismo. */
+function cintaTipoCambio(tc) {
+  if (!tc || !tc.valor) { return ''; }
+  return '<span class="etiqueta acento" title="' + esc(tc.origen) + '">USD 1 = '
+    + esc(tc.valor) + ' ' + esc(moneda()) + (tc.fecha ? ' · ' + esc(tc.fecha) : '')
+    + '</span>';
+}
+
+/**
+ * Descarga un archivo generado en el servidor. Si el navegador no deja bajar
+ * desde aquí, se muestra el contenido para copiarlo a mano.
+ */
+function descargar(nombre, contenido) {
+  try {
+    var blob = new Blob(['\ufeff' + contenido], { type: 'text/csv;charset=utf-8;' });
+    var liga = document.createElement('a');
+    liga.href = URL.createObjectURL(blob);
+    liga.download = nombre;
+    document.body.appendChild(liga);
+    liga.click();
+    setTimeout(function () {
+      URL.revokeObjectURL(liga.href);
+      document.body.removeChild(liga);
+    }, 1500);
+    avisar('Descargando ' + nombre);
+  } catch (e) {
+    mostrarTexto(nombre, contenido);
+  }
+}
+
+function mostrarTexto(nombre, contenido) {
+  var caja = $('vista');
+  var previo = document.createElement('div');
+  previo.className = 'tarjeta';
+  previo.innerHTML = '<div class="tarjeta-cab"><h3>' + esc(nombre) + '</h3>'
+    + '<span class="apagado">Cópialo y pégalo en Excel.</span></div>'
+    + '<textarea readonly style="min-height:220px">' + esc(contenido) + '</textarea>';
+  caja.insertBefore(previo, caja.firstChild);
+  previo.querySelector('textarea').select();
+}
+
+function tiempoTexto(horas) {
+  var h = Number(horas) || 0;
+  if (h <= 0) { return '—'; }
+  if (h < 24) { return (Math.round(h * 10) / 10) + ' h'; }
+  var dias = Math.floor(h / 24);
+  var resto = Math.round((h - dias * 24) * 10) / 10;
+  return dias + ' d' + (resto > 0 ? ' ' + resto + ' h' : '');
+}
+
+function hoyISO() {
+  var d = new Date();
+  return d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0')
+    + '-' + String(d.getDate()).padStart(2, '0');
+}
+
+/* ------------------------------- arranque --------------------------------- */
+
+function arrancar() {
+  llamar('apiEstadoInicial').then(function (datos) {
+    estado.inicial = datos;
+    $('cargando').classList.add('oculto');
+    $('app').classList.remove('oculto');
+
+    if (!datos.sesion) {
+      // Con la aplicación publicada para "cualquier persona", Google no le dice
+      // al script quién entró: por eso hace falta la liga personal. Y por eso
+      // hay que explicar aquí cómo se consigue, incluido el caso de quien acaba
+      // de instalar y todavía no tiene la suya.
+      $('vista').innerHTML = '<h2 class="titulo">Necesitas tu liga personal</h2>'
+        + '<div class="nota">Los tarifarios se abren con una liga personal, que '
+        + 'termina en <b>?t=</b> seguido de una clave. Es lo que identifica a cada '
+        + 'quien, porque Google no comparte con la aplicación el correo de quien entra.</div>'
+        + '<h3>Si alguien más instaló el sistema</h3>'
+        + '<p class="sub">Pídele tu liga al administrador. Desde <b>Ajustes</b> puede '
+        + 'mandártela por correo con el botón <b>Invitar</b>.</p>'
+        + '<h3>Si tú lo instalaste</h3>'
+        + '<p class="sub">Tu liga se imprime sola al instalar, pero se consigue en '
+        + 'cualquier momento:</p>'
+        + '<ol class="sub"><li>Abre el proyecto en <b>script.google.com</b>.</li>'
+        + '<li>En la lista de funciones elige <b>miLiga</b> y dale <b>Ejecutar</b>.</li>'
+        + '<li>Abajo, en el registro de ejecución, aparece tu liga. Ábrela y '
+        + 'guárdala en favoritos.</li></ol>'
+        + '<div class="nota aviso">También puedes sacarla a mano: en la hoja de cálculo '
+        + '<b>TLTERMINALS · Tarifarios — Base de datos</b>, pestaña <b>Usuarios</b>, '
+        + 'copia el valor de la columna <b>token</b> y pégalo al final de esta dirección '
+        + 'después de <b>?t=</b>.</div>';
+      return;
+    }
+    if (datos.tokenInvalido) {
+      olvidarToken();
+      $('vista').innerHTML = '<h2 class="titulo">Tu liga ya no sirve</h2>'
+        + '<div class="nota malo">La liga con la que entraste fue reemplazada o cancelada.</div>'
+        + '<p class="sub">Pídele al administrador que te mande una nueva. Si tú instalaste '
+        + 'el sistema, ejecuta la función <b>miLiga</b> desde el editor de Apps Script.</p>';
+      return;
+    }
+    if (!datos.registrado) {
+      $('vista').innerHTML = '<h2 class="titulo">Aún no estás dado de alta</h2>'
+        + (datos.email
+            ? '<p class="sub">Tu correo <b>' + esc(datos.email) + '</b> no está registrado.</p>'
+            : '<p class="sub">No traes una liga personal de acceso.</p>')
+        + '<div class="nota">Pídele al administrador que te dé de alta.</div>';
+      return;
+    }
+    if (datos.activo === false) {
+      $('vista').innerHTML = '<div class="nota aviso">Tu cuenta está desactivada. '
+        + 'Habla con el administrador.</div>';
+      return;
+    }
+    estado.filtros.fecha = datos.hoy;
+    pintarBarra();
+    pintar();
+  }).catch(function (err) {
+    $('cargando').classList.add('oculto');
+    $('app').classList.remove('oculto');
+    $('vista').innerHTML = '<div class="nota malo">' + esc(err.message || err) + '</div>';
+  });
+}
+
+function pintarBarra() {
+  var u = estado.inicial.usuario;
+  var empresa = (estado.inicial.config && estado.inicial.config.empresa) || 'TLTERMINALS';
+  $('barra').innerHTML = '<h1>Tarifarios · ' + esc(empresa) + '</h1>'
+    + '<div class="quien">' + cintaTipoCambio(estado.inicial.tipoCambio) + ' ' + esc(u.nombre)
+    + (u.rol === 'admin' ? '<span class="insignia">admin</span>' : '')
+    + ' <button class="suave chico" id="salir" style="margin-left:8px">Salir</button></div>';
+  $('salir').addEventListener('click', function () {
+    if (!confirm('¿Olvidar tu acceso en este dispositivo?')) { return; }
+    olvidarToken();
+    location.href = location.pathname;
+  });
+
+  var pestanas = [['comparar', 'Comparar'], ['mejores', 'Mejores opciones'],
+                  ['tarifas', 'Tarifas']];
+  if (esAdmin()) {
+    pestanas = pestanas.concat([['proveedores', 'Proveedores'], ['rutas', 'Rutas'],
+      ['catalogos', 'Catálogos'], ['campos', 'Campos propios'],
+      ['datos', 'Importar y exportar'], ['ajustes', 'Ajustes']]);
+  } else {
+    pestanas.push(['datos', 'Exportar']);
+  }
+
+  $('tabs').innerHTML = pestanas.map(function (p) {
+    return '<button data-vista="' + p[0] + '"'
+      + (estado.vista === p[0] ? ' class="activo"' : '') + '>' + p[1] + '</button>';
+  }).join('');
+  enlazar('#tabs button', 'click', function () {
+    estado.vista = this.getAttribute('data-vista');
+    estado.borrador = null;
+    pintarBarra();
+    pintar();
+  });
+}
+
+function pintar() {
+  var mapa = {
+    comparar: vistaComparar, mejores: vistaMejores, tarifas: vistaTarifas,
+    proveedores: vistaProveedores, rutas: vistaRutas, catalogos: vistaCatalogos,
+    campos: vistaCampos, datos: vistaDatos, ajustes: vistaAjustes
+  };
+  (mapa[estado.vista] || vistaComparar)();
+}
+
+function recargarInicial() {
+  return llamar('apiEstadoInicial').then(function (datos) {
+    estado.inicial = datos;
+    return datos;
+  });
+}
+
+/* -------------------------- controles de filtrado -------------------------- */
+
+function opcionesRutas(seleccion, todas) {
+  var lista = (estado.inicial.rutas || []).filter(function (r) {
+    return todas || r.estado === 'activo';
+  });
+  return '<option value="">Todas las rutas</option>' + lista.map(function (r) {
+    return '<option value="' + esc(r.id) + '"' + (seleccion === r.id ? ' selected' : '')
+      + '>' + esc(r.nombre) + '</option>';
+  }).join('');
+}
+
+function opcionesCatalogo(tipo, seleccion, etiquetaTodos) {
+  var lista = (estado.inicial.catalogos[tipo] || []).filter(function (c) {
+    return c.estado === 'activo' || c.clave === seleccion;
+  });
+  return '<option value="">' + esc(etiquetaTodos) + '</option>' + lista.map(function (c) {
+    return '<option value="' + esc(c.clave) + '"' + (seleccion === c.clave ? ' selected' : '')
+      + '>' + esc(c.nombre) + '</option>';
+  }).join('');
+}
+
+function opcionesProveedores(seleccion, etiquetaTodos) {
+  var lista = (estado.inicial.proveedores || []).filter(function (p) {
+    return p.estado === 'activo' || p.id === seleccion;
+  });
+  return '<option value="">' + esc(etiquetaTodos) + '</option>' + lista.map(function (p) {
+    return '<option value="' + esc(p.id) + '"' + (seleccion === p.id ? ' selected' : '')
+      + '>' + esc(p.nombre) + '</option>';
+  }).join('');
+}
+
+function cajaFiltros() {
+  var f = estado.filtros;
+  var pesoPrecio = f.pesoPrecio === '' ? Number(estado.inicial.config.pesoPrecio || 70)
+    : Number(f.pesoPrecio);
+  return '<div class="filtros">'
+    + '<div class="fila-campos">'
+    + '<label class="campo">Ruta<select id="f-ruta">' + opcionesRutas(f.rutaId) + '</select></label>'
+    + '<label class="campo">Partner<select id="f-proveedor">'
+    + opcionesProveedores(f.proveedorId, 'Todos') + '</select></label>'
+    + '<label class="campo">Tipo de carga<select id="f-mercancia">'
+    + opcionesCatalogo('mercancia', f.mercancia, 'Todas') + '</select></label>'
+    + '<label class="campo">Tipo de unidad<select id="f-equipo">'
+    + opcionesCatalogo('equipo', f.equipo, 'Todos') + '</select></label>'
+    + '<label class="campo">Vigente al día<input type="date" id="f-fecha" value="'
+    + esc(f.fecha || estado.inicial.hoy) + '" /></label>'
+    + '<label class="campo">Buscar<input id="f-texto" value="' + esc(f.texto || '')
+    + '" placeholder="partner, ruta, notas…" /></label>'
+    + filtrosDeCampos('f', 'tarifa', f.extras)
+    + '<label class="campo">Qué pesa más: precio <b id="f-peso-txt">' + pesoPrecio + ' %</b>'
+    + ' / tiempo ' + (100 - pesoPrecio) + ' %'
+    + '<input type="range" id="f-peso" min="0" max="100" step="5" value="' + pesoPrecio + '" /></label>'
+    + '</div>'
+    + '<div class="grupo-fichas">'
+    + fichasCatalogo('f-movimiento', 'Movimiento', 'movimiento', f.movimiento, 'Todos')
+    + fichas('f-moneda', 'Moneda', [['', 'Todas'], ['MXN', 'MXN'], ['USD', 'USD']], f.moneda)
+    + fichas('f-orden', 'Ordenar por', [['puntaje', 'Mejor opción'], ['precio', 'Solo precio'],
+        ['tiempo', 'Solo tiempo']], f.orden)
+    + '</div>'
+    + '<div class="barra-filtros">'
+    + '<label class="checkbox" style="margin:0"><input type="checkbox" id="f-vencidas"'
+    + (f.incluirVencidas ? ' checked' : '') + ' /> Incluir tarifas fuera de vigencia</label>'
+    + '<button class="suave chico" id="f-limpiar">Limpiar filtros</button>'
+    + '</div>'
+    + '</div>';
+}
+
+function leerFiltros() {
+  estado.filtros.rutaId = valorDe('f-ruta');
+  estado.filtros.proveedorId = valorDe('f-proveedor');
+  estado.filtros.mercancia = valorDe('f-mercancia');
+  estado.filtros.equipo = valorDe('f-equipo');
+  estado.filtros.fecha = valorDe('f-fecha');
+  estado.filtros.texto = valorDe('f-texto');
+  estado.filtros.pesoPrecio = valorDe('f-peso');
+  estado.filtros.incluirVencidas = marcado('f-vencidas');
+  estado.filtros.movimiento = valorFicha('f-movimiento', estado.filtros.movimiento);
+  estado.filtros.moneda = valorFicha('f-moneda', estado.filtros.moneda);
+  estado.filtros.orden = valorFicha('f-orden', estado.filtros.orden) || 'puntaje';
+  estado.filtros.extras = leerFiltrosDeCampos('f', 'tarifa');
+}
+
+function filtrosVacios() {
+  return { rutaId: '', proveedorId: '', mercancia: '', equipo: '', movimiento: '',
+           moneda: '', texto: '', extras: {}, fecha: estado.inicial.hoy,
+           orden: 'puntaje', pesoPrecio: '', incluirVencidas: false };
+}
+
+function enlazarFiltros(alCambiar) {
+  ['f-ruta', 'f-proveedor', 'f-mercancia', 'f-equipo', 'f-fecha', 'f-vencidas']
+    .forEach(function (id) {
+      var nodo = $(id);
+      if (nodo) {
+        nodo.addEventListener('change', function () { leerFiltros(); alCambiar(); });
+      }
+    });
+  camposDe('tarifa').forEach(function (campo) {
+    var nodo = $('f-' + campo.clave);
+    if (!nodo) { return; }
+    nodo.addEventListener('change', function () { leerFiltros(); alCambiar(); });
+  });
+
+  var texto = $('f-texto');
+  if (texto) {
+    texto.addEventListener('input', function () {
+      clearTimeout(estado._tecleoFiltro);
+      estado._tecleoFiltro = setTimeout(function () { leerFiltros(); alCambiar(); }, 350);
+    });
+  }
+
+  enlazarFichas(function () { leerFiltros(); alCambiar(); });
+
+  var peso = $('f-peso');
+  if (peso) {
+    peso.addEventListener('input', function () {
+      $('f-peso-txt').textContent = peso.value + ' %';
+    });
+    peso.addEventListener('change', function () { leerFiltros(); alCambiar(); });
+  }
+
+  var limpiar = $('f-limpiar');
+  if (limpiar) {
+    limpiar.addEventListener('click', function () {
+      estado.filtros = filtrosVacios();
+      pintar();
+    });
+  }
+}
+
+/* ------------------------------- comparador -------------------------------- */
+
+/**
+ * Aviso de vigencias: las tarifas vencidas no aparecen en el comparador, así
+ * que hay que decirlo en voz alta o nadie se entera de que hay que renegociar.
+ */
+function avisoVencimientos() {
+  var r = estado.inicial.resumen;
+  if (!r || (!r.vencidas && !r.porVencer)) {
+    return '';
+  }
+  var partes = [];
+  if (r.vencidas) {
+    partes.push(r.vencidas + (r.vencidas === 1 ? ' tarifa vencida' : ' tarifas vencidas'));
+  }
+  if (r.porVencer) {
+    partes.push(r.porVencer + (r.porVencer === 1 ? ' está por vencer' : ' están por vencer'));
+  }
+  return '<div class="nota aviso">Hay ' + esc(partes.join(' y '))
+    + '. Las vencidas no entran al comparador: revísalas en la pestaña Tarifas.</div>';
+}
+
+function vistaComparar() {
+  $('vista').innerHTML = '<h2 class="titulo">Comparar transportistas</h2>'
+    + '<p class="sub">Elige la ruta y las características del viaje. Las opciones se '
+    + 'acomodan de la mejor a la peor combinando precio y tiempo de entrega.</p>'
+    + avisoVencimientos()
+    + cajaFiltros()
+    + '<div id="resultado"><div class="vacio">Consultando…</div></div>';
+  enlazarFiltros(cargarComparacion);
+  cargarComparacion();
+}
+
+function cargarComparacion() {
+  pintarEn('resultado', '<div class="vacio">Consultando…</div>');
+  llamar('apiComparar', [estado.filtros]).then(function (datos) {
+    estado.comparacion = datos;
+    pintarComparacion();
+  }).catch(function (err) {
+    pintarEn('resultado', '<div class="nota malo">' + esc(err.message || err) + '</div>');
+  });
+}
+
+function pintarComparacion() {
+  var datos = estado.comparacion;
+  if (!$('resultado')) {
+    return;
+  }
+
+  if (!datos.grupos.length) {
+    pintarEn('resultado', '<div class="nota aviso">No hay tarifas que cumplan con eso.</div>'
+      + descartadasTexto(datos.descartadas));
+    return;
+  }
+
+  var encabezado = '<div class="cifras">'
+    + cifra(datos.grupos.length, 'Combinaciones')
+    + cifra(datos.total, 'Opciones comparadas')
+    + cifra(datos.criterio.pesoPrecio + ' / ' + datos.criterio.pesoTiempo, 'Precio / tiempo')
+    + cifra(datos.fecha, 'Vigente al')
+    + '</div>'
+    + (datos.tipoCambio && datos.tipoCambio.valor
+        ? '<p class="apagado">Las tarifas en dólares se comparan a '
+          + esc(datos.tipoCambio.valor) + ' ' + esc(datos.monedaBase) + ' por dólar · '
+          + esc(datos.tipoCambio.origen) + '.</p>'
+        : '');
+
+  pintarEn('resultado', encabezado
+    + datos.grupos.map(pintarGrupo).join('')
+    + descartadasTexto(datos.descartadas));
+
+  enlazar('button[data-historial]', 'click', function () {
+    var partes = this.getAttribute('data-historial').split('|');
+    verHistorial(partes[0], partes[1], partes[2], partes[3]);
+  });
+}
+
+function cifra(valor, etiqueta) {
+  return '<div class="cifra"><b>' + esc(valor) + '</b><span>' + esc(etiqueta) + '</span></div>';
+}
+
+function pintarGrupo(g) {
+  var maximo = g.costoMax || 1;
+  var caracteristicas = [g.mercanciaNombre, g.equipoNombre, g.movimientoNombre];
+  (g.etiquetas || []).forEach(function (e) {
+    caracteristicas.push(e.etiqueta + ': ' + e.valor);
+  });
+  if (g.km) { caracteristicas.push(entero(g.km) + ' km'); }
+
+  return '<section class="grupo">'
+    + '<header>'
+    + '<div><b>' + esc(g.ruta) + '</b>'
+    + '<div class="caracteristicas">' + esc(caracteristicas.join(' · ')) + '</div></div>'
+    + '<div class="pila">'
+    + '<span class="etiqueta">' + g.total + ' opciones · ' + g.proveedores + ' proveedores</span>'
+    + (g.ahorro > 0 ? '<span class="etiqueta ok">Ahorro contra la peor ' + dinero(g.ahorro) + '</span>' : '')
+    + '<button class="suave chico" data-historial="' + esc(g.rutaId) + '|'
+    + esc(g.mercancia) + '|' + esc(g.equipo) + '|' + esc(g.movimiento) + '">Historial</button>'
+    + '</div></header>'
+    + (g.conTiempo === false
+        ? '<div class="nota aviso" style="margin:12px 16px">Estas tarifas no traen tiempo '
+          + 'de entrega capturado, así que el orden es solo por precio. Captúralo para '
+          + 'que el tiempo también cuente.</div>'
+        : '')
+    + g.opciones.map(function (o) { return pintarOpcion(o, maximo); }).join('')
+    + '</section>';
+}
+
+function pintarOpcion(o, maximo) {
+  var ancho = Math.max(4, Math.round((o.costoTotal / maximo) * 100));
+  var etiquetas = [];
+  if (o.esMasBarata) { etiquetas.push('<span class="etiqueta ok">La más barata</span>'); }
+  if (o.esMasRapida) { etiquetas.push('<span class="etiqueta acento">La más rápida</span>'); }
+  if (o.vencida) { etiquetas.push('<span class="etiqueta malo">Vencida</span>'); }
+  if (o.vigenciaHasta) { etiquetas.push('<span class="etiqueta">Vigente al ' + esc(o.vigenciaHasta) + '</span>'); }
+
+  return '<div class="opcion' + (o.posicion === 1 ? ' ganadora' : '') + '">'
+    + '<div class="lugar">' + o.posicion + '</div>'
+    + '<div class="quien"><b>' + esc(o.proveedor) + '</b>'
+    + '<div class="motivo">' + esc(o.motivo) + '</div>'
+    + '<div class="pila" style="margin-top:6px">' + etiquetas.join('') + '</div></div>'
+    + '<div class="cifras-opcion">'
+    + '<div class="costo">' + dinero(o.costoTotal) + '</div>'
+    + (o.sobreprecio > 0
+        ? '<div class="contra">+' + dinero(o.sobreprecio) + ' (' + o.sobreprecioPct + ' %)</div>'
+        : '<div class="contra" style="color:var(--bueno)">mejor precio</div>')
+    + '<div class="tiempo">' + (o.sinTiempo ? 'sin tiempo' : esc(o.tiempoTexto))
+    + ' · puntaje ' + o.puntaje + '</div>'
+    + '</div>'
+    + '<div class="medidor"><i style="width:' + ancho + '%"></i></div>'
+    + '<div class="detalle">tarifa ' + dinero(o.tarifa)
+    + ' + combustible ' + o.combustiblePct + ' % (' + dinero(o.combustible) + ')'
+    + ' + casetas ' + dinero(o.casetas)
+    + (o.maniobras ? ' + maniobras ' + dinero(o.maniobras) : '')
+    + (o.otros ? ' + otros ' + dinero(o.otros) : '')
+    + ' · ' + esc(o.moneda)
+    + (o.convertida ? ' × ' + o.tipoCambio : '')
+    + (o.costoPorKm ? ' · ' + dinero(o.costoPorKm) + '/km' : '')
+    + (o.capacidadTon ? ' · ' + o.capacidadTon + ' ton' : '')
+    + '</div>'
+    + '</div>';
+}
+
+function descartadasTexto(d) {
+  if (!d) { return ''; }
+  var partes = [];
+  if (d.vencidas) { partes.push(d.vencidas + ' vencidas'); }
+  if (d.sinVigencia) { partes.push(d.sinVigencia + ' fuera de la fecha consultada'); }
+  if (d.inactivas) { partes.push(d.inactivas + ' desactivadas'); }
+  if (d.proveedorInactivo) { partes.push(d.proveedorInactivo + ' de proveedores inactivos'); }
+  if (d.capacidad) { partes.push(d.capacidad + ' sin la capacidad pedida'); }
+  if (!partes.length) { return ''; }
+  return '<p class="apagado">Se dejaron fuera: ' + esc(partes.join(', ')) + '.</p>';
+}
+
+function verHistorial(rutaId, mercancia, equipo, movimiento) {
+  llamar('apiHistorial', [rutaId, mercancia, equipo, movimiento]).then(function (datos) {
+    var filas = datos.historial.map(function (t) {
+      return '<tr' + (t.estado !== 'activo' ? ' class="inactiva"' : '') + '>'
+        + '<td>' + esc(t.proveedor) + '</td>'
+        + '<td class="num">' + dinero(t.costoTotal) + '</td>'
+        + '<td class="num">' + esc(t.tiempoTexto) + '</td>'
+        + '<td class="mono">' + esc(t.vigenciaDesde || '—') + ' → ' + esc(t.vigenciaHasta || '—') + '</td>'
+        + '<td>' + (t.vencida ? '<span class="etiqueta malo">vencida</span>'
+            : '<span class="etiqueta ' + (t.estado === 'activo' ? 'ok' : '') + '">' + esc(t.estado) + '</span>') + '</td>'
+        + '</tr>';
+    }).join('');
+
+    var caja = document.createElement('div');
+    caja.className = 'tarjeta';
+    caja.innerHTML = '<div class="tarjeta-cab"><h3>Historial · ' + esc(datos.ruta) + '</h3>'
+      + '<span class="apagado">' + esc(datos.mercanciaNombre) + ' · ' + esc(datos.equipoNombre)
+      + ' · ' + esc(datos.movimientoNombre) + '</span></div>'
+      + (filas
+          ? '<div class="tabla-envoltura"><table><thead><tr><th>Proveedor</th>'
+            + '<th class="num">Costo total</th><th class="num">Tiempo</th>'
+            + '<th>Vigencia</th><th>Estado</th></tr></thead><tbody>' + filas + '</tbody></table></div>'
+          : '<div class="vacio">Sin historial.</div>')
+      + '<div class="botones"><button class="suave" id="cerrar-historial">Cerrar</button></div>';
+    if (!$('resultado')) {
+      return;
+    }
+    $('resultado').insertBefore(caja, $('resultado').firstChild);
+    $('cerrar-historial').addEventListener('click', function () { caja.remove(); });
+    caja.scrollIntoView({ behavior: 'smooth', block: 'start' });
+  }).catch(fallo);
+}
+
+/* ---------------------------- mejores opciones ----------------------------- */
+
+function vistaMejores() {
+  $('vista').innerHTML = '<h2 class="titulo">Mejores opciones</h2>'
+    + '<p class="sub">Una línea por ruta y características, con quién conviene hoy, '
+    + 'qué tan lejos quedó el segundo lugar y cuánto se ahorra contra la peor opción.</p>'
+    + cajaFiltros()
+    + '<div id="resultado"><div class="vacio">Consultando…</div></div>';
+  enlazarFiltros(cargarMejores);
+  cargarMejores();
+}
+
+function cargarMejores() {
+  pintarEn('resultado', '<div class="vacio">Consultando…</div>');
+  llamar('apiMejoresOpciones', [estado.filtros]).then(function (datos) {
+    estado.mejores = datos;
+    pintarMejores();
+  }).catch(function (err) {
+    pintarEn('resultado', '<div class="nota malo">' + esc(err.message || err) + '</div>');
+  });
+}
+
+function pintarMejores() {
+  var datos = estado.mejores;
+  if (!$('resultado')) {
+    return;
+  }
+
+  if (!datos.mejores.length) {
+    pintarEn('resultado', '<div class="nota aviso">Todavía no hay tarifas vigentes que comparar.</div>'
+      + descartadasTexto(datos.descartadas));
+    return;
+  }
+
+  var filas = datos.mejores.map(function (m) {
+    return '<tr>'
+      + '<td><b>' + esc(m.ruta) + '</b>' + (m.km ? '<div class="apagado">' + entero(m.km) + ' km</div>' : '') + '</td>'
+      + '<td>' + esc(m.mercanciaNombre) + '<div class="apagado">' + esc(m.equipoNombre)
+      + ' · ' + esc(m.movimientoNombre) + '</div>'
+      + ((m.etiquetas || []).length
+          ? '<div class="apagado">' + esc(m.etiquetas.map(function (e) { return e.valor; }).join(' · ')) + '</div>'
+          : '') + '</td>'
+      + '<td><b>' + esc(m.proveedor) + '</b><div class="apagado">' + esc(m.motivo) + '</div></td>'
+      + '<td class="num">' + dinero(m.costoTotal)
+      + (m.costoPorKm ? '<div class="apagado">' + dinero(m.costoPorKm) + '/km</div>' : '') + '</td>'
+      + '<td class="num">' + (m.conTiempo === false ? '<span class="apagado">sin dato</span>'
+          : esc(m.tiempoTexto)) + '</td>'
+      + '<td class="num">' + m.puntaje + '</td>'
+      + '<td>' + (m.segundo ? esc(m.segundo) + '<div class="apagado">' + dinero(m.segundoCosto) + '</div>'
+          : '<span class="etiqueta aviso">sin competencia</span>') + '</td>'
+      + '<td class="num">' + (m.ventaja
+          ? dinero(m.ventaja) + (m.ventaja < 0
+              ? '<div class="apagado">la 2ª es más barata, pero más lenta</div>' : '')
+          : '—') + '</td>'
+      + '<td class="num">' + m.opciones + '</td>'
+      + '<td class="num">' + (m.ahorro ? dinero(m.ahorro) : '—') + '</td>'
+      + '</tr>';
+  }).join('');
+
+  pintarEn('resultado', '<div class="cifras">'
+    + cifra(datos.resumen.combinaciones, 'Combinaciones')
+    + cifra(datos.resumen.rutas, 'Rutas')
+    + cifra(datos.resumen.opciones, 'Tarifas comparadas')
+    + cifra(dinero(datos.resumen.ahorroTotal), 'Mejor contra peor')
+    + cifra(datos.resumen.sinCompetencia, 'Sin competencia')
+    + '</div>'
+    + (datos.resumen.sinCompetencia
+        ? '<div class="nota aviso">Hay ' + datos.resumen.sinCompetencia
+          + (datos.resumen.sinCompetencia === 1
+              ? ' combinación con un solo proveedor.' : ' combinaciones con un solo proveedor.')
+          + ' Ahí no hay con qué comparar: conviene pedir cotización a alguien más.</div>'
+        : '')
+    + '<div class="tabla-envoltura"><table><thead><tr>'
+    + '<th>Ruta</th><th>Características</th><th>Mejor opción</th>'
+    + '<th class="num">Costo total</th><th class="num">Tiempo</th><th class="num">Puntaje</th>'
+    + '<th>Segunda opción</th><th class="num">Diferencia</th><th class="num">Opciones</th>'
+    + '<th class="num">Ahorro</th>'
+    + '</tr></thead><tbody>' + filas + '</tbody></table></div>'
+    + '<div class="botones">'
+    + '<button class="suave" id="csv-mejores">Descargar CSV</button>'
+    + '<button class="suave" id="csv-comparativo">Descargar comparativo completo</button>'
+    + '<button class="accion" id="libro">Generar hoja de cálculo</button>'
+    + '</div>'
+    + descartadasTexto(datos.descartadas));
+
+  $('csv-mejores').addEventListener('click', function () { bajarCsv('mejores'); });
+  $('csv-comparativo').addEventListener('click', function () { bajarCsv('comparativo'); });
+  $('libro').addEventListener('click', generarLibro);
+}
+
+function bajarCsv(tipo) {
+  avisar('Preparando el archivo…');
+  llamar('apiExportarCsv', [tipo, estado.filtros]).then(function (archivo) {
+    descargar(archivo.nombre, archivo.contenido);
+  }).catch(fallo);
+}
+
+function generarLibro() {
+  avisar('Armando la hoja de cálculo… tarda unos segundos.');
+  llamar('apiExportarLibro', [estado.filtros]).then(function (r) {
+    if (!$('resultado')) {
+      avisar('Lista la hoja de cálculo: ' + r.nombre);
+      return;
+    }
+    var caja = document.createElement('div');
+    caja.className = 'nota ok';
+    caja.innerHTML = 'Listo: <a href="' + esc(r.url) + '" target="_blank">' + esc(r.nombre) + '</a>'
+      + ' — quedó guardada en la carpeta de Drive de los tarifarios.';
+    $('resultado').insertBefore(caja, $('resultado').firstChild);
+  }).catch(fallo);
+}
+
+/* --------------------------------- tarifas --------------------------------- */
+
+function vistaTarifas() {
+  var f = estado.filtroTarifas;
+  $('vista').innerHTML = '<h2 class="titulo">Tarifas</h2>'
+    + '<p class="sub">Lo que cobra cada partner por ruta, tipo de carga, unidad y '
+    + 'movimiento. El costo total ya trae combustible, casetas y maniobras, convertido '
+    + 'a ' + esc(moneda()) + ' con el tipo de cambio del día.</p>'
+    + '<div class="filtros"><div class="fila-campos">'
+    + '<label class="campo">Ruta<select id="t-ruta">' + opcionesRutas(f.rutaId, true) + '</select></label>'
+    + '<label class="campo">Partner<select id="t-proveedor">'
+    + opcionesProveedores(f.proveedorId, 'Todos') + '</select></label>'
+    + '<label class="campo">Tipo de carga<select id="t-mercancia">'
+    + opcionesCatalogo('mercancia', f.mercancia, 'Todas') + '</select></label>'
+    + '<label class="campo">Tipo de unidad<select id="t-equipo">'
+    + opcionesCatalogo('equipo', f.equipo, 'Todos') + '</select></label>'
+    + '<label class="campo">Buscar<input id="t-texto" value="' + esc(f.texto)
+    + '" placeholder="partner, ruta, notas…" /></label>'
+    + filtrosDeCampos('t', 'tarifa', f.extras)
+    + '</div>'
+    + '<div class="grupo-fichas">'
+    + fichasCatalogo('t-movimiento', 'Movimiento', 'movimiento', f.movimiento, 'Todos')
+    + fichas('t-moneda', 'Moneda', [['', 'Todas'], ['MXN', 'MXN'], ['USD', 'USD']], f.moneda)
+    + fichas('t-estado', 'Situación', [['', 'Todas'], ['vigentes', 'Vigentes hoy'],
+        ['porvencer', 'Por vencer'], ['vencidas', 'Vencidas'],
+        ['inactivas', 'Inactivas'], ['sintiempo', 'Sin tiempo']], f.estado)
+    + '</div>'
+    + '<div class="barra-filtros">'
+    + '<span class="apagado" id="t-cuantas"></span>'
+    + '<button class="suave chico" id="t-limpiar">Limpiar filtros</button>'
+    + '</div></div>'
+    + (esAdmin() ? '<div class="botones"><button class="accion" id="nueva-tarifa">Nueva tarifa</button></div>' : '')
+    + '<div id="forma"></div>'
+    + '<div id="lista"><div class="vacio">Consultando…</div></div>';
+
+  ['t-ruta', 't-proveedor', 't-mercancia', 't-equipo'].forEach(function (id) {
+    $(id).addEventListener('change', leerFiltroTarifas);
+  });
+  camposDe('tarifa').forEach(function (campo) {
+    var nodo = $('t-' + campo.clave);
+    if (nodo) { nodo.addEventListener('change', leerFiltroTarifas); }
+  });
+  enlazarFichas(leerFiltroTarifas);
+  $('t-texto').addEventListener('input', function () {
+    clearTimeout(estado._tecleo);
+    estado._tecleo = setTimeout(leerFiltroTarifas, 350);
+  });
+  $('t-limpiar').addEventListener('click', function () {
+    estado.filtroTarifas = { rutaId: '', proveedorId: '', mercancia: '', equipo: '',
+                             movimiento: '', moneda: '', estado: '', texto: '', extras: {} };
+    vistaTarifas();
+  });
+  if (esAdmin()) {
+    $('nueva-tarifa').addEventListener('click', function () { formaTarifa(null); });
+  }
+  cargarTarifas();
+}
+
+function leerFiltroTarifas() {
+  estado.filtroTarifas = {
+    rutaId: valorDe('t-ruta'),
+    proveedorId: valorDe('t-proveedor'),
+    mercancia: valorDe('t-mercancia'),
+    equipo: valorDe('t-equipo'),
+    movimiento: valorFicha('t-movimiento', estado.filtroTarifas.movimiento),
+    moneda: valorFicha('t-moneda', estado.filtroTarifas.moneda),
+    estado: valorFicha('t-estado', estado.filtroTarifas.estado),
+    texto: valorDe('t-texto'),
+    extras: leerFiltrosDeCampos('t', 'tarifa')
+  };
+  cargarTarifas();
+}
+
+function cargarTarifas() {
+  pintarEn('lista', '<div class="vacio">Consultando…</div>');
+  llamar('apiTarifas', [estado.filtroTarifas]).then(function (datos) {
+    estado.tarifas = datos;
+    pintarTarifas();
+  }).catch(function (err) {
+    pintarEn('lista', '<div class="nota malo">' + esc(err.message || err) + '</div>');
+  });
+}
+
+function pintarTarifas() {
+  var datos = estado.tarifas;
+  if (!$('lista')) {
+    return;
+  }
+  var cuantas = $('t-cuantas');
+  if (cuantas) {
+    cuantas.textContent = datos.total === 1 ? '1 tarifa' : datos.total + ' tarifas';
+  }
+  if (!datos.tarifas.length) {
+    pintarEn('lista', '<div class="vacio">No hay tarifas con esos filtros.</div>');
+    return;
+  }
+
+  var filas = datos.tarifas.map(function (t) {
+    return '<tr' + (t.estado !== 'activo' ? ' class="inactiva"' : '') + '>'
+      + '<td><b>' + esc(t.proveedor) + '</b></td>'
+      + '<td>' + esc(t.ruta) + '</td>'
+      + '<td>' + esc(t.mercanciaNombre) + '<div class="apagado">' + esc(t.equipoNombre)
+      + ' · ' + esc(t.movimientoNombre) + '</div>'
+      + camposEnCelda(t) + '</td>'
+      + '<td class="num">' + dinero(t.tarifa) + '<div class="apagado">' + esc(t.moneda)
+      + (t.convertida ? ' × ' + t.tipoCambio : '') + '</div></td>'
+      + '<td class="num"><b>' + dinero(t.costoTotal) + '</b>'
+      + (t.costoPorKm ? '<div class="apagado">' + dinero(t.costoPorKm) + '/km</div>' : '') + '</td>'
+      + '<td class="num">' + (t.sinTiempo ? '<span class="apagado">—</span>'
+          : tiempoTexto(t.tiempoHoras)) + '</td>'
+      + '<td class="mono">' + esc(t.vigenciaDesde || '—') + '<br>' + esc(t.vigenciaHasta || '—') + '</td>'
+      + '<td>' + (t.vencida ? '<span class="etiqueta malo">vencida</span>'
+          : '<span class="etiqueta ' + (t.estado === 'activo' ? 'ok' : '') + '">' + esc(t.estado) + '</span>') + '</td>'
+      + (esAdmin()
+          ? '<td class="acciones">'
+            + '<button class="suave chico" data-editar="' + esc(t.id) + '">Editar</button>'
+            + '<button class="suave chico" data-duplicar="' + esc(t.id) + '">Duplicar</button>'
+            + '<button class="suave chico" data-estado="' + esc(t.id) + '" data-activo="'
+            + (t.estado === 'activo' ? '0' : '1') + '">'
+            + (t.estado === 'activo' ? 'Desactivar' : 'Activar') + '</button>'
+            + '<button class="suave chico peligro" data-borrar="' + esc(t.id) + '">Borrar</button>'
+            + '</td>'
+          : '')
+      + '</tr>';
+  }).join('');
+
+  pintarEn('lista', (datos.tipoCambio && datos.tipoCambio.valor
+      ? '<p class="apagado">USD 1 = ' + esc(datos.tipoCambio.valor) + ' ' + esc(moneda())
+        + ' · ' + esc(datos.tipoCambio.origen) + '</p>' : '')
+    + '<div class="tabla-envoltura"><table><thead><tr>'
+    + '<th>Partner</th><th>Ruta</th><th>Características</th>'
+    + '<th class="num">Tarifa</th><th class="num">Costo total</th><th class="num">Tiempo</th>'
+    + '<th>Vigencia</th><th>Estado</th>' + (esAdmin() ? '<th></th>' : '')
+    + '</tr></thead><tbody>' + filas + '</tbody></table></div>'
+    + '<div class="botones"><button class="suave" id="csv-tarifas">Descargar CSV</button></div>');
+
+  $('csv-tarifas').addEventListener('click', function () {
+    llamar('apiExportarCsv', ['tarifas', estado.filtroTarifas]).then(function (a) {
+      descargar(a.nombre, a.contenido);
+    }).catch(fallo);
+  });
+
+  if (!esAdmin()) { return; }
+  enlazar('button[data-editar]', 'click', function () {
+    var id = this.getAttribute('data-editar');
+    formaTarifa(estado.tarifas.tarifas.filter(function (t) { return t.id === id; })[0]);
+  });
+  enlazar('button[data-duplicar]', 'click', function () {
+    llamar('apiDuplicarTarifa', [this.getAttribute('data-duplicar')]).then(function () {
+      avisar('Copié la tarifa. Quedó inactiva y sin vigencia: edítala y actívala.');
+      cargarTarifas();
+    }).catch(fallo);
+  });
+  enlazar('button[data-estado]', 'click', function () {
+    var activo = this.getAttribute('data-activo') === '1';
+    llamar('apiCambiarEstadoTarifa', [this.getAttribute('data-estado'), activo])
+      .then(cargarTarifas).catch(fallo);
+  });
+  enlazar('button[data-borrar]', 'click', function () {
+    if (!confirm('¿Borrar esta tarifa? No se puede deshacer.')) { return; }
+    llamar('apiBorrarTarifa', [this.getAttribute('data-borrar')]).then(function () {
+      avisar('Tarifa borrada.');
+      cargarTarifas();
+    }).catch(fallo);
+  });
+}
+
+function formaTarifa(t) {
+  var d = t || {
+    id: '', proveedorId: '', rutaId: '', mercancia: '', equipo: '', movimiento: '',
+    moneda: moneda(), tarifa: '', combustiblePct: '', casetas: '', maniobras: '',
+    otros: '', tiempoHoras: '', capacidadTon: '', vigenciaDesde: '', vigenciaHasta: '',
+    estado: 'activo', notas: '', extras: {}
+  };
+  var extras = d.extras || {};
+  var personalizados = camposDe('tarifa');
+
+  $('forma').innerHTML = '<div class="tarjeta">'
+    + '<div class="tarjeta-cab"><h3>' + (t ? 'Editar tarifa' : 'Nueva tarifa') + '</h3>'
+    + (t ? '<span class="apagado mono">actualizada ' + esc(d.actualizado || '—') + '</span>' : '')
+    + '</div>'
+    + '<div class="fila-campos">'
+    + '<label class="campo">Partner<select id="x-proveedor">'
+    + opcionesProveedores(d.proveedorId, 'Elige…') + '</select></label>'
+    + '<label class="campo">Ruta<select id="x-ruta">'
+    + opcionesRutas(d.rutaId, true).replace('Todas las rutas', 'Elige…') + '</select></label>'
+    + '<label class="campo">Tipo de carga<select id="x-mercancia">'
+    + opcionesCatalogo('mercancia', d.mercancia, 'Elige…') + '</select></label>'
+    + '<label class="campo">Tipo de unidad<select id="x-equipo">'
+    + opcionesCatalogo('equipo', d.equipo, 'Elige…') + '</select></label>'
+    + '<label class="campo">Tipo de movimiento<select id="x-movimiento">'
+    + opcionesCatalogo('movimiento', d.movimiento, 'Elige…') + '</select></label>'
+    + '</div>'
+    + '<div class="fila-campos">'
+    + '<label class="campo">Moneda<select id="x-moneda">'
+    + ['MXN', 'USD'].map(function (m) {
+        return '<option value="' + m + '"' + (d.moneda === m ? ' selected' : '') + '>' + m + '</option>';
+      }).join('') + '</select></label>'
+    + campoNumero('x-tarifa', 'Tarifa', d.tarifa)
+    + campoNumero('x-combustible', 'Combustible % (opcional)', d.combustiblePct)
+    + campoNumero('x-casetas', 'Casetas (opcional)', d.casetas)
+    + campoNumero('x-maniobras', 'Maniobras (opcional)', d.maniobras)
+    + campoNumero('x-otros', 'Otros cargos (opcional)', d.otros)
+    + campoNumero('x-tiempo', 'Tiempo de entrega, horas (opcional)', d.tiempoHoras)
+    + campoNumero('x-capacidad', 'Capacidad ton (opcional)', d.capacidadTon)
+    + '<label class="campo">Vigente desde<input type="date" id="x-desde" value="'
+    + esc(d.vigenciaDesde) + '" /></label>'
+    + '<label class="campo">Vigente hasta<input type="date" id="x-hasta" value="'
+    + esc(d.vigenciaHasta) + '" /></label>'
+    + '</div>'
+    + '<p class="apagado" id="x-cuenta"></p>'
+    + (personalizados.length
+        ? '<h3 style="margin:18px 0 0">Campos propios</h3><div class="fila-campos">'
+          + personalizados.filter(function (c) { return c.tipo !== 'si_no'; })
+              .map(function (c) { return campoPersonalizado(c, extras[c.clave]); }).join('')
+          + '</div>'
+          + personalizados.filter(function (c) { return c.tipo === 'si_no'; })
+              .map(function (c) { return campoPersonalizado(c, extras[c.clave]); }).join('')
+        : '')
+    + '<label class="campo">Notas<textarea id="x-notas" style="min-height:52px">'
+    + esc(d.notas) + '</textarea></label>'
+    + '<label class="checkbox"><input type="checkbox" id="x-activo"'
+    + (d.estado === 'activo' ? ' checked' : '') + ' /> Activa (entra al comparador)</label>'
+    + '<div class="botones">'
+    + '<button class="accion" id="x-guardar">Guardar</button>'
+    + '<button class="suave" id="x-cancelar">Cancelar</button>'
+    + '</div></div>';
+
+  // La cuenta se calcula mientras se captura: ver el costo total antes de
+  // guardar evita capturar un dólar como si fuera un peso.
+  ['x-tarifa', 'x-combustible', 'x-casetas', 'x-maniobras', 'x-otros', 'x-moneda']
+    .forEach(function (id) {
+      $(id).addEventListener('input', calcularCuenta);
+      $(id).addEventListener('change', calcularCuenta);
+    });
+  calcularCuenta();
+
+  $('forma').scrollIntoView({ behavior: 'smooth', block: 'start' });
+  $('x-cancelar').addEventListener('click', function () { $('forma').innerHTML = ''; });
+  $('x-guardar').addEventListener('click', function () {
+    var datos = {
+      id: d.id,
+      proveedorId: valorDe('x-proveedor'),
+      rutaId: valorDe('x-ruta'),
+      mercancia: valorDe('x-mercancia'),
+      equipo: valorDe('x-equipo'),
+      movimiento: valorDe('x-movimiento'),
+      moneda: valorDe('x-moneda'),
+      tarifa: valorDe('x-tarifa'),
+      combustiblePct: valorDe('x-combustible'),
+      casetas: valorDe('x-casetas'),
+      maniobras: valorDe('x-maniobras'),
+      otros: valorDe('x-otros'),
+      tiempoHoras: valorDe('x-tiempo'),
+      capacidadTon: valorDe('x-capacidad'),
+      vigenciaDesde: valorDe('x-desde'),
+      vigenciaHasta: valorDe('x-hasta'),
+      estado: marcado('x-activo') ? 'activo' : 'inactivo',
+      notas: valorDe('x-notas'),
+      extras: leerCamposPersonalizados('tarifa')
+    };
+    this.disabled = true;
+    llamar('apiGuardarTarifa', [datos]).then(function () {
+      avisar('Tarifa guardada.');
+      $('forma').innerHTML = '';
+      cargarTarifas();
+    }).catch(function (err) {
+      fallo(err);
+      var boton = $('x-guardar');
+      if (boton) { boton.disabled = false; }
+    });
+  });
+}
+
+/**
+ * El costo total tal como quedaría al guardar, con la misma fórmula del
+ * servidor. Es solo un anticipo en pantalla: la cuenta buena la hace el
+ * servidor al guardar.
+ */
+function calcularCuenta() {
+  var salida = $('x-cuenta');
+  if (!salida) { return; }
+  var base = Number(valorDe('x-tarifa')) || 0;
+  var pct = Number(valorDe('x-combustible')) || 0;
+  var extra = (Number(valorDe('x-casetas')) || 0) + (Number(valorDe('x-maniobras')) || 0)
+    + (Number(valorDe('x-otros')) || 0);
+  var subtotal = base + (base * pct / 100) + extra;
+  var monedaElegida = valorDe('x-moneda');
+  var tc = (estado.inicial.tipoCambio && estado.inicial.tipoCambio.valor) || 0;
+  var convierte = monedaElegida !== moneda() && tc > 0;
+  var total = convierte ? subtotal * tc : subtotal;
+
+  salida.innerHTML = 'Costo total: <b>' + dinero(total) + ' ' + esc(moneda()) + '</b>'
+    + (convierte ? ' &nbsp;(' + dinero(subtotal) + ' ' + esc(monedaElegida)
+        + ' × ' + tc + ')' : '');
+}
+
+/** Los campos personalizados que tengan valor, en una línea chiquita. */
+function camposEnCelda(t) {
+  var partes = [];
+  camposDe('tarifa').forEach(function (campo) {
+    var valor = t.extrasTexto ? t.extrasTexto[campo.clave] : '';
+    if (valor) {
+      partes.push(campo.etiqueta + ': ' + valor);
+    }
+  });
+  return partes.length ? '<div class="apagado">' + esc(partes.join(' · ')) + '</div>' : '';
+}
+
+function campoNumero(id, etiqueta, valor) {
+  return '<label class="campo">' + esc(etiqueta)
+    + '<input type="number" step="any" id="' + id + '" value="' + esc(valor) + '" /></label>';
+}
+
+/* ------------------------------- proveedores ------------------------------- */
+
+function vistaProveedores() {
+  $('vista').innerHTML = '<h2 class="titulo">Proveedores</h2>'
+    + '<p class="sub">Los transportistas con los que se trabaja. Un proveedor con '
+    + 'tarifas capturadas no se borra: se desactiva y sale del comparador.</p>'
+    + '<div class="filtros"><div class="fila-campos">'
+    + '<label class="campo">Buscar<input id="pf-texto" value="' + esc(estado.filtroProveedores.texto)
+    + '" placeholder="nombre, RFC, contacto, ciudad…" /></label>'
+    + filtrosDeCampos('pf', 'proveedor', estado.filtroProveedores.extras)
+    + '</div>'
+    + '<div class="grupo-fichas">'
+    + fichas('pf-estado', 'Situación', [['', 'Todos'], ['activo', 'Activos'],
+        ['inactivo', 'Inactivos'], ['contarifas', 'Con tarifas'],
+        ['sintarifas', 'Sin tarifas']], estado.filtroProveedores.estado)
+    + '</div></div>'
+    + '<div class="botones"><button class="accion" id="nuevo-proveedor">Dar de alta proveedor</button></div>'
+    + '<div id="forma"></div><div id="lista"><div class="vacio">Consultando…</div></div>';
+  $('nuevo-proveedor').addEventListener('click', function () { formaProveedor(null); });
+  $('pf-texto').addEventListener('input', function () {
+    clearTimeout(estado._tecleoProv);
+    estado._tecleoProv = setTimeout(leerFiltroProveedores, 300);
+  });
+  camposDe('proveedor').forEach(function (campo) {
+    var nodo = $('pf-' + campo.clave);
+    if (nodo) { nodo.addEventListener('change', leerFiltroProveedores); }
+  });
+  enlazarFichas(leerFiltroProveedores);
+  cargarProveedores();
+}
+
+function leerFiltroProveedores() {
+  estado.filtroProveedores = {
+    texto: valorDe('pf-texto'),
+    estado: valorFicha('pf-estado', estado.filtroProveedores.estado),
+    extras: leerFiltrosDeCampos('pf', 'proveedor')
+  };
+  pintarProveedores();
+}
+
+/**
+ * Filtra la lista que ya se trajo. Los proveedores son pocos y caben en
+ * memoria: no vale la pena ir al servidor por cada tecla.
+ */
+function proveedoresFiltrados() {
+  var f = estado.filtroProveedores;
+  var buscado = quitarAcentos(f.texto);
+  return (estado.proveedores || []).filter(function (p) {
+    if (f.estado === 'activo' && p.estado !== 'activo') { return false; }
+    if (f.estado === 'inactivo' && p.estado === 'activo') { return false; }
+    if (f.estado === 'contarifas' && !p.tarifas) { return false; }
+    if (f.estado === 'sintarifas' && p.tarifas) { return false; }
+
+    var cumpleCampos = true;
+    camposDe('proveedor').forEach(function (campo) {
+      var quiero = (f.extras || {})[campo.clave];
+      if (!cumpleCampos || !quiero) { return; }
+      var tiene = quitarAcentos((p.extrasTexto || {})[campo.clave] || '');
+      cumpleCampos = campo.tipo === 'lista' || campo.tipo === 'si_no'
+        ? tiene === quitarAcentos(campo.tipo === 'si_no' ? (quiero === 'SI' ? 'Sí' : 'No') : quiero)
+        : tiene.indexOf(quitarAcentos(quiero)) !== -1;
+    });
+    if (!cumpleCampos) { return false; }
+
+    if (!buscado) { return true; }
+    return quitarAcentos([p.nombre, p.rfc, p.contacto, p.correo, p.ciudad, p.notas]
+      .join(' ')).indexOf(buscado) !== -1;
+  });
+}
+
+/** Minúsculas y sin acentos, igual que en el servidor. */
+function quitarAcentos(texto) {
+  return String(texto === null || texto === undefined ? '' : texto)
+    .normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase();
+}
+
+function cargarProveedores() {
+  llamar('apiProveedores').then(function (lista) {
+    estado.proveedores = lista;
+    pintarProveedores();
+  }).catch(function (err) {
+    pintarEn('lista', '<div class="nota malo">' + esc(err.message || err) + '</div>');
+  });
+}
+
+function pintarProveedores() {
+  var lista = proveedoresFiltrados();
+  (function () {
+    if (!$('lista')) {
+      return;
+    }
+    if (!lista.length) {
+      pintarEn('lista', '<div class="vacio">'
+        + ((estado.proveedores || []).length
+            ? 'Ningún proveedor cumple con esos filtros.'
+            : 'Todavía no hay proveedores. Dalos de alta aquí o impórtalos desde un archivo.')
+        + '</div>');
+      return;
+    }
+    var filas = lista.map(function (p) {
+      return '<tr' + (p.estado !== 'activo' ? ' class="inactiva"' : '') + '>'
+        + '<td><b>' + esc(p.nombre) + '</b>' + (p.rfc ? '<div class="apagado mono">' + esc(p.rfc) + '</div>' : '') + '</td>'
+        + '<td>' + esc(p.contacto) + (p.telefono ? '<div class="apagado">' + esc(p.telefono) + '</div>' : '') + '</td>'
+        + '<td>' + esc(p.correo) + '</td>'
+        + '<td>' + esc(p.ciudad) + '</td>'
+        + '<td class="num">' + (p.calificacion ? p.calificacion : '—') + '</td>'
+        + '<td class="num">' + p.tarifas + '</td>'
+        + '<td><span class="etiqueta ' + (p.estado === 'activo' ? 'ok' : '') + '">' + esc(p.estado) + '</span></td>'
+        + '<td class="acciones">'
+        + '<button class="suave chico" data-editar="' + esc(p.id) + '">Editar</button>'
+        + '<button class="suave chico peligro" data-borrar="' + esc(p.id) + '">Borrar</button>'
+        + '</td></tr>';
+    }).join('');
+
+    pintarEn('lista', '<div class="tabla-envoltura"><table><thead><tr>'
+      + '<th>Proveedor</th><th>Contacto</th><th>Correo</th><th>Ciudad</th>'
+      + '<th class="num">Calif.</th><th class="num">Tarifas</th><th>Estado</th><th></th>'
+      + '</tr></thead><tbody>' + filas + '</tbody></table></div>'
+      + '<div class="botones"><button class="suave" id="csv-proveedores">Descargar CSV</button></div>');
+
+    $('csv-proveedores').addEventListener('click', function () {
+      llamar('apiExportarCsv', ['proveedores', {}]).then(function (a) {
+        descargar(a.nombre, a.contenido);
+      }).catch(fallo);
+    });
+    enlazar('button[data-editar]', 'click', function () {
+      var id = this.getAttribute('data-editar');
+      formaProveedor(lista.filter(function (p) { return p.id === id; })[0]);
+    });
+    enlazar('button[data-borrar]', 'click', function () {
+      if (!confirm('¿Borrar este proveedor?')) { return; }
+      llamar('apiBorrarProveedor', [this.getAttribute('data-borrar')]).then(function (r) {
+        avisar(r.desactivado
+          ? 'Tiene ' + r.tarifas + ' tarifas capturadas: lo desactivé en vez de borrarlo.'
+          : 'Proveedor borrado.');
+        recargarInicial().then(cargarProveedores);
+      }).catch(fallo);
+    });
+  })();
+}
+
+function formaProveedor(p) {
+  var d = p || { id: '', nombre: '', rfc: '', contacto: '', telefono: '', correo: '',
+                 ciudad: '', calificacion: '', estado: 'activo', notas: '' };
+  $('forma').innerHTML = '<div class="tarjeta">'
+    + '<div class="tarjeta-cab"><h3>' + (p ? 'Editar proveedor' : 'Nuevo proveedor') + '</h3></div>'
+    + '<div class="fila-campos">'
+    + campoTexto('p-nombre', 'Nombre o razón social', d.nombre)
+    + campoTexto('p-rfc', 'RFC', d.rfc)
+    + campoTexto('p-contacto', 'Contacto', d.contacto)
+    + campoTexto('p-telefono', 'Teléfono', d.telefono)
+    + campoTexto('p-correo', 'Correo', d.correo)
+    + campoTexto('p-ciudad', 'Ciudad o plaza', d.ciudad)
+    + campoNumero('p-calificacion', 'Calificación (0 a 5)', d.calificacion)
+    + camposDe('proveedor').filter(function (c) { return c.tipo !== 'si_no'; })
+        .map(function (c) { return campoPersonalizado(c, (d.extras || {})[c.clave]); }).join('')
+    + '</div>'
+    + camposDe('proveedor').filter(function (c) { return c.tipo === 'si_no'; })
+        .map(function (c) { return campoPersonalizado(c, (d.extras || {})[c.clave]); }).join('')
+    + '<label class="campo">Notas<textarea id="p-notas" style="min-height:52px">'
+    + esc(d.notas) + '</textarea></label>'
+    + '<label class="checkbox"><input type="checkbox" id="p-activo"'
+    + (d.estado === 'activo' ? ' checked' : '') + ' /> Activo</label>'
+    + '<div class="botones">'
+    + '<button class="accion" id="p-guardar">Guardar</button>'
+    + '<button class="suave" id="p-cancelar">Cancelar</button>'
+    + '</div></div>';
+
+  $('forma').scrollIntoView({ behavior: 'smooth', block: 'start' });
+  $('p-cancelar').addEventListener('click', function () { $('forma').innerHTML = ''; });
+  $('p-guardar').addEventListener('click', function () {
+    var datos = {
+      id: d.id, nombre: valorDe('p-nombre'), rfc: valorDe('p-rfc'),
+      contacto: valorDe('p-contacto'), telefono: valorDe('p-telefono'),
+      correo: valorDe('p-correo'), ciudad: valorDe('p-ciudad'),
+      calificacion: valorDe('p-calificacion'),
+      estado: marcado('p-activo') ? 'activo' : 'inactivo',
+      notas: valorDe('p-notas'),
+      extras: leerCamposPersonalizados('proveedor')
+    };
+    this.disabled = true;
+    llamar('apiGuardarProveedor', [datos]).then(function () {
+      avisar('Proveedor guardado.');
+      $('forma').innerHTML = '';
+      recargarInicial().then(cargarProveedores);
+    }).catch(function (err) {
+      fallo(err);
+      var boton = $('p-guardar');
+      if (boton) { boton.disabled = false; }
+    });
+  });
+}
+
+function campoTexto(id, etiqueta, valor) {
+  return '<label class="campo">' + esc(etiqueta)
+    + '<input id="' + id + '" value="' + esc(valor) + '" /></label>';
+}
+
+/* ---------------------------------- rutas ---------------------------------- */
+
+function vistaRutas() {
+  $('vista').innerHTML = '<h2 class="titulo">Rutas</h2>'
+    + '<p class="sub">Cada ruta es un par origen–destino. Los kilómetros son opcionales, '
+    + 'pero con ellos el comparador calcula el costo por kilómetro.</p>'
+    + '<div class="filtros"><div class="fila-campos">'
+    + '<label class="campo">Buscar<input id="rf-texto" value="' + esc(estado.filtroRutas.texto)
+    + '" placeholder="origen, destino, notas…" /></label>'
+    + '</div>'
+    + '<div class="grupo-fichas">'
+    + fichas('rf-estado', 'Situación', [['', 'Todas'], ['activo', 'Activas'],
+        ['inactivo', 'Inactivas'], ['contarifas', 'Con tarifas'],
+        ['sintarifas', 'Sin tarifas']], estado.filtroRutas.estado)
+    + '</div></div>'
+    + '<div class="botones"><button class="accion" id="nueva-ruta">Dar de alta ruta</button></div>'
+    + '<div id="forma"></div><div id="lista"><div class="vacio">Consultando…</div></div>';
+  $('nueva-ruta').addEventListener('click', function () { formaRuta(null); });
+  $('rf-texto').addEventListener('input', function () {
+    clearTimeout(estado._tecleoRuta);
+    estado._tecleoRuta = setTimeout(leerFiltroRutas, 300);
+  });
+  enlazarFichas(leerFiltroRutas);
+  cargarRutas();
+}
+
+function leerFiltroRutas() {
+  estado.filtroRutas = {
+    texto: valorDe('rf-texto'),
+    estado: valorFicha('rf-estado', estado.filtroRutas.estado)
+  };
+  pintarRutas();
+}
+
+function cargarRutas() {
+  llamar('apiRutas').then(function (todas) {
+    estado.rutas = todas;
+    pintarRutas();
+  }).catch(function (err) {
+    pintarEn('lista', '<div class="nota malo">' + esc(err.message || err) + '</div>');
+  });
+}
+
+function pintarRutas() {
+  var f = estado.filtroRutas;
+  var buscado = quitarAcentos(f.texto);
+  var lista = (estado.rutas || []).filter(function (r) {
+    if (f.estado === 'activo' && r.estado !== 'activo') { return false; }
+    if (f.estado === 'inactivo' && r.estado === 'activo') { return false; }
+    if (f.estado === 'contarifas' && !r.tarifas) { return false; }
+    if (f.estado === 'sintarifas' && r.tarifas) { return false; }
+    if (!buscado) { return true; }
+    return quitarAcentos([r.origen, r.destino, r.notas].join(' ')).indexOf(buscado) !== -1;
+  });
+
+  (function () {
+    if (!$('lista')) {
+      return;
+    }
+    if (!lista.length) {
+      pintarEn('lista', '<div class="vacio">'
+        + ((estado.rutas || []).length ? 'Ninguna ruta cumple con esos filtros.'
+                                       : 'Todavía no hay rutas.') + '</div>');
+      return;
+    }
+    var filas = lista.map(function (r) {
+      return '<tr' + (r.estado !== 'activo' ? ' class="inactiva"' : '') + '>'
+        + '<td><b>' + esc(r.origen) + '</b></td>'
+        + '<td><b>' + esc(r.destino) + '</b></td>'
+        + '<td class="num">' + (r.km ? entero(r.km) : '—') + '</td>'
+        + '<td class="num">' + r.tarifas + '</td>'
+        + '<td>' + esc(r.notas) + '</td>'
+        + '<td><span class="etiqueta ' + (r.estado === 'activo' ? 'ok' : '') + '">' + esc(r.estado) + '</span></td>'
+        + '<td class="acciones">'
+        + '<button class="suave chico" data-editar="' + esc(r.id) + '">Editar</button>'
+        + '<button class="suave chico peligro" data-borrar="' + esc(r.id) + '">Borrar</button>'
+        + '</td></tr>';
+    }).join('');
+
+    pintarEn('lista', '<div class="tabla-envoltura"><table><thead><tr>'
+      + '<th>Origen</th><th>Destino</th><th class="num">Km</th><th class="num">Tarifas</th>'
+      + '<th>Notas</th><th>Estado</th><th></th></tr></thead><tbody>' + filas + '</tbody></table></div>'
+      + '<div class="botones"><button class="suave" id="csv-rutas">Descargar CSV</button></div>');
+
+    $('csv-rutas').addEventListener('click', function () {
+      llamar('apiExportarCsv', ['rutas', {}]).then(function (a) {
+        descargar(a.nombre, a.contenido);
+      }).catch(fallo);
+    });
+    enlazar('button[data-editar]', 'click', function () {
+      var id = this.getAttribute('data-editar');
+      formaRuta(lista.filter(function (r) { return r.id === id; })[0]);
+    });
+    enlazar('button[data-borrar]', 'click', function () {
+      if (!confirm('¿Borrar esta ruta?')) { return; }
+      llamar('apiBorrarRuta', [this.getAttribute('data-borrar')]).then(function (r) {
+        avisar(r.desactivado
+          ? 'Tiene ' + r.tarifas + ' tarifas capturadas: la desactivé en vez de borrarla.'
+          : 'Ruta borrada.');
+        recargarInicial().then(cargarRutas);
+      }).catch(fallo);
+    });
+  })();
+}
+
+function formaRuta(r) {
+  var d = r || { id: '', origen: '', destino: '', km: '', notas: '', estado: 'activo' };
+  $('forma').innerHTML = '<div class="tarjeta">'
+    + '<div class="tarjeta-cab"><h3>' + (r ? 'Editar ruta' : 'Nueva ruta') + '</h3></div>'
+    + '<div class="fila-campos">'
+    + campoTexto('r-origen', 'Origen', d.origen)
+    + campoTexto('r-destino', 'Destino', d.destino)
+    + campoNumero('r-km', 'Kilómetros', d.km)
+    + '</div>'
+    + '<label class="campo">Notas<textarea id="r-notas" style="min-height:52px">'
+    + esc(d.notas) + '</textarea></label>'
+    + '<label class="checkbox"><input type="checkbox" id="r-activo"'
+    + (d.estado === 'activo' ? ' checked' : '') + ' /> Activa</label>'
+    + '<div class="botones">'
+    + '<button class="accion" id="r-guardar">Guardar</button>'
+    + '<button class="suave" id="r-cancelar">Cancelar</button>'
+    + '</div></div>';
+
+  $('forma').scrollIntoView({ behavior: 'smooth', block: 'start' });
+  $('r-cancelar').addEventListener('click', function () { $('forma').innerHTML = ''; });
+  $('r-guardar').addEventListener('click', function () {
+    var datos = {
+      id: d.id, origen: valorDe('r-origen'), destino: valorDe('r-destino'),
+      km: valorDe('r-km'), notas: valorDe('r-notas'),
+      estado: marcado('r-activo') ? 'activo' : 'inactivo'
+    };
+    this.disabled = true;
+    llamar('apiGuardarRuta', [datos]).then(function () {
+      avisar('Ruta guardada.');
+      $('forma').innerHTML = '';
+      recargarInicial().then(cargarRutas);
+    }).catch(function (err) {
+      fallo(err);
+      var boton = $('r-guardar');
+      if (boton) { boton.disabled = false; }
+    });
+  });
+}
+
+/* -------------------------------- catálogos -------------------------------- */
+
+function vistaCatalogos() {
+  $('vista').innerHTML = '<h2 class="titulo">Catálogos</h2>'
+    + '<p class="sub">Con esto se clasifican las tarifas. Solo compiten entre sí las que '
+    + 'comparten ruta, tipo de carga, tipo de unidad y tipo de movimiento: un one way '
+    + 'no se compara contra un redondo.</p>'
+    + '<div id="forma"></div>'
+    + '<div id="lista-mercancia"></div><div id="lista-equipo"></div>'
+    + '<div id="lista-movimiento"></div>';
+  pintarCatalogos();
+}
+
+function pintarCatalogos() {
+  llamar('apiCatalogos').then(function (cat) {
+    estado.inicial.catalogos = cat;
+    if (!$('lista-mercancia')) {
+      return;
+    }
+    [['mercancia', 'Tipos de carga'], ['equipo', 'Tipos de unidad'],
+     ['movimiento', 'Tipos de movimiento']].forEach(function (par) {
+      var tipo = par[0];
+      var filas = (cat[tipo] || []).map(function (c) {
+        return '<tr' + (c.estado !== 'activo' ? ' class="inactiva"' : '') + '>'
+          + '<td><b>' + esc(c.nombre) + '</b></td>'
+          + '<td class="mono">' + esc(c.clave) + '</td>'
+          + '<td class="num">' + c.orden + '</td>'
+          + '<td><span class="etiqueta ' + (c.estado === 'activo' ? 'ok' : '') + '">' + esc(c.estado) + '</span></td>'
+          + '<td class="acciones">'
+          + '<button class="suave chico" data-editar="' + tipo + '|' + esc(c.id) + '">Editar</button>'
+          + '<button class="suave chico peligro" data-borrar="' + esc(c.id) + '">Borrar</button>'
+          + '</td></tr>';
+      }).join('');
+
+      pintarEn('lista-' + tipo, '<h3>' + par[1] + '</h3>'
+        + '<div class="tabla-envoltura"><table><thead><tr>'
+        + '<th>Nombre</th><th>Clave</th><th class="num">Orden</th><th>Estado</th><th></th>'
+        + '</tr></thead><tbody>' + (filas || '<tr><td colspan="5">Sin registros.</td></tr>')
+        + '</tbody></table></div>'
+        + '<div class="botones"><button class="suave" data-nuevo="' + tipo + '">Agregar</button></div>');
+    });
+
+    enlazar('button[data-nuevo]', 'click', function () {
+      formaCatalogo({ tipo: this.getAttribute('data-nuevo') });
+    });
+    enlazar('button[data-editar]', 'click', function () {
+      var partes = this.getAttribute('data-editar').split('|');
+      var fila = (cat[partes[0]] || []).filter(function (c) { return c.id === partes[1]; })[0];
+      fila.tipo = partes[0];
+      formaCatalogo(fila);
+    });
+    enlazar('button[data-borrar]', 'click', function () {
+      if (!confirm('¿Borrar este registro del catálogo?')) { return; }
+      llamar('apiBorrarCatalogo', [this.getAttribute('data-borrar')]).then(function (r) {
+        avisar(r.desactivado
+          ? 'Lo usan ' + r.tarifas + ' tarifas: lo desactivé en vez de borrarlo.'
+          : 'Borrado.');
+        recargarInicial().then(pintarCatalogos);
+      }).catch(fallo);
+    });
+  }).catch(fallo);
+}
+
+function formaCatalogo(c) {
+  var d = c || {};
+  var esNuevo = !d.id;
+  $('forma').innerHTML = '<div class="tarjeta">'
+    + '<div class="tarjeta-cab"><h3>' + (esNuevo ? 'Nuevo' : 'Editar') + ' · '
+    + (d.tipo === 'equipo' ? 'tipo de unidad'
+        : (d.tipo === 'movimiento' ? 'tipo de movimiento' : 'tipo de carga')) + '</h3></div>'
+    + '<div class="fila-campos">'
+    + campoTexto('c-nombre', 'Nombre', d.nombre || '')
+    + campoTexto('c-clave', 'Clave (opcional)', d.clave || '')
+    + campoNumero('c-orden', 'Orden', d.orden === undefined ? 99 : d.orden)
+    + '</div>'
+    + '<label class="checkbox"><input type="checkbox" id="c-activo"'
+    + (d.estado === 'inactivo' ? '' : ' checked') + ' /> Activo</label>'
+    + '<div class="botones">'
+    + '<button class="accion" id="c-guardar">Guardar</button>'
+    + '<button class="suave" id="c-cancelar">Cancelar</button>'
+    + '</div></div>';
+
+  $('forma').scrollIntoView({ behavior: 'smooth', block: 'start' });
+  $('c-cancelar').addEventListener('click', function () { $('forma').innerHTML = ''; });
+  $('c-guardar').addEventListener('click', function () {
+    var datos = {
+      id: d.id || '', tipo: d.tipo, nombre: valorDe('c-nombre'), clave: valorDe('c-clave'),
+      orden: valorDe('c-orden'), estado: marcado('c-activo') ? 'activo' : 'inactivo'
+    };
+    this.disabled = true;
+    llamar('apiGuardarCatalogo', [datos]).then(function () {
+      avisar('Guardado.');
+      $('forma').innerHTML = '';
+      recargarInicial().then(pintarCatalogos);
+    }).catch(function (err) {
+      fallo(err);
+      var boton = $('c-guardar');
+      if (boton) { boton.disabled = false; }
+    });
+  });
+}
+
+
+/* ----------------------------- campos propios ------------------------------ */
+
+function vistaCampos() {
+  $('vista').innerHTML = '<h2 class="titulo">Campos propios</h2>'
+    + '<p class="sub">Las columnas que tu tarifario tiene y este sistema no traía: la '
+    + 'cuenta, el número de contrato, si la tarifa ya se revisó. Se capturan en cada '
+    + 'tarifa, se importan solas si el archivo trae una columna con ese nombre y salen '
+    + 'en las exportaciones.</p>'
+    + '<div id="forma"></div>'
+    + '<div id="lista-tarifa"></div><div id="lista-proveedor"></div>';
+  pintarCampos();
+}
+
+function pintarCampos() {
+  llamar('apiCampos').then(function (todos) {
+    if (!$('lista-tarifa')) { return; }
+    estado.inicial.campos = {
+      tarifa: todos.tarifa.filter(function (c) { return c.estado === 'activo'; }),
+      proveedor: todos.proveedor.filter(function (c) { return c.estado === 'activo'; })
+    };
+
+    [['tarifa', 'En cada tarifa'], ['proveedor', 'En cada proveedor']].forEach(function (par) {
+      var ambito = par[0];
+      var filas = (todos[ambito] || []).map(function (c) {
+        return '<tr' + (c.estado !== 'activo' ? ' class="inactiva"' : '') + '>'
+          + '<td><b>' + esc(c.etiqueta) + '</b><div class="apagado mono">' + esc(c.clave) + '</div></td>'
+          + '<td>' + esc(c.tipo) + (c.opciones.length
+              ? '<div class="apagado">' + esc(c.opciones.join(' · ')) + '</div>' : '') + '</td>'
+          + '<td>' + (c.compara ? '<span class="etiqueta acento">separa la comparación</span>'
+              : '<span class="apagado">no</span>') + '</td>'
+          + '<td class="num">' + c.orden + '</td>'
+          + '<td><span class="etiqueta ' + (c.estado === 'activo' ? 'ok' : '') + '">'
+          + esc(c.estado) + '</span></td>'
+          + '<td class="acciones">'
+          + '<button class="suave chico" data-editar="' + ambito + '|' + esc(c.id) + '">Editar</button>'
+          + '<button class="suave chico peligro" data-borrar="' + esc(c.id) + '">Borrar</button>'
+          + '</td></tr>';
+      }).join('');
+
+      pintarEn('lista-' + ambito, '<h3>' + par[1] + '</h3>'
+        + '<div class="tabla-envoltura"><table><thead><tr>'
+        + '<th>Campo</th><th>Tipo</th><th>Comparación</th><th class="num">Orden</th>'
+        + '<th>Estado</th><th></th></tr></thead><tbody>'
+        + (filas || '<tr><td colspan="6">Sin campos propios.</td></tr>')
+        + '</tbody></table></div>'
+        + '<div class="botones"><button class="suave" data-nuevo="' + ambito + '">Agregar campo</button></div>');
+    });
+
+    enlazar('button[data-nuevo]', 'click', function () {
+      formaCampo({ ambito: this.getAttribute('data-nuevo') });
+    });
+    enlazar('button[data-editar]', 'click', function () {
+      var partes = this.getAttribute('data-editar').split('|');
+      formaCampo((todos[partes[0]] || []).filter(function (c) { return c.id === partes[1]; })[0]);
+    });
+    enlazar('button[data-borrar]', 'click', function () {
+      if (!confirm('¿Borrar este campo? Lo capturado se queda guardado por si lo vuelves a crear.')) { return; }
+      llamar('apiBorrarCampo', [this.getAttribute('data-borrar')]).then(function (r) {
+        avisar(r.desactivado
+          ? 'Lo usan ' + r.registros + ' registros: lo desactivé en vez de borrarlo.'
+          : 'Campo borrado.');
+        recargarInicial().then(pintarCampos);
+      }).catch(fallo);
+    });
+  }).catch(fallo);
+}
+
+function formaCampo(c) {
+  var d = c || {};
+  var esNuevo = !d.id;
+  var tipos = [['texto', 'Texto'], ['numero', 'Número'], ['fecha', 'Fecha'],
+               ['lista', 'Lista de opciones'], ['si_no', 'Sí / no']];
+
+  $('forma').innerHTML = '<div class="tarjeta">'
+    + '<div class="tarjeta-cab"><h3>' + (esNuevo ? 'Nuevo campo' : 'Editar campo') + ' · '
+    + (d.ambito === 'proveedor' ? 'proveedores' : 'tarifas') + '</h3></div>'
+    + '<div class="fila-campos">'
+    + campoTexto('k-etiqueta', 'Nombre del campo', d.etiqueta || '')
+    + '<label class="campo">Tipo<select id="k-tipo"' + (esNuevo ? '' : ' disabled') + '>'
+    + tipos.map(function (t) {
+        return '<option value="' + t[0] + '"' + (d.tipo === t[0] ? ' selected' : '') + '>'
+          + t[1] + '</option>';
+      }).join('') + '</select></label>'
+    + campoTexto('k-opciones', 'Opciones, separadas por |', (d.opciones || []).join(' | '))
+    + campoNumero('k-orden', 'Orden', d.orden === undefined ? 99 : d.orden)
+    + '</div>'
+    + '<label class="checkbox"><input type="checkbox" id="k-compara"'
+    + (d.compara ? ' checked' : '') + ' /> Separa la comparación '
+    + '(las tarifas con distinto valor no compiten entre sí)</label>'
+    + '<label class="checkbox"><input type="checkbox" id="k-activo"'
+    + (d.estado === 'inactivo' ? '' : ' checked') + ' /> Activo</label>'
+    + (esNuevo ? '' : '<p class="apagado">La clave no se cambia: lo capturado dejaría de encontrarse.</p>')
+    + '<div class="botones">'
+    + '<button class="accion" id="k-guardar">Guardar</button>'
+    + '<button class="suave" id="k-cancelar">Cancelar</button>'
+    + '</div></div>';
+
+  $('forma').scrollIntoView({ behavior: 'smooth', block: 'start' });
+  $('k-cancelar').addEventListener('click', function () { $('forma').innerHTML = ''; });
+  $('k-guardar').addEventListener('click', function () {
+    var datos = {
+      id: d.id || '', ambito: d.ambito, etiqueta: valorDe('k-etiqueta'),
+      clave: d.clave || '', tipo: valorDe('k-tipo') || d.tipo || 'texto',
+      opciones: valorDe('k-opciones'), orden: valorDe('k-orden'),
+      compara: marcado('k-compara') ? 'SI' : 'NO',
+      estado: marcado('k-activo') ? 'activo' : 'inactivo'
+    };
+    this.disabled = true;
+    llamar('apiGuardarCampo', [datos]).then(function () {
+      avisar('Campo guardado.');
+      $('forma').innerHTML = '';
+      recargarInicial().then(pintarCampos);
+    }).catch(function (err) {
+      fallo(err);
+      var b = $('k-guardar');
+      if (b) { b.disabled = false; }
+    });
+  });
+}
+
+/* --------------------------- importar y exportar --------------------------- */
+
+function vistaDatos() {
+  var admin = esAdmin();
+  $('vista').innerHTML = '<h2 class="titulo">' + (admin ? 'Importar y exportar' : 'Exportar') + '</h2>'
+    + '<p class="sub">' + (admin
+        ? 'Sube el tarifario como te lo mandó el transportista —CSV, o cópialo y pégalo '
+          + 'desde Excel—. Primero se revisa y te digo qué va a pasar; hasta entonces se aplica.'
+        : 'Descarga los tarifarios y el comparativo.') + '</p>'
+    + (admin ? cajaImportar() : '')
+    + cajaExportar();
+
+  if (admin) { enlazarImportar(); }
+  enlazarExportar();
+}
+
+function cajaImportar() {
+  var imp = estado.importacion;
+  return '<div class="tarjeta">'
+    + '<div class="tarjeta-cab"><h3>Importar</h3>'
+    + '<span class="apagado">Reconoce comas, punto y coma y tabuladores.</span></div>'
+    + '<div class="fila-campos">'
+    + '<label class="campo">Qué estoy subiendo<select id="i-tipo">'
+    + [['tarifas', 'Tarifas'], ['proveedores', 'Proveedores'], ['rutas', 'Rutas']]
+        .map(function (t) {
+          return '<option value="' + t[0] + '"' + (imp.tipo === t[0] ? ' selected' : '') + '>'
+            + t[1] + '</option>';
+        }).join('')
+    + '</select></label>'
+    + '<label class="campo">Archivo<input type="file" id="i-archivo" accept=".csv,.txt,.tsv" /></label>'
+    + '</div>'
+    + '<label class="campo">…o pega aquí el contenido'
+    + '<textarea id="i-texto" placeholder="proveedor,origen,destino,mercancia,equipo,tarifa,tiempoHoras&#10;Transportes del Norte,Monterrey,Guadalajara,general,full,38500,18">'
+    + esc(imp.texto) + '</textarea></label>'
+    + '<label class="checkbox"><input type="checkbox" id="i-crear"'
+    + (imp.crearFaltantes ? ' checked' : '')
+    + ' /> Dar de alta lo que no exista (proveedores, rutas y tipos nuevos)</label>'
+    + '<div class="botones">'
+    + '<button class="accion" id="i-revisar">Revisar</button>'
+    + '<button class="suave" id="i-plantilla">Descargar plantilla</button>'
+    + '</div>'
+    + '<div id="i-informe"></div>'
+    + '</div>';
+}
+
+function enlazarImportar() {
+  $('i-tipo').addEventListener('change', function () {
+    estado.importacion.tipo = this.value;
+    estado.importacion.informe = null;
+    $('i-informe').innerHTML = '';
+  });
+  $('i-archivo').addEventListener('change', function () {
+    var archivo = this.files && this.files[0];
+    if (!archivo) { return; }
+    leerArchivo(archivo);
+  });
+  $('i-plantilla').addEventListener('click', function () {
+    llamar('apiPlantilla', [valorDe('i-tipo')]).then(function (p) {
+      descargar(p.nombre, p.contenido);
+    }).catch(fallo);
+  });
+  $('i-revisar').addEventListener('click', revisarImportacion);
+}
+
+/**
+ * Lee el archivo como texto. Muchos CSV de por acá vienen en Windows-1252, así
+ * que si aparecen caracteres rotos se vuelve a leer con esa codificación.
+ */
+function leerArchivo(archivo) {
+  var lector = new FileReader();
+  lector.onload = function () {
+    var texto = String(lector.result || '');
+    if (texto.indexOf('�') !== -1) {
+      var otro = new FileReader();
+      otro.onload = function () {
+        $('i-texto').value = String(otro.result || '');
+        avisar('Leí el archivo como Windows-1252 por los acentos.');
+      };
+      otro.readAsText(archivo, 'windows-1252');
+      return;
+    }
+    $('i-texto').value = texto;
+    avisar('Cargué ' + archivo.name + '. Ahora dale Revisar.');
+  };
+  lector.onerror = function () { avisar('No pude leer el archivo.', true); };
+  lector.readAsText(archivo, 'UTF-8');
+}
+
+function revisarImportacion() {
+  var texto = valorDe('i-texto');
+  if (!texto) {
+    avisar('Sube un archivo o pega el contenido primero.', true);
+    return;
+  }
+  estado.importacion.tipo = valorDe('i-tipo');
+  estado.importacion.texto = texto;
+  estado.importacion.crearFaltantes = marcado('i-crear');
+  pintarEn('i-informe', '<div class="vacio">Revisando…</div>');
+
+  llamar('apiImportarRevisar', [estado.importacion.tipo, texto,
+                                { crearFaltantes: estado.importacion.crearFaltantes }])
+    .then(function (informe) {
+      estado.importacion.informe = informe;
+      pintarInforme(informe);
+    }).catch(function (err) {
+      pintarEn('i-informe', '<div class="nota malo">' + esc(err.message || err) + '</div>');
+    });
+}
+
+function pintarInforme(informe) {
+  if (!$('i-informe')) {
+    return;
+  }
+  var r = informe.resumen;
+  var nuevos = informe.nuevos || { proveedores: [], rutas: [], mercancias: [], equipos: [] };
+
+  var filas = informe.filas.slice(0, 200).map(function (f) {
+    var etiqueta = f.accion === 'error' ? '<span class="etiqueta malo">error</span>'
+      : (f.accion === 'actualiza' ? '<span class="etiqueta aviso">actualiza</span>'
+                                  : '<span class="etiqueta ok">alta</span>');
+    var avisos = f.avisos || [];
+    return '<tr' + (f.accion === 'error' ? ' class="inactiva"' : '') + '>'
+      + '<td class="num mono">' + f.n + '</td>'
+      + '<td>' + etiqueta + '</td>'
+      + '<td>' + esc(f.resumen) + '</td>'
+      + '<td>' + (f.problemas.length ? esc(f.problemas.join(' ')) : '')
+      + (avisos.length ? '<div class="apagado">' + esc(avisos.join(' ')) + '</div>' : '')
+      + '</td>'
+      + '</tr>';
+  }).join('');
+
+  var listaNuevos = [];
+  if (nuevos.proveedores.length) { listaNuevos.push(nuevos.proveedores.length + ' proveedores'); }
+  if (nuevos.rutas.length) { listaNuevos.push(nuevos.rutas.length + ' rutas'); }
+  if (nuevos.mercancias.length) { listaNuevos.push(nuevos.mercancias.length + ' tipos de mercancía'); }
+  if (nuevos.equipos.length) { listaNuevos.push(nuevos.equipos.length + ' tipos de equipo'); }
+
+  pintarEn('i-informe', '<h3>Esto es lo que va a pasar</h3>'
+    + '<div class="cifras">'
+    + cifra(r.total, 'Renglones')
+    + cifra(r.altas, 'Altas')
+    + cifra(r.actualizaciones, 'Actualizaciones')
+    + cifra(r.errores, 'Con problemas')
+    + '</div>'
+    + '<p class="apagado">Separador: ' + esc(informe.delimitador)
+    + ' · Columnas reconocidas: ' + esc(informe.reconocidas.join(', ') || 'ninguna')
+    + (informe.ignoradas.length ? ' · Ignoradas: ' + esc(informe.ignoradas.join(', ')) : '') + '</p>'
+    + (listaNuevos.length
+        ? '<div class="nota">Se darán de alta ' + esc(listaNuevos.join(', ')) + '.</div>' : '')
+    + (r.errores
+        ? '<div class="nota aviso">' + r.errores + ' renglones traen problemas. Si importas '
+          + 'de todos modos, esos se saltan y el resto entra.</div>' : '')
+    + (r.repetidos
+        ? '<div class="nota aviso">' + r.repetidos + (r.repetidos === 1
+            ? ' renglón repite una combinación que ya venía en el archivo'
+            : ' renglones repiten combinaciones que ya venían en el archivo')
+          + '. De cada repetición se queda la última.</div>' : '')
+    + '<div class="tabla-envoltura"><table><thead><tr>'
+    + '<th class="num">#</th><th>Acción</th><th>Renglón</th><th>Problemas y avisos</th>'
+    + '</tr></thead><tbody>' + filas + '</tbody></table></div>'
+    + (informe.filas.length > 200
+        ? '<p class="apagado">Muestro los primeros 200 de ' + informe.filas.length + '.</p>' : '')
+    + '<div class="botones">'
+    + '<button class="accion" id="i-aplicar">Importar ' + (r.total - r.errores) + ' renglones</button>'
+    + '<button class="suave" id="i-descartar">Descartar</button>'
+    + '</div>');
+
+  $('i-descartar').addEventListener('click', function () {
+    estado.importacion.informe = null;
+    $('i-informe').innerHTML = '';
+  });
+  $('i-aplicar').addEventListener('click', aplicarImportacion);
+}
+
+function aplicarImportacion() {
+  var imp = estado.importacion;
+  var boton = $('i-aplicar');
+  boton.disabled = true;
+  boton.textContent = 'Importando…';
+
+  llamar('apiImportarAplicar', [imp.tipo, imp.texto, { crearFaltantes: imp.crearFaltantes }])
+    .then(function (r) {
+      var partes = [r.altas + ' altas', r.actualizaciones + ' actualizaciones'];
+      if (r.omitidas) { partes.push(r.omitidas + ' omitidas por problemas'); }
+      if (r.sinReferencia) { partes.push(r.sinReferencia + ' sin proveedor o ruta'); }
+      avisar('Listo: ' + partes.join(', ') + '.');
+      if ($('i-texto')) { $('i-texto').value = ''; }
+      estado.importacion.texto = '';
+      estado.importacion.informe = null;
+      pintarEn('i-informe', '<div class="nota ok">Importación aplicada: '
+        + esc(partes.join(', ')) + '.'
+        + (r.nuevos ? ' Se dieron de alta ' + r.nuevos.proveedores + ' proveedores, '
+            + r.nuevos.rutas + ' rutas y ' + r.nuevos.catalogos + ' tipos nuevos.' : '')
+        + '</div>');
+      recargarInicial();
+    }).catch(function (err) {
+      fallo(err);
+      var b = $('i-aplicar');
+      if (b) { b.disabled = false; b.textContent = 'Importar'; }
+    });
+}
+
+function cajaExportar() {
+  return '<div class="tarjeta">'
+    + '<div class="tarjeta-cab"><h3>Exportar</h3>'
+    + '<span class="apagado">Los CSV salen con los filtros del comparador.</span></div>'
+    + '<div class="botones">'
+    + '<button class="suave" data-csv="mejores">Mejores opciones</button>'
+    + '<button class="suave" data-csv="comparativo">Comparativo completo</button>'
+    + '<button class="suave" data-csv="tarifas">Tarifas</button>'
+    + '<button class="suave" data-csv="proveedores">Proveedores</button>'
+    + '<button class="suave" data-csv="rutas">Rutas</button>'
+    + '</div>'
+    + '<div class="botones">'
+    + '<button class="accion" id="e-libro">Generar hoja de cálculo en Drive</button>'
+    + (esAdmin() ? '<button class="suave" id="e-respaldo">Respaldo completo</button>' : '')
+    + '</div>'
+    + '<div id="e-salida"></div>'
+    + '</div>';
+}
+
+function enlazarExportar() {
+  enlazar('button[data-csv]', 'click', function () { bajarCsv(this.getAttribute('data-csv')); });
+  $('e-libro').addEventListener('click', function () {
+    avisar('Armando la hoja de cálculo… tarda unos segundos.');
+    llamar('apiExportarLibro', [estado.filtros]).then(function (r) {
+      if (!pintarEn('e-salida', '<div class="nota ok">Listo: <a href="' + esc(r.url)
+          + '" target="_blank">' + esc(r.nombre) + '</a></div>')) {
+        avisar('Lista la hoja de cálculo: ' + r.nombre);
+      }
+    }).catch(fallo);
+  });
+  var respaldo = $('e-respaldo');
+  if (respaldo) {
+    respaldo.addEventListener('click', function () {
+      llamar('apiRespaldo').then(function (archivos) {
+        archivos.forEach(function (a, i) {
+          setTimeout(function () { descargar(a.nombre, a.contenido); }, i * 700);
+        });
+      }).catch(fallo);
+    });
+  }
+}
+
+/* --------------------------------- ajustes --------------------------------- */
+
+function vistaAjustes() {
+  var c = estado.inicial.config || {};
+  $('vista').innerHTML = '<h2 class="titulo">Ajustes</h2>'
+    + '<p class="sub">Cómo se calcula el costo total y qué tanto pesa el precio frente '
+    + 'al tiempo de entrega cuando se elige la mejor opción.</p>'
+    + '<div class="tarjeta">'
+    + '<div class="fila-campos">'
+    + campoTexto('a-empresa', 'Empresa', c.empresa || '')
+    + '<label class="campo">Moneda base<select id="a-moneda">'
+    + ['MXN', 'USD'].map(function (m) {
+        return '<option value="' + m + '"' + (c.monedaBase === m ? ' selected' : '') + '>' + m + '</option>';
+      }).join('') + '</select></label>'
+    + campoNumero('a-tc', 'Tipo de cambio USD', c.tipoCambioUSD || '')
+    + campoNumero('a-peso', 'Peso del precio (%)', c.pesoPrecio || 70)
+    + campoNumero('a-aviso', 'Avisar vencimientos con (días)', c.diasAvisoVencimiento || 30)
+    + '</div>'
+    + '<label class="checkbox"><input type="checkbox" id="a-tc-auto"'
+    + (String(c.tipoCambioAuto).toUpperCase() === 'SI' ? ' checked' : '')
+    + ' /> Traer el tipo de cambio del día solo (GOOGLEFINANCE, una vez al día)</label>'
+    + '<p class="apagado" id="a-tc-estado">' + esc(textoTipoCambio()) + '</p>'
+    + '<p class="apagado">El peso del tiempo es lo que falte para 100 %.</p>'
+    + '<div class="botones">'
+    + '<button class="accion" id="a-guardar">Guardar ajustes</button>'
+    + '<button class="suave" id="a-tc-ahora">Actualizar tipo de cambio ahora</button>'
+    + '</div>'
+    + '</div>'
+    + '<h3>Quién puede entrar</h3>'
+    + '<div id="forma"></div>'
+    + '<div id="lista-usuarios"><div class="vacio">Consultando…</div></div>';
+
+  $('a-guardar').addEventListener('click', function () {
+    var peso = Math.max(0, Math.min(100, Number(valorDe('a-peso')) || 0));
+    var cambios = {
+      empresa: valorDe('a-empresa'),
+      monedaBase: valorDe('a-moneda'),
+      tipoCambioUSD: valorDe('a-tc'),
+      tipoCambioAuto: marcado('a-tc-auto') ? 'SI' : 'NO',
+      pesoPrecio: String(peso),
+      pesoTiempo: String(100 - peso),
+      diasAvisoVencimiento: valorDe('a-aviso')
+    };
+    this.disabled = true;
+    llamar('apiGuardarConfig', [cambios]).then(function () {
+      avisar('Ajustes guardados.');
+      estado.filtros.pesoPrecio = '';
+      recargarInicial().then(function () { pintarBarra(); vistaAjustes(); });
+    }).catch(function (err) {
+      fallo(err);
+      var b = $('a-guardar');
+      if (b) { b.disabled = false; }
+    });
+  });
+
+  $('a-tc-ahora').addEventListener('click', function () {
+    var boton = this;
+    boton.disabled = true;
+    avisar('Consultando el tipo de cambio…');
+    llamar('apiActualizarTipoCambio').then(function (tc) {
+      estado.inicial.tipoCambio = tc;
+      if (tc.falloHoy) {
+        avisar('No pude consultarlo. Sigo usando ' + tc.valor + '.', true);
+      } else {
+        avisar('Tipo de cambio del día: ' + tc.valor);
+      }
+      recargarInicial().then(vistaAjustes);
+    }).catch(function (err) {
+      fallo(err);
+      boton.disabled = false;
+    });
+  });
+
+  cargarUsuarios();
+}
+
+/** Una línea que dice con qué tipo de cambio se está trabajando y de dónde salió. */
+function textoTipoCambio() {
+  var tc = estado.inicial.tipoCambio;
+  if (!tc || !tc.valor) {
+    return 'Sin tipo de cambio capturado.';
+  }
+  return 'Ahora mismo: USD 1 = ' + tc.valor + ' ' + moneda()
+    + ' · ' + tc.origen + (tc.fecha ? ' · ' + tc.fecha : '')
+    + (tc.falloHoy ? ' · hoy no se pudo consultar' : '');
+}
+
+function cargarUsuarios() {
+  llamar('apiUsuarios').then(function (lista) {
+    estado.usuarios = lista;
+    if (!$('lista-usuarios')) {
+      return;
+    }
+    var filas = lista.map(function (u) {
+      return '<tr' + (u.estado !== 'activo' ? ' class="inactiva"' : '') + '>'
+        + '<td><b>' + esc(u.nombre) + '</b></td>'
+        + '<td>' + esc(u.email) + '</td>'
+        + '<td><span class="etiqueta ' + (u.rol === 'admin' ? 'acento' : '') + '">'
+        + esc(u.rol) + '</span></td>'
+        + '<td><span class="etiqueta ' + (u.estado === 'activo' ? 'ok' : '') + '">'
+        + esc(u.estado) + '</span></td>'
+        + '<td class="acciones">'
+        + '<button class="suave chico" data-editar="' + esc(u.id) + '">Editar</button>'
+        + '<button class="suave chico" data-invitar="' + esc(u.id) + '">Invitar</button>'
+        + '<button class="suave chico" data-ver="' + esc(u.id) + '">Ver liga</button>'
+        + '<button class="suave chico" data-liga="' + esc(u.id) + '">Liga nueva</button>'
+        + '<button class="suave chico peligro" data-borrar="' + esc(u.id) + '">Borrar</button>'
+        + '</td></tr>';
+    }).join('');
+
+    pintarEn('lista-usuarios', '<div class="tabla-envoltura"><table><thead><tr>'
+      + '<th>Nombre</th><th>Correo</th><th>Rol</th><th>Estado</th><th></th>'
+      + '</tr></thead><tbody>' + filas + '</tbody></table></div>'
+      + '<p class="apagado">Cada quien entra con su liga personal: la aplicación no puede '
+      + 'saber quién es de otra manera. <b>Invitar</b> se la manda por correo; '
+      + '<b>Ver liga</b> te la muestra para pasarla por WhatsApp; <b>Liga nueva</b> '
+      + 'cancela la anterior y genera otra.</p>'
+      + '<div class="botones"><button class="suave" id="nuevo-usuario">Dar de alta usuario</button></div>');
+
+    $('nuevo-usuario').addEventListener('click', function () { formaUsuario(null); });
+    enlazar('button[data-editar]', 'click', function () {
+      var id = this.getAttribute('data-editar');
+      formaUsuario(lista.filter(function (u) { return u.id === id; })[0]);
+    });
+    enlazar('button[data-invitar]', 'click', function () {
+      var boton = this;
+      boton.disabled = true;
+      llamar('apiInvitar', [boton.getAttribute('data-invitar')]).then(function (r) {
+        boton.disabled = false;
+        if (r.enviado) {
+          avisar('Invitación enviada a ' + r.correo + '.');
+          return;
+        }
+        avisar('No pude mandar el correo. Pásale la liga a mano.', true);
+        mostrarTexto('Liga personal de ' + r.correo, r.liga);
+      }).catch(function (err) {
+        boton.disabled = false;
+        fallo(err);
+      });
+    });
+    enlazar('button[data-ver]', 'click', function () {
+      var id = this.getAttribute('data-ver');
+      var usuario = lista.filter(function (u) { return u.id === id; })[0];
+      if (!usuario.liga) {
+        avisar('Ese usuario todavía no tiene liga. Usa "Liga nueva".', true);
+        return;
+      }
+      mostrarTexto('Liga personal de ' + usuario.email, usuario.liga);
+    });
+    enlazar('button[data-liga]', 'click', function () {
+      if (!confirm('La liga anterior deja de servir. ¿Generar una nueva?')) { return; }
+      llamar('apiRegenerarLiga', [this.getAttribute('data-liga')]).then(function (liga) {
+        mostrarTexto('Liga personal', liga);
+        cargarUsuarios();
+      }).catch(fallo);
+    });
+    enlazar('button[data-borrar]', 'click', function () {
+      if (!confirm('¿Quitarle el acceso a esta persona?')) { return; }
+      llamar('apiBorrarUsuario', [this.getAttribute('data-borrar')]).then(function () {
+        avisar('Usuario borrado.');
+        cargarUsuarios();
+      }).catch(fallo);
+    });
+  }).catch(function (err) {
+    pintarEn('lista-usuarios', '<div class="nota malo">' + esc(err.message || err) + '</div>');
+  });
+}
+
+function formaUsuario(u) {
+  var d = u || { id: '', nombre: '', email: '', rol: 'consulta', estado: 'activo' };
+  $('forma').innerHTML = '<div class="tarjeta">'
+    + '<div class="tarjeta-cab"><h3>' + (u ? 'Editar usuario' : 'Nuevo usuario') + '</h3></div>'
+    + '<div class="fila-campos">'
+    + campoTexto('u-nombre', 'Nombre', d.nombre)
+    + campoTexto('u-email', 'Correo', d.email)
+    + '<label class="campo">Rol<select id="u-rol">'
+    + '<option value="consulta"' + (d.rol === 'consulta' ? ' selected' : '') + '>Consulta</option>'
+    + '<option value="admin"' + (d.rol === 'admin' ? ' selected' : '') + '>Administrador</option>'
+    + '</select></label>'
+    + '</div>'
+    + '<label class="checkbox"><input type="checkbox" id="u-activo"'
+    + (d.estado === 'activo' ? ' checked' : '') + ' /> Activo</label>'
+    + (d.liga ? '<p class="apagado mono">' + esc(d.liga) + '</p>' : '')
+    + '<div class="botones">'
+    + '<button class="accion" id="u-guardar">Guardar</button>'
+    + '<button class="suave" id="u-cancelar">Cancelar</button>'
+    + '</div></div>';
+
+  $('forma').scrollIntoView({ behavior: 'smooth', block: 'start' });
+  $('u-cancelar').addEventListener('click', function () { $('forma').innerHTML = ''; });
+  $('u-guardar').addEventListener('click', function () {
+    var datos = {
+      id: d.id, nombre: valorDe('u-nombre'), email: valorDe('u-email'),
+      rol: valorDe('u-rol'), estado: marcado('u-activo') ? 'activo' : 'inactivo'
+    };
+    this.disabled = true;
+    llamar('apiGuardarUsuario', [datos]).then(function () {
+      avisar('Usuario guardado.');
+      $('forma').innerHTML = '';
+      cargarUsuarios();
+    }).catch(function (err) {
+      fallo(err);
+      var b = $('u-guardar');
+      if (b) { b.disabled = false; }
+    });
+  });
+}
+
+arrancar();
+</script>
