@@ -13,6 +13,8 @@ var CHUNK = 40000;              // caracteres por celda (el límite real es 50 0
 var CARPETA_DRIVE = 'Fulcrum ERP';
 var REMITENTE = 'ADMINISTRACION@COMERCIALIZADORAFULCRUM.COM.MX';
 var NOMBRE_REMITENTE = 'Comercializadora Fulcrum';
+var VERSION = 'v7-2026-08-08';   // debe coincidir con el que muestra la app
+
 var COLECCIONES = ['clientes', 'cotizaciones', 'ventas', 'ordenes', 'facturas',
                    'pagos', 'proveedores', 'gastos', 'proyectos'];
 
@@ -76,6 +78,7 @@ function paginaError_(detalle) {
 
 /** Ejecuta esta función desde el editor para ver si los archivos están completos. */
 function verificarInstalacion() {
+  Logger.log('Version del servidor (Codigo.gs): ' + VERSION);
   for (var nombre in MINIMOS) {
     var kb = 0, existe = true;
     try { kb = HtmlService.createHtmlOutputFromFile(nombre).getContent().length / 1024; }
@@ -86,6 +89,9 @@ function verificarInstalacion() {
   }
   var p = revisarArchivos_();
   Logger.log(p ? 'Resultado: hay problemas.' : 'Resultado: todo correcto.');
+  Logger.log('Recuerda: la URL que termina en /exec sirve la VERSION IMPLEMENTADA. ' +
+             'Si acabas de cambiar los archivos, usa la URL de prueba (/dev) o crea una NUEVA VERSION ' +
+             'en Implementar -> Gestionar implementaciones.');
   return p || 'OK';
 }
 
