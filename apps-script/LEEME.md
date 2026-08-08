@@ -8,13 +8,17 @@ o enviar por correo** con el documento adjunto.
 
 | Archivo | Nombre exacto en Apps Script | Qué es |
 |---|---|---|
-| `Codigo.gs` | `Codigo` (archivo de script) | Servidor: `doGet`, Sheets, PDF a Drive y correo |
-| `Index.html` | `Index` (archivo HTML) | Interfaz: estilos y estructura |
-| `JavaScript.html` | `JavaScript` (archivo HTML) | Toda la lógica del ERP (~124 KB) |
-| `Logo.html` | `Logo` (archivo HTML) | Solo el logotipo en base64 (~58 KB) |
+| `Codigo.gs` | `Codigo` (script) | Servidor: `doGet`, Sheets, PDF a Drive y correo |
+| `Index.html` | `Index` (HTML) | Página: estilos, estructura y el cargador (26 KB) |
+| `AppJs.html` | `AppJs` (HTML) | Código de la aplicación en **JavaScript puro** (124 KB) |
+| `LogoData.html` | `LogoData` (HTML) | Logotipo en base64, **solo texto** (59 KB) |
 | `appsscript.json` | manifiesto | Zona horaria, permisos y configuración de la web app |
 
-> Los nombres deben coincidir **exactamente** (sin la extensión `.html`): `Index`, `JavaScript`, `Logo`.
+> Los nombres deben coincidir **exactamente** (sin `.html`): `Index`, `AppJs`, `LogoData`.
+
+**Cómo funciona:** la página que sirve Apps Script solo lleva estilos y estructura. El código de la
+aplicación y el logotipo se piden al servidor (`getRecursos`) y se inyectan en el navegador como
+datos. Así el código nunca pasa por el analizador de HTML, que era lo que impedía que arrancara.
 
 ## Instalación (10 minutos)
 
@@ -23,13 +27,11 @@ o enviar por correo** con el documento adjunto.
 3. Crea los archivos y pega el contenido de cada uno:
    - El archivo `Código.gs` que viene por defecto → reemplaza todo con `Codigo.gs`.
    - **+ → HTML** → nómbralo `Index` → pega `Index.html`.
-   - **+ → HTML** → nómbralo `JavaScript` → pega `JavaScript.html`.
-   - **+ → HTML** → nómbralo `Logo` → pega `Logo.html`.
+   - **+ → HTML** → nómbralo `AppJs` → pega `AppJs.html`.
+   - **+ → HTML** → nómbralo `LogoData` → pega `LogoData.html`.
 
-   > **Importante al pegar:** son archivos grandes. Abre cada uno, selecciona **todo** el
-   > contenido del editor (Ctrl/Cmd + A) y pega encima. Verifica que el archivo `JavaScript`
-   > termine con `window.FULCRUM_JS_OK=true;` seguido de `</script>` — si no, el pegado quedó
-   > incompleto y la app aparecerá en blanco.
+   > Al pegar, selecciona **todo** el contenido del editor (Ctrl/Cmd + A) y pega encima.
+   > `AppJs` debe terminar con `window.FULCRUM_JS_OK=true;`
 4. Muestra el manifiesto: engrane **Configuración del proyecto** → activa
    *«Mostrar el archivo de manifiesto appsscript.json»*. Abre `appsscript.json` y pega su contenido.
 5. **Implementar → Nueva implementación → tipo: Aplicación web**
@@ -91,19 +93,15 @@ esa dirección. Si la cuenta que implementa la app ya *es* esa dirección, no ha
   puede editarse a mano.
 - Las **retenciones** (ISR, IVA u otras) se capturan libremente por cliente y por cotización.
 
-## Si la pantalla aparece en blanco
+## Si algo falla
 
-Es casi siempre un **pegado incompleto** del archivo `JavaScript` (un `<script>` cortado se
-"traga" el resto de la página).
-
-1. En el editor de Apps Script ejecuta la función **`verificarInstalacion`** y abre el
-   **Registro de ejecución**: te dice el tamaño de cada archivo y cuál está incompleto.
-2. Vuelve a pegar el archivo señalado, completo.
-3. Recarga la página de la app.
-
-La propia aplicación también avisa: si el código no termina de cargar en 4 segundos, muestra un
-mensaje rojo explicando la causa en lugar de quedarse en blanco. Y `doGet` revisa los archivos
-antes de servir la página.
+1. La app muestra abajo a la izquierda la **versión del código**. Si no coincide con la de
+   `Codigo.gs`, estás viendo una **implementación anterior**: usa la URL de prueba (`/dev`) o
+   crea una **nueva versión** en *Implementar → Gestionar implementaciones*.
+2. Ejecuta **`verificarInstalacion`** en el editor y mira el *Registro de ejecución*: indica el
+   tamaño de cada archivo y si alguno quedó incompleto.
+3. Si el código no arranca, la app muestra un recuadro rojo con el motivo en lugar de quedarse
+   en blanco.
 
 ## Notas
 

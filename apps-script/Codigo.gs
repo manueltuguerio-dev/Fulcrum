@@ -13,7 +13,7 @@ var CHUNK = 40000;              // caracteres por celda (el límite real es 50 0
 var CARPETA_DRIVE = 'Fulcrum ERP';
 var REMITENTE = 'ADMINISTRACION@COMERCIALIZADORAFULCRUM.COM.MX';
 var NOMBRE_REMITENTE = 'Comercializadora Fulcrum';
-var VERSION = 'v7-2026-08-08';   // debe coincidir con el que muestra la app
+var VERSION = 'v8-2026-08-08';   // debe coincidir con el que muestra la app
 
 var COLECCIONES = ['clientes', 'cotizaciones', 'ventas', 'ordenes', 'facturas',
                    'pagos', 'proveedores', 'gastos', 'proyectos'];
@@ -23,14 +23,14 @@ var COLECCIONES = ['clientes', 'cotizaciones', 'ventas', 'ordenes', 'facturas',
 /* ------------------------------------------------------------------ */
 
 /* Tamaños mínimos esperados: sirven para detectar un pegado incompleto. */
-var MINIMOS = { 'Index': 20000, 'JavaScript': 100000, 'Logo': 40000 };
+var MINIMOS = { 'Index': 20000, 'AppJs': 100000, 'LogoData': 40000 };
 
 function doGet() {
   var problema = revisarArchivos_();
   if (problema) return HtmlService.createHtmlOutput(paginaError_(problema)).setTitle('Fulcrum ERP');
 
-  return HtmlService.createTemplateFromFile('Index')
-    .evaluate()
+  // Sin plantillas: la página no lleva código incrustado, así que no hay nada que evaluar.
+  return HtmlService.createHtmlOutputFromFile('Index')
     .setTitle('Fulcrum ERP')
     .addMetaTag('viewport', 'width=device-width, initial-scale=1');
 }
@@ -38,6 +38,21 @@ function doGet() {
 /** Permite insertar un archivo HTML dentro de otro. */
 function include(nombre) {
   return HtmlService.createHtmlOutputFromFile(nombre).getContent();
+}
+
+/**
+ * Entrega el código de la aplicación y el logotipo como TEXTO.
+ *
+ * La página que sirve Apps Script solo lleva estilos y estructura; el código
+ * llega por aquí y el navegador lo inyecta como script. Así nunca se interpreta
+ * como HTML, que era lo que rompía la carga.
+ */
+function getRecursos() {
+  return JSON.stringify({
+    js: HtmlService.createHtmlOutputFromFile('AppJs').getContent(),
+    logo: HtmlService.createHtmlOutputFromFile('LogoData').getContent().replace(/\s+$/, ''),
+    version: VERSION
+  });
 }
 
 /** Devuelve un texto con el problema encontrado, o '' si todo está bien. */
@@ -58,9 +73,9 @@ function revisarArchivos_() {
     }
   }
   var js = '';
-  try { js = HtmlService.createHtmlOutputFromFile('JavaScript').getContent(); } catch (e) {}
+  try { js = HtmlService.createHtmlOutputFromFile('AppJs').getContent(); } catch (e) {}
   if (js && js.indexOf('FULCRUM_JS_OK') === -1) {
-    fallos.push('El archivo <b>JavaScript</b> quedó cortado al final (falta la marca de cierre). ' +
+    fallos.push('El archivo <b>AppJs</b> quedó cortado al final (falta la marca de cierre). ' +
       'Vuelve a copiarlo completo.');
   }
   return fallos.join('<br><br>');
