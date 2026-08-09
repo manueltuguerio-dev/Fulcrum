@@ -13,7 +13,7 @@ var CHUNK = 40000;              // caracteres por celda (el límite real es 50 0
 var CARPETA_DRIVE = 'Fulcrum ERP';
 var REMITENTE = 'ADMINISTRACION@COMERCIALIZADORAFULCRUM.COM.MX';
 var NOMBRE_REMITENTE = 'Comercializadora Fulcrum';
-var VERSION = 'v8-2026-08-08';   // debe coincidir con el que muestra la app
+var VERSION = 'v9-2026-08-08';   // debe coincidir con el que muestra la app
 
 var COLECCIONES = ['clientes', 'cotizaciones', 'ventas', 'ordenes', 'facturas',
                    'pagos', 'proveedores', 'gastos', 'proyectos'];
@@ -22,13 +22,9 @@ var COLECCIONES = ['clientes', 'cotizaciones', 'ventas', 'ordenes', 'facturas',
 /*  Web app                                                            */
 /* ------------------------------------------------------------------ */
 
-/* Tamaños mínimos esperados: sirven para detectar un pegado incompleto. */
-var MINIMOS = { 'Index': 20000, 'AppJs': 100000, 'LogoData': 40000 };
-
 function doGet() {
-  var problema = revisarArchivos_();
-  if (problema) return HtmlService.createHtmlOutput(paginaError_(problema)).setTitle('Fulcrum ERP');
-
+  // Siempre se sirve la página. Si faltara algún archivo, el cargador lo dirá con el
+  // error real del servidor; bloquear aquí ocultaba la causa y daba falsos negativos.
   // Sin plantillas: la página no lleva código incrustado, así que no hay nada que evaluar.
   return HtmlService.createHtmlOutputFromFile('Index')
     .setTitle('Fulcrum ERP')
@@ -48,66 +44,68 @@ function include(nombre) {
  * como HTML, que era lo que rompía la carga.
  */
 function getRecursos() {
+  var js = leerArchivo_(['AppJs', 'AppJs.html', 'appjs', 'Appjs', 'APPJS', 'JavaScript']);
+  if (js === null) {
+    throw new Error('No se encontró el archivo AppJs. Créalo con «+ → HTML», nómbralo ' +
+      'exactamente AppJs y pega dentro el contenido de AppJs.html.');
+  }
+  // El logotipo es opcional: si falta, la app funciona y muestra el nombre en texto.
+  var logo = leerArchivo_(['LogoData', 'LogoData.html', 'logodata', 'Logo']);
   return JSON.stringify({
-    js: HtmlService.createHtmlOutputFromFile('AppJs').getContent(),
-    logo: HtmlService.createHtmlOutputFromFile('LogoData').getContent().replace(/\s+$/, ''),
+    js: js,
+    logo: logo ? logo.replace(/^\s+|\s+$/g, '') : '',
     version: VERSION
   });
 }
 
-/** Devuelve un texto con el problema encontrado, o '' si todo está bien. */
-function revisarArchivos_() {
-  var fallos = [];
-  for (var nombre in MINIMOS) {
-    var contenido = '';
+/** Lee el primer archivo que exista de la lista; devuelve null si no hay ninguno. */
+function leerArchivo_(nombres) {
+  var ultimoError = '';
+  for (var i = 0; i < nombres.length; i++) {
     try {
-      contenido = HtmlService.createHtmlOutputFromFile(nombre).getContent();
-    } catch (e) {
-      fallos.push('Falta el archivo <b>' + nombre + '</b> (créalo con «+ → HTML» y ese nombre exacto).');
-      continue;
-    }
-    if (contenido.length < MINIMOS[nombre]) {
-      fallos.push('El archivo <b>' + nombre + '</b> está incompleto: tiene ' +
-        Math.round(contenido.length / 1024) + ' KB y debería tener al menos ' +
-        Math.round(MINIMOS[nombre] / 1024) + ' KB. Vuelve a pegar su contenido completo.');
-    }
+      var c = HtmlService.createHtmlOutputFromFile(nombres[i]).getContent();
+      if (c && c.length) return desenvolver_(c);
+    } catch (e) { ultimoError = e && e.message ? e.message : String(e); }
   }
-  var js = '';
-  try { js = HtmlService.createHtmlOutputFromFile('AppJs').getContent(); } catch (e) {}
-  if (js && js.indexOf('FULCRUM_JS_OK') === -1) {
-    fallos.push('El archivo <b>AppJs</b> quedó cortado al final (falta la marca de cierre). ' +
-      'Vuelve a copiarlo completo.');
-  }
-  return fallos.join('<br><br>');
+  if (ultimoError) Logger.log('Ultimo error al leer ' + nombres[0] + ': ' + ultimoError);
+  return null;
 }
 
-function paginaError_(detalle) {
-  return '<div style="font-family:system-ui,Segoe UI,Arial,sans-serif;max-width:640px;margin:48px auto;' +
-    'padding:24px;border:1px solid #cf3346;border-radius:14px;background:#fff5f6;color:#7c1420">' +
-    '<h2 style="margin:0 0 12px">La instalación está incompleta</h2>' +
-    '<div style="font-size:14px;line-height:1.6">' + detalle + '</div>' +
-    '<p style="font-size:13px;color:#555;margin-top:18px">Después de corregirlo, vuelve a cargar esta página. ' +
-    'No hace falta implementar de nuevo si solo cambiaste el contenido de los archivos ' +
-    '(salvo que uses una implementación fijada a una versión).</p></div>';
+/** Quita la envoltura <script> ... </script> y devuelve solo el contenido. */
+function desenvolver_(texto) {
+  var ini = texto.indexOf('>', texto.indexOf('<script'));
+  var fin = texto.lastIndexOf('</script');
+  if (texto.indexOf('<script') !== -1 && ini !== -1 && fin > ini) {
+    return texto.substring(ini + 1, fin);
+  }
+  return texto;   // archivos sin envoltura (versiones anteriores) siguen funcionando
 }
 
-/** Ejecuta esta función desde el editor para ver si los archivos están completos. */
+/** Ejecuta esta función desde el editor para revisar la instalación. */
 function verificarInstalacion() {
   Logger.log('Version del servidor (Codigo.gs): ' + VERSION);
-  for (var nombre in MINIMOS) {
-    var kb = 0, existe = true;
-    try { kb = HtmlService.createHtmlOutputFromFile(nombre).getContent().length / 1024; }
-    catch (e) { existe = false; }
-    Logger.log(nombre + ': ' + (existe ? kb.toFixed(1) + ' KB (mínimo ' +
-      (MINIMOS[nombre] / 1024).toFixed(0) + ' KB) ' + (kb * 1024 >= MINIMOS[nombre] ? 'OK' : '¡INCOMPLETO!')
-      : 'NO EXISTE'));
+
+  var js = leerArchivo_(['AppJs', 'AppJs.html', 'appjs', 'Appjs', 'APPJS', 'JavaScript']);
+  var logo = leerArchivo_(['LogoData', 'LogoData.html', 'logodata', 'Logo']);
+
+  if (js === null) {
+    Logger.log('AppJs: NO SE ENCUENTRA. Crea un archivo HTML llamado exactamente AppJs.');
+  } else {
+    Logger.log('AppJs: ' + (js.length / 1024).toFixed(1) + ' KB ' +
+      (js.length >= 100000 ? 'OK' : '¡PARECE INCOMPLETO! (deberia rondar 124 KB)'));
+    Logger.log('AppJs termina con la marca de cierre: ' +
+      (js.indexOf('FULCRUM_JS_OK') !== -1 ? 'SI' : 'NO (el pegado quedo cortado)'));
   }
-  var p = revisarArchivos_();
-  Logger.log(p ? 'Resultado: hay problemas.' : 'Resultado: todo correcto.');
+  Logger.log('LogoData: ' + (logo === null ? 'no encontrado (opcional; se usara el nombre en texto)'
+    : (logo.length / 1024).toFixed(1) + ' KB'));
+
+  var idx = leerArchivo_(['Index', 'Index.html']);
+  Logger.log('Index: ' + (idx === null ? 'NO SE ENCUENTRA' : (idx.length / 1024).toFixed(1) + ' KB'));
+
   Logger.log('Recuerda: la URL que termina en /exec sirve la VERSION IMPLEMENTADA. ' +
              'Si acabas de cambiar los archivos, usa la URL de prueba (/dev) o crea una NUEVA VERSION ' +
              'en Implementar -> Gestionar implementaciones.');
-  return p || 'OK';
+  return js !== null && js.length >= 100000 ? 'OK' : 'Revisa el registro';
 }
 
 /* ------------------------------------------------------------------ */
