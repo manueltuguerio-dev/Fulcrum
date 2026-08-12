@@ -21,7 +21,17 @@
   function fmtDate(s){if(!s)return "—";const t=new Date(s+"T00:00:00");return t.toLocaleDateString("es-MX",{day:"2-digit",month:"short",year:"numeric"});}
   const monthKey=s=>String(s||"").slice(0,7);
   function monthLabel(k){if(!k)return "—";const[y,m]=k.split("-");return new Date(y,m-1,1).toLocaleDateString("es-MX",{month:"short",year:"numeric"});}
-  function nextFolio(pref,arr){let mx=0;arr.forEach(x=>{const n=+String(x.folio).split("-")[1];if(n>mx)mx=n;});return pref+"-"+String(mx+1).padStart(4,"0");}
+  // Continúa la nomenclatura del último folio capturado: CPXO-0046 -> CPXO-0047.
+  function nextFolio(pref,arr){
+    for(let i=arr.length-1;i>=0;i--){
+      const f=String((arr[i]||{}).folio||"").trim();
+      const m=f.match(/^([\s\S]*?)(\d+)(\D*)$/);
+      if(m)return m[1]+String(+m[2]+1).padStart(m[2].length,"0")+m[3];
+    }
+    return pref+"-0001";
+  }
+  const folioRepetido=(arr,folio,id)=>arr.some(x=>x.id!==id&&String(x.folio||"").trim().toLowerCase()===String(folio||"").trim().toLowerCase());
+  const campoFolio=(valor)=>`<div class="field"><label for="f-folio">Folio</label><input id="f-folio" required value="${escAttr(valor)}" placeholder="COT-0001"></div>`;
   const uid=()=>Math.random().toString(36).slice(2,9);
 
   /* ---------- especificación de líneas ---------- */
@@ -437,6 +447,11 @@
     const list=state.facturas.filter(f=>ui.facFilter==="all"||f.flujo===ui.facFilter);
     return `${headBar("Facturas","Flujo: solicitada → creada → cargada al portal → pagada","factura","Nueva factura","rep-fac")}
     ${filterBar("facFilter",ui.facFilter,opts)}
+    <div class="panel" style="padding:16px"><label class="drop" id="dropventa">
+      <input type="file" id="xmlventa" accept=".xml,text/xml,application/xml" multiple hidden>
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor"><path d="M12 16V4M7 9l5-5 5 5M4 20h16" stroke-width="1.6"/></svg>
+      <b>Arrastra o haz clic para cargar el XML (CFDI) de tus facturas</b>
+      <div class="hint">Se llenan cliente, folio, fecha, conceptos, IVA y retenciones</div></label></div>
     <div class="panel"><div class="tablewrap"><table>
     <thead><tr><th>Folio</th><th>Cliente</th><th>Emisión</th><th>Vence</th><th class="r">Total</th><th class="r">Saldo</th><th>Estatus</th><th></th></tr></thead>
     <tbody>${list.length?list.map(f=>{const e=facEstatus(f),fl=flujoMeta(f.flujo),saldo=facSaldo(f);
@@ -644,7 +659,8 @@
     let title,body,onsubmit,lineType=null,formLines=null,retEd=null,formRets=null;const t=todayStr();
 
     if(type==="cotizacion"){lineType="cotizacion";title=editing?"Editar cotización":"Nueva cotización";
-      body=`<div class="grid2">
+      body=`${campoFolio(rec?rec.folio:nextFolio("COT",state.cotizaciones))}
+        <div class="grid2">
           <div class="field"><label for="f-cli">Cliente</label><input id="f-cli" list="cli-list" required value="${escAttr(rec?rec.cliente:"")}" placeholder="Nombre del cliente">
             <datalist id="cli-list">${state.clientes.map(cl=>`<option value="${escAttr(cl.nombre)}"></option>`).join("")}</datalist></div>
           <div class="field"><label for="f-cliid">Impuestos de cliente</label><select id="f-cliid"><option value="">— personalizado —</option>${state.clientes.map(cl=>`<option value="${cl.id}">${escAttr(cl.nombre)}</option>`).join("")}</select></div></div>
@@ -656,22 +672,30 @@
         <div class="calc" id="calc"></div>`;
       onsubmit=()=>{const lineas=lineEd.read().filter(l=>l.desc&&l.cantidad>0);
         if(!lineas.length){toast("Agrega al menos una línea con concepto y cantidad.");return false;}
-        const data={cliente:$("#f-cli").value.trim(),fecha:$("#f-fecha").value,vigencia:+$("#f-vig").value,ivaPct:+$("#f-iva").value||0,retenciones:retEd?retEd.read().filter(r=>r.concepto):[],lineas};
-        if(editing)Object.assign(rec,data);else state.cotizaciones.push(Object.assign({id:uid(),folio:nextFolio("COT",state.cotizaciones),estatus:"borrador",facturada:false},data));};
+        const folio=$("#f-folio").value.trim();
+        if(!folio){toast("Escribe el folio.");return false;}
+        if(folioRepetido(state.cotizaciones,folio,editing)){toast("Ya existe la cotización "+folio);return false;}
+        const data={folio,cliente:$("#f-cli").value.trim(),fecha:$("#f-fecha").value,vigencia:+$("#f-vig").value,ivaPct:+$("#f-iva").value||0,retenciones:retEd?retEd.read().filter(r=>r.concepto):[],lineas};
+        if(editing)Object.assign(rec,data);else state.cotizaciones.push(Object.assign({id:uid(),estatus:"borrador",facturada:false},data));};
     }
     else if(type==="orden"){lineType="orden";title=editing?"Editar orden de compra":"Nueva orden de compra";
-      body=`<div class="field"><label for="f-prov">Proveedor</label><input id="f-prov" required value="${escAttr(rec?rec.proveedor:"")}" placeholder="Nombre del proveedor"></div>
+      body=`${campoFolio(rec?rec.folio:nextFolio("OC",state.ordenes))}
+        <div class="field"><label for="f-prov">Proveedor</label><input id="f-prov" required value="${escAttr(rec?rec.proveedor:"")}" placeholder="Nombre del proveedor"></div>
         <div class="grid3"><div class="field"><label for="f-fecha">Fecha</label><input type="date" id="f-fecha" value="${rec?rec.fecha:t}"></div>
         <div class="field"><label for="f-pago">Pago programado</label><input type="date" id="f-pago" value="${rec?rec.fechaPago:addDays(t,30)}"></div>
         <div class="field"><label for="f-iva">IVA (%)</label><input type="number" id="f-iva" min="0" max="100" step="0.5" value="${rec&&rec.ivaPct!=null?rec.ivaPct:ivaDefPct()}"></div></div>
         <div class="field"><label>Conceptos</label><div id="lineas"></div></div><div class="calc" id="calc"></div>`;
       onsubmit=()=>{const lineas=lineEd.read().filter(l=>l.desc&&l.cantidad>0);
         if(!lineas.length){toast("Agrega al menos una línea.");return false;}
-        const data={proveedor:$("#f-prov").value.trim(),fecha:$("#f-fecha").value,fechaPago:$("#f-pago").value,ivaPct:+$("#f-iva").value||0,lineas};
-        if(editing)Object.assign(rec,data);else state.ordenes.push(Object.assign({id:uid(),folio:nextFolio("OC",state.ordenes),estatus:"abierta"},data));};
+        const folio=$("#f-folio").value.trim();
+        if(!folio){toast("Escribe el folio.");return false;}
+        if(folioRepetido(state.ordenes,folio,editing)){toast("Ya existe la orden "+folio);return false;}
+        const data={folio,proveedor:$("#f-prov").value.trim(),fecha:$("#f-fecha").value,fechaPago:$("#f-pago").value,ivaPct:+$("#f-iva").value||0,lineas};
+        if(editing)Object.assign(rec,data);else state.ordenes.push(Object.assign({id:uid(),estatus:"abierta"},data));};
     }
     else if(type==="factura"){lineType="factura";title=editing?"Editar factura":"Nueva factura";
-      body=`<div class="field"><label for="f-cli">Cliente</label><input id="f-cli" required value="${escAttr(rec?rec.cliente:"")}" placeholder="Nombre del cliente"></div>
+      body=`${campoFolio(rec?rec.folio:nextFolio("FAC",state.facturas))}
+        <div class="field"><label for="f-cli">Cliente</label><input id="f-cli" required value="${escAttr(rec?rec.cliente:"")}" placeholder="Nombre del cliente"></div>
         <div class="grid3"><div class="field"><label for="f-fecha">Emisión</label><input type="date" id="f-fecha" value="${rec?rec.fecha:t}"></div>
         <div class="field"><label for="f-venc">Vence</label><input type="date" id="f-venc" value="${rec?rec.vencimiento:addDays(t,30)}"></div>
         <div class="field"><label for="f-flujo">Estatus</label><select id="f-flujo">${FLUJO.map(x=>`<option value="${x.v}" ${(rec?rec.flujo:"solicitada")===x.v?"selected":""}>${x.label}</option>`).join("")}</select></div></div>
@@ -679,8 +703,11 @@
         <div class="field"><label>Conceptos</label><div id="lineas"></div></div><div class="calc" id="calc"></div>`;
       onsubmit=()=>{const lineas=lineEd.read().filter(l=>l.desc&&l.cantidad>0);
         if(!lineas.length){toast("Agrega al menos una línea.");return false;}
-        const data={cliente:$("#f-cli").value.trim(),fecha:$("#f-fecha").value,vencimiento:$("#f-venc").value,flujo:$("#f-flujo").value,ivaPct:+$("#f-iva").value||0,lineas};
-        if(editing)Object.assign(rec,data);else state.facturas.push(Object.assign({id:uid(),folio:nextFolio("FAC",state.facturas)},data));};
+        const folio=$("#f-folio").value.trim();
+        if(!folio){toast("Escribe el folio.");return false;}
+        if(folioRepetido(state.facturas,folio,editing)){toast("Ya existe la factura "+folio);return false;}
+        const data={folio,cliente:$("#f-cli").value.trim(),fecha:$("#f-fecha").value,vencimiento:$("#f-venc").value,flujo:$("#f-flujo").value,ivaPct:+$("#f-iva").value||0,lineas};
+        if(editing)Object.assign(rec,data);else state.facturas.push(Object.assign({id:uid()},data));};
     }
     else if(type==="pago"){
       const editAps=rec?(rec.aplicaciones&&rec.aplicaciones.length?rec.aplicaciones:(rec.facturaId?[{facturaId:rec.facturaId,monto:rec.monto}]:[])):[];
@@ -741,7 +768,8 @@
     else if(type==="venta"){lineType="venta";title=editing?"Editar orden de venta":"Nueva orden de venta";
       const src=editing?rec:(opts.fromCot?(function(){const c=state.cotizaciones.find(x=>x.id===opts.fromCot);return c?{cliente:c.cliente,ocCliente:"",fecha:t,cotizacionId:c.id,lineas:(c.lineas||[]).map(l=>({desc:l.desc,cantidad:l.cantidad,costo:l.costo,precio:lineaPrecio(l)}))}:null;})():null);
       const pre=src||{};formLines=pre.lineas||null;
-      body=`<div class="field"><label for="f-cli">Cliente</label><input id="f-cli" required value="${escAttr(pre.cliente||"")}" placeholder="Cliente"></div>
+      body=`${campoFolio(rec?rec.folio:nextFolio("OV",state.ventas))}
+        <div class="field"><label for="f-cli">Cliente</label><input id="f-cli" required value="${escAttr(pre.cliente||"")}" placeholder="Cliente"></div>
         <div class="grid2"><div class="field"><label for="f-occ">OC del cliente</label><input id="f-occ" value="${escAttr(pre.ocCliente||"")}" placeholder="Folio de su orden de compra"></div>
         <div class="field"><label for="f-fecha">Fecha</label><input type="date" id="f-fecha" value="${pre.fecha||t}"></div></div>
         <div class="field" style="max-width:160px"><label for="f-iva">IVA (%)</label><input type="number" id="f-iva" min="0" max="100" step="0.5" value="${(rec&&rec.ivaPct!=null)?rec.ivaPct:ivaDefPct()}"></div>
@@ -749,8 +777,11 @@
         <div class="field"><label>Conceptos</label><div id="lineas"></div></div><div class="calc" id="calc"></div>`;
       onsubmit=()=>{const lineas=lineEd.read().filter(l=>l.desc&&l.cantidad>0);
         if(!lineas.length){toast("Agrega al menos una línea.");return false;}
-        const data={cliente:$("#f-cli").value.trim(),ocCliente:$("#f-occ").value.trim(),fecha:$("#f-fecha").value,cotizacionId:$("#f-cot").value||null,ivaPct:+$("#f-iva").value||0,lineas};
-        if(editing)Object.assign(rec,data);else{const nv=Object.assign({id:uid(),folio:nextFolio("OV",state.ventas),estatus:"abierta",facturaId:null},data);
+        const folio=$("#f-folio").value.trim();
+        if(!folio){toast("Escribe el folio.");return false;}
+        if(folioRepetido(state.ventas,folio,editing)){toast("Ya existe la orden de venta "+folio);return false;}
+        const data={folio,cliente:$("#f-cli").value.trim(),ocCliente:$("#f-occ").value.trim(),fecha:$("#f-fecha").value,cotizacionId:$("#f-cot").value||null,ivaPct:+$("#f-iva").value||0,lineas};
+        if(editing)Object.assign(rec,data);else{const nv=Object.assign({id:uid(),estatus:"abierta",facturaId:null},data);
           state.ventas.push(nv);if(opts.fromCot){const c=state.cotizaciones.find(x=>x.id===opts.fromCot);if(c){c.ventaId=nv.id;if(c.estatus!=="aceptada")c.estatus="aceptada";}}}};
     }
     else if(type==="cierre"){title="Guardar cierre / respaldo";const def=monthLabel(ui.contaMonth);
@@ -908,14 +939,91 @@
       return {id:uid(),proveedor,rfc,folio,uuid,fecha,subtotal:sub,iva,total,conceptos,cotizadaEn:[]};
     }catch(e){return null;}
   }
+  // Lee un CFDI emitido al cliente y arma la factura: receptor, folio, conceptos,
+  // IVA y retenciones. El costo no viene en el XML: queda en 0 para capturarlo.
+  function parseCFDIVenta(txt){
+    try{
+      const doc=new DOMParser().parseFromString(txt,"application/xml");
+      if(doc.getElementsByTagName("parsererror").length)return null;
+      const comp=doc.documentElement;
+      if(!comp||comp.localName!=="Comprobante")return null;
+      const els=doc.getElementsByTagName("*");
+      const porNombre=n=>{for(let i=0;i<els.length;i++)if(els[i].localName===n)return els[i];return null;};
+      const todos=n=>{const r=[];for(let i=0;i<els.length;i++)if(els[i].localName===n)r.push(els[i]);return r;};
+
+      const sub=+comp.getAttribute("SubTotal")||0;
+      const serie=comp.getAttribute("Serie")||"";
+      const folio=((serie?serie+"-":"")+(comp.getAttribute("Folio")||"")).trim();
+      const fecha=(comp.getAttribute("Fecha")||"").slice(0,10)||todayStr();
+      const re=porNombre("Receptor");
+      const cliente=re?(re.getAttribute("Nombre")||"Cliente"):"Cliente";
+      const rfc=re?(re.getAttribute("Rfc")||""):"";
+      const tfd=porNombre("TimbreFiscalDigital");
+      const uuid=tfd?(tfd.getAttribute("UUID")||""):"";
+
+      const lineas=todos("Concepto").map(el=>{
+        const cant=+el.getAttribute("Cantidad")||1;
+        const vu=+el.getAttribute("ValorUnitario")||0;
+        const imp=+el.getAttribute("Importe")||(cant*vu);
+        return {desc:el.getAttribute("Descripcion")||"Concepto",
+          unidad:String(el.getAttribute("Unidad")||el.getAttribute("ClaveUnidad")||"PZ").slice(0,8),
+          cantidad:cant,costo:0,precio:vu||(cant?imp/cant:imp)};
+      });
+
+      // IVA trasladado: se deduce la tasa a partir del importe
+      const impuestos=porNombre("Impuestos");
+      let ivaImporte=impuestos?+impuestos.getAttribute("TotalImpuestosTrasladados")||0:0;
+      let ivaPct=sub>0?Math.round(ivaImporte/sub*10000)/100:ivaDefPct();
+      const tras=todos("Traslado").find(t=>(t.getAttribute("Impuesto")||"")==="002");
+      if(tras&&tras.getAttribute("TasaOCuota"))ivaPct=Math.round(+tras.getAttribute("TasaOCuota")*10000)/100;
+
+      // retenciones (ISR 001, IVA 002) como % sobre el subtotal
+      const retenciones=todos("Retencion").filter(r=>r.parentNode&&r.parentNode.localName==="Retenciones").map(r=>{
+        const cod=r.getAttribute("Impuesto")||"";
+        const importe=+r.getAttribute("Importe")||0;
+        return {concepto:cod==="001"?"Retención ISR":cod==="002"?"Retención IVA":"Retención "+cod,
+          tasa:sub>0?Math.round(importe/sub*1000000)/10000:0};
+      }).filter(r=>r.tasa>0);
+
+      return {id:uid(),folio:folio||nextFolio("FAC",state.facturas),cliente,rfc,uuid,fecha,
+        vencimiento:addDays(fecha,30),flujo:"creada",ivaPct,retenciones,lineas};
+    }catch(e){return null;}
+  }
+
+  function handleXmlVenta(files){
+    const arr=[...files];if(!arr.length)return;
+    let ok=0,fail=0,pend=arr.length;const nuevas=[];
+    arr.forEach(f=>f.text().then(txt=>{
+      const r=parseCFDIVenta(txt);
+      if(r&&r.lineas.length){
+        if(folioRepetido(state.facturas,r.folio,null))r.folio=nextFolio("FAC",state.facturas);
+        state.facturas.push(r);nuevas.push(r);ok++;
+        // si el cliente no existe en el catálogo, se da de alta con su RFC
+        if(r.cliente&&!state.clientes.some(c=>(c.nombre||"").toLowerCase()===r.cliente.toLowerCase()))
+          state.clientes.push({id:uid(),nombre:r.cliente,rfc:r.rfc||"",margen:30,ivaPct:r.ivaPct,emails:"",retenciones:r.retenciones||[]});
+      } else fail++;
+    }).catch(()=>{fail++;}).finally(()=>{
+      if(--pend===0){
+        persist();render();
+        toast(ok+" factura(s) leída(s) del XML"+(fail?", "+fail+" no se pudieron leer":""));
+        if(nuevas.length===1)setTimeout(()=>openForm("factura",{id:nuevas[0].id}),120);
+      }
+    }));
+  }
+
   function handleXmlFiles(files){
     const arr=[...files];if(!arr.length)return;let ok=0,fail=0,pend=arr.length;
     arr.forEach(f=>f.text().then(txt=>{const r=parseCFDI(txt);if(r){state.proveedores.push(r);ok++;}else fail++;}).catch(()=>{fail++;}).finally(()=>{if(--pend===0){persist();render();toast(ok+" factura(s) cargada(s) desde XML"+(fail?", "+fail+" no se pudieron leer":""));}}));
   }
-  document.addEventListener("change",e=>{if(e.target&&e.target.id==="xmlfile"){handleXmlFiles(e.target.files);e.target.value="";}});
-  document.addEventListener("dragover",e=>{const d=e.target.closest&&e.target.closest("#drop");if(d){e.preventDefault();d.classList.add("drag");}});
-  document.addEventListener("dragleave",e=>{const d=e.target.closest&&e.target.closest("#drop");if(d)d.classList.remove("drag");});
-  document.addEventListener("drop",e=>{const d=e.target.closest&&e.target.closest("#drop");if(d){e.preventDefault();d.classList.remove("drag");handleXmlFiles(e.dataTransfer.files);}});
+  document.addEventListener("change",e=>{
+    if(e.target&&e.target.id==="xmlfile"){handleXmlFiles(e.target.files);e.target.value="";}
+    if(e.target&&e.target.id==="xmlventa"){handleXmlVenta(e.target.files);e.target.value="";}
+  });
+  const zonaXml=t=>t&&t.closest&&(t.closest("#drop")||t.closest("#dropventa"));
+  document.addEventListener("dragover",e=>{const d=zonaXml(e.target);if(d){e.preventDefault();d.classList.add("drag");}});
+  document.addEventListener("dragleave",e=>{const d=zonaXml(e.target);if(d)d.classList.remove("drag");});
+  document.addEventListener("drop",e=>{const d=zonaXml(e.target);if(!d)return;e.preventDefault();d.classList.remove("drag");
+    if(d.id==="dropventa")handleXmlVenta(e.dataTransfer.files);else handleXmlFiles(e.dataTransfer.files);});
 
   /* ---------- impresión / PDF ---------- */
   const pr=$("#printroot");
