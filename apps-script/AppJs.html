@@ -275,8 +275,10 @@
   /* ---------- componentes ---------- */
   const printerIcon='<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" width="15" height="15"><path d="M6 9V3h12v6M6 18H4a1 1 0 0 1-1-1v-5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2v5a1 1 0 0 1-1 1h-2M6 14h12v7H6z" stroke-width="1.7"/></svg>';
   const plusIcon='<svg viewBox="0 0 24 24" fill="none" stroke="currentColor"><path d="M12 5v14M5 12h14" stroke-width="2"/></svg>';
-  function headBar(title,sub,addType,addLabel,reportKind){
+  const uploadIcon='<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" width="15" height="15"><path d="M12 16V4M7 9l5-5 5 5M4 20h16" stroke-width="1.7"/></svg>';
+  function headBar(title,sub,addType,addLabel,reportKind,accionExtra){
     return `<div class="head"><div><h2>${title}</h2><p>${sub}</p></div><div class="headacts">
+      ${accionExtra?`<button class="ghost" data-action="${accionExtra}">${uploadIcon}Carga masiva</button>`:""}
       ${reportKind?`<button class="ghost" data-action="report" data-kind="${reportKind}">${printerIcon}Descargar PDF</button>`:""}
       ${addType?`<button class="primary" data-action="add" data-type="${addType}">${plusIcon}${addLabel}</button>`:""}
       </div></div>`;
@@ -373,7 +375,7 @@
   function vCotizaciones(){
     const opts=[{v:"all",label:"Todos"},{v:"borrador",label:"Borrador"},{v:"enviada",label:"Enviada"},{v:"aceptada",label:"Aceptada"},{v:"rechazada",label:"Rechazada"}];
     const list=state.cotizaciones.filter(c=>ui.cotFilter==="all"||c.estatus===ui.cotFilter);
-    return `${headBar("Cotizaciones","Propuestas a clientes · margen por línea · convierte las aceptadas en factura","cotizacion","Nueva cotización","rep-cot")}
+    return `${headBar("Cotizaciones","Propuestas a clientes · margen por línea · convierte las aceptadas en factura","cotizacion","Nueva cotización","rep-cot","cot-masiva")}
     ${filterBar("cotFilter",ui.cotFilter,opts)}
     <div class="panel"><div class="tablewrap"><table>
     <thead><tr><th>Folio</th><th>Cliente</th><th>Fecha</th><th>Origen (costo)</th><th class="r">Líneas</th><th class="r">Margen</th><th class="r">Total</th><th>Estatus</th><th></th></tr></thead>
@@ -1025,6 +1027,129 @@
   document.addEventListener("drop",e=>{const d=zonaXml(e.target);if(!d)return;e.preventDefault();d.classList.remove("drag");
     if(d.id==="dropventa")handleXmlVenta(e.dataTransfer.files);else handleXmlFiles(e.dataTransfer.files);});
 
+  /* ---------- carga masiva de cotizaciones (CSV) ---------- */
+  const COLS_CSV=["folio","cliente","fecha","vigencia","iva","concepto","unidad","cantidad","costo","margen","ret_isr","ret_iva"];
+
+  function plantillaCSV(){
+    const hoy=todayStr();
+    const filas=[COLS_CSV.join(",")];
+    // Dos renglones con el mismo folio = una cotización con dos conceptos.
+    filas.push(["COT-1001","Transportes del Bajío S.A.",hoy,"15","16","Bomba centrífuga 40 HP","PZ","2","31000","30","1.25","10.6667"].join(","));
+    filas.push(["COT-1001","Transportes del Bajío S.A.",hoy,"15","16","Kit de sellos mecánicos","PZ","5","3500","30","1.25","10.6667"].join(","));
+    filas.push(["COT-1002","Logística Marina MX",hoy,"20","16","Medidor de flujo Coriolis","PZ","3","18000","25","",""].join(","));
+    return filas.join("\r\n")+"\r\n";
+  }
+
+  // Divide una línea de CSV respetando comillas. Acepta coma o punto y coma.
+  function partirCSV(linea,sep){
+    const out=[];let act="",dentro=false;
+    for(let i=0;i<linea.length;i++){
+      const c=linea[i];
+      if(c==='"'){ if(dentro&&linea[i+1]==='"'){act+='"';i++;} else dentro=!dentro; }
+      else if(c===sep&&!dentro){out.push(act);act="";}
+      else act+=c;
+    }
+    out.push(act);
+    return out.map(s=>s.trim());
+  }
+
+  function leerCSV(texto){
+    texto=texto.replace(/^\uFEFF/,"");
+    const lineas=texto.split(/\r?\n/).filter(l=>l.trim()!=="");
+    if(!lineas.length)return {error:"El archivo está vacío."};
+    const sep=(lineas[0].split(";").length>lineas[0].split(",").length)?";":",";
+    const cab=partirCSV(lineas[0],sep).map(s=>s.toLowerCase().replace(/\s+/g,"_"));
+    const faltan=["folio","cliente","concepto","cantidad"].filter(c=>cab.indexOf(c)===-1);
+    if(faltan.length)return {error:"Faltan columnas obligatorias: "+faltan.join(", ")+"."};
+    const idx={};cab.forEach((c,i)=>idx[c]=i);
+    const val=(f,c)=>{const i=idx[c];return i==null?"":String(f[i]||"").trim();};
+    const num=(f,c)=>{const v=val(f,c).replace(/[$,\s]/g,"").replace(",",".");return v===""?null:(+v||0);};
+
+    const mapa={},orden=[],avisos=[];
+    for(let i=1;i<lineas.length;i++){
+      const f=partirCSV(lineas[i],sep);
+      const folio=val(f,"folio");
+      const concepto=val(f,"concepto");
+      if(!folio||!concepto){avisos.push("Renglón "+(i+1)+": sin folio o sin concepto, se omite.");continue;}
+      if(!mapa[folio]){
+        const rets=[];
+        const ri=num(f,"ret_isr"),rv=num(f,"ret_iva");
+        if(ri)rets.push({concepto:"Retención ISR",tasa:ri});
+        if(rv)rets.push({concepto:"Retención IVA",tasa:rv});
+        const iva=num(f,"iva");
+        mapa[folio]={folio,cliente:val(f,"cliente"),fecha:val(f,"fecha")||todayStr(),
+          vigencia:num(f,"vigencia")||15,ivaPct:iva==null?ivaDefPct():iva,
+          retenciones:rets,lineas:[]};
+        orden.push(folio);
+      }
+      const mg=num(f,"margen");
+      mapa[folio].lineas.push({desc:concepto,unidad:val(f,"unidad")||"PZ",
+        cantidad:num(f,"cantidad")||1,costo:num(f,"costo")||0,
+        margen:mg==null?30:mg});
+    }
+    const cots=orden.map(f=>mapa[f]);
+    if(!cots.length)return {error:"No se encontró ninguna cotización válida.",avisos};
+    return {cots,avisos};
+  }
+
+  function importarCSV(texto){
+    const r=leerCSV(texto);
+    const caja=document.getElementById("csvresult");
+    if(r.error){if(caja)caja.innerHTML=`<div class="csv-err">${r.error}</div>`;return;}
+    let nuevas=0,renombradas=0;
+    r.cots.forEach(c=>{
+      let folio=c.folio;
+      if(folioRepetido(state.cotizaciones,folio,null)){folio=nextFolio("COT",state.cotizaciones);renombradas++;}
+      state.cotizaciones.push({id:uid(),folio,cliente:c.cliente,fecha:c.fecha,vigencia:c.vigencia,
+        ivaPct:c.ivaPct,retenciones:c.retenciones,lineas:c.lineas,estatus:"borrador",facturada:false});
+      nuevas++;
+      if(c.cliente&&!state.clientes.some(x=>(x.nombre||"").toLowerCase()===c.cliente.toLowerCase()))
+        state.clientes.push({id:uid(),nombre:c.cliente,rfc:"",margen:c.lineas[0]?c.lineas[0].margen:30,
+          ivaPct:c.ivaPct,emails:"",retenciones:c.retenciones||[]});
+    });
+    persist();
+    if(caja)caja.innerHTML=`<div class="csv-ok">Se importaron <b>${nuevas}</b> cotización(es).`+
+      (renombradas?` ${renombradas} tenía(n) folio repetido y se renumeraron.`:"")+
+      (r.avisos&&r.avisos.length?`<div class="csv-avisos">${r.avisos.slice(0,5).join("<br>")}</div>`:"")+`</div>`;
+    toast(nuevas+" cotización(es) importada(s)");
+    setTimeout(()=>{const ov=document.querySelector(".overlay.on");if(ov)ov.remove();current="cotizaciones";render();},1400);
+  }
+
+  function abrirCargaMasiva(){
+    const o=document.createElement("div");o.className="overlay on";
+    o.innerHTML=`<div class="modal" style="max-width:560px">
+      <div class="modal-head"><h3>Carga masiva de cotizaciones</h3><button type="button" aria-label="Cerrar" data-x>&times;</button></div>
+      <div style="padding:8px 20px 20px;display:flex;flex-direction:column;gap:14px">
+        <p class="hintline" style="margin:0">Un renglón por concepto. Los renglones que compartan el mismo <b>folio</b> se agrupan en una sola cotización.</p>
+        <div class="csv-cols"><b>Columnas:</b> ${COLS_CSV.join(" · ")}<br>
+          <span style="color:var(--text-faint)">Obligatorias: folio, cliente, concepto, cantidad. Las demás toman valores por defecto.</span></div>
+        <button class="ghost" id="btn-plantilla" style="align-self:flex-start">Descargar plantilla CSV</button>
+        <label class="drop" id="dropcsv">
+          <input type="file" id="csvfile" accept=".csv,text/csv" hidden>
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor"><path d="M12 16V4M7 9l5-5 5 5M4 20h16" stroke-width="1.6"/></svg>
+          <b>Arrastra o haz clic para cargar tu CSV</b>
+          <div class="hint">Se puede editar en Excel o Google Sheets</div></label>
+        <div id="csvresult"></div>
+      </div></div>`;
+    document.body.appendChild(o);
+    const cerrar=()=>o.remove();
+    o.addEventListener("click",e=>{if(e.target===o)cerrar();});
+    o.querySelector("[data-x]").onclick=cerrar;
+    o.querySelector("#btn-plantilla").onclick=()=>{
+      const blob=new Blob(["\uFEFF"+plantillaCSV()],{type:"text/csv;charset=utf-8"});
+      if(CAN_SAVE())saveVia("plantilla-cotizaciones.csv",blob).then(()=>toast("Plantilla guardada")).catch(()=>legacySave(blob,"plantilla-cotizaciones.csv"));
+      else {legacySave(blob,"plantilla-cotizaciones.csv");toast("Plantilla descargada");}
+    };
+    const input=o.querySelector("#csvfile");
+    input.addEventListener("change",()=>{const f=input.files[0];if(!f)return;
+      f.text().then(importarCSV).catch(()=>{o.querySelector("#csvresult").innerHTML='<div class="csv-err">No se pudo leer el archivo.</div>';});});
+    const zona=o.querySelector("#dropcsv");
+    zona.addEventListener("dragover",e=>{e.preventDefault();zona.classList.add("drag");});
+    zona.addEventListener("dragleave",()=>zona.classList.remove("drag"));
+    zona.addEventListener("drop",e=>{e.preventDefault();zona.classList.remove("drag");
+      const f=e.dataTransfer.files[0];if(f)f.text().then(importarCSV);});
+  }
+
   /* ---------- impresión / PDF ---------- */
   const pr=$("#printroot");
   function doPrint(html){pr.innerHTML=html;setTimeout(()=>{try{window.print();}catch(e){}},50);}
@@ -1379,6 +1504,7 @@
     else if(a==="reset"){askConfirm("¿Restaurar los datos de ejemplo? Se reemplazarán tus datos actuales.",()=>{state=seed();(function(){const pm=state.pagos.map(p=>monthKey(p.fecha)).sort();ui.contaMonth=pm.length?pm[pm.length-1]:monthKey(todayStr());})();persist();render();toast("Datos de ejemplo restaurados");},{ok:"Restaurar",danger:false});}
     else if(a==="vaciar"){askConfirm("¿Vaciar TODO? Se eliminarán todos los registros (queda la app en blanco). Considera guardar un cierre antes.",()=>{["cotizaciones","ventas","facturas","pagos","ordenes","proveedores","gastos","proyectos","clientes"].forEach(k=>state[k]=[]);persist();current="dashboard";render();toast("Todos los registros fueron eliminados");},{ok:"Vaciar todo"});}
     else if(a==="cot-status"){const c=state.cotizaciones.find(x=>x.id===id);const o=["borrador","enviada","aceptada","rechazada"];c.estatus=o[(o.indexOf(c.estatus)+1)%o.length];persist();render();}
+    else if(a==="cot-masiva"){abrirCargaMasiva();}
     else if(a==="cot-venta"){openForm("venta",{fromCot:id});}
     else if(a==="cot-dup"){const c=state.cotizaciones.find(x=>x.id===id);if(!c)return;
       const copia=JSON.parse(JSON.stringify(c));

@@ -1,0 +1,4 @@
+﻿folio,cliente,fecha,vigencia,iva,concepto,unidad,cantidad,costo,margen,ret_isr,ret_iva
+COT-1001,Transportes del Bajío S.A.,2026-07-30,15,16,Bomba centrífuga 40 HP,PZ,2,31000,30,1.25,10.6667
+COT-1001,Transportes del Bajío S.A.,2026-07-30,15,16,Kit de sellos mecánicos,PZ,5,3500,30,1.25,10.6667
+COT-1002,Logística Marina MX,2026-07-30,20,16,Medidor de flujo Coriolis,PZ,3,18000,25,,

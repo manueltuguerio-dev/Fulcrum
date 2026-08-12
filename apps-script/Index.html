@@ -184,6 +184,10 @@
   .checklist input{width:auto;margin:0}
   .checklist .mono{color:var(--text-dim)}
   .checklist .none{color:var(--text-faint);font-size:12.5px;padding:6px 7px}
+  .csv-cols{font-size:12.5px;color:var(--text-dim);background:var(--surface-2);border-radius:9px;padding:10px 12px;line-height:1.6}
+  .csv-ok{background:var(--good-soft);color:var(--good);border-radius:9px;padding:12px 14px;font-size:13.5px}
+  .csv-err{background:var(--bad-soft);color:var(--bad);border-radius:9px;padding:12px 14px;font-size:13.5px}
+  .csv-avisos{margin-top:8px;font-size:12px;opacity:.85}
   .paylist{max-height:230px}
   .payrow{display:grid;grid-template-columns:auto 1fr 116px;gap:10px;align-items:center;padding:7px 8px;border-radius:7px;cursor:default}
   .payrow:hover{background:var(--surface-2)}
@@ -254,7 +258,7 @@
       <button class="ghost" data-action="cierre-guardar">Guardar cierre del mes</button>
       <div style="display:flex;gap:8px"><button class="ghost" data-action="reset" style="flex:1">Datos de ejemplo</button><button class="ghost" data-action="vaciar" style="flex:1">Vaciar todo</button></div>
       <div style="display:flex;align-items:center;gap:8px;justify-content:center"><span class="pill p-good" id="syncbadge">Guardado</span></div>
-      <p class="mini">Los datos se guardan en tu Google Sheet. Los PDF se pueden descargar, guardar en Drive o enviar por correo.<br>Version del codigo: <b id="appver">v10-2026-08-08</b></p>
+      <p class="mini">Los datos se guardan en tu Google Sheet. Los PDF se pueden descargar, guardar en Drive o enviar por correo.<br>Version del codigo: <b id="appver">v11-2026-08-08</b></p>
     </div>
   </aside>
   <main id="view"></main>
