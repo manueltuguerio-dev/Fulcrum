@@ -1,42 +1,37 @@
 /**
- * TLTERMINALS · Almacén — maniobras y cronómetro multietapa.
+ * TLTERMINALS · Almacén — maniobras con cronómetro multietapa por sub-etapas.
  *
  * El cronómetro es autoritativo en el servidor: guardamos las marcas de tiempo
  * en milisegundos en la hoja, así que si el navegador se cierra o se recarga no
- * se pierde el conteo. El cliente solo dibuja el tiempo que transcurre a partir
- * de esas marcas.
+ * se pierde el conteo. El cliente solo dibuja el tiempo a partir de esas marcas.
  *
- * Estados de una maniobra:
- *   en_proceso   corriendo
- *   pausado      en demora (con causa obligatoria)
- *   finalizado   cerrada; ya tiene tiempos calculados
+ * Sub-etapas de una maniobra (cada una con su marca de tiempo):
+ *   1. Arribo / Recepción en patio      -> arriboMs   (estado 'arribo')
+ *   2. Asignación de andén / espera      -> andenMs    (estado 'espera')
+ *   3. Inicio de maniobra / carga-descarga -> inicioMs  (estado 'ejecucion')
+ *   4. Inspección / cierre               -> finMs      (estado 'finalizado')
+ *
+ * Durante cualquier etapa activa se puede registrar una DEMORA (pausa con causa
+ * obligatoria); el tiempo de demora se descuenta del tiempo efectivo.
+ *
+ * Tiempos calculados al cerrar:
+ *   recepción = andén - arribo | espera = inicio - andén
+ *   ejecución = (fin - inicio) - demora | total = fin - arribo
+ *   efectivo  = total - demora | min/pieza = efectivo / piezas
  */
 
 /* -------------------------------- lecturas --------------------------------- */
 
-/**
- * Convierte un renglón de REGISTRO en el objeto que consume el cliente,
- * incluyendo el estado vivo del cronómetro.
- * @private
- */
+/** Convierte un renglón de REGISTRO en el objeto que consume el cliente. @private */
 function registroParaCliente_(r) {
-  var demoraAcum = Number(r.demoraAcumMs) || 0;
-  var pausaAbierta = Number(r.pausaAbiertaMs) || 0;
+  var arribo = Number(r.arriboMs) || 0;
+  var anden = Number(r.andenMs) || 0;
   var inicio = Number(r.inicioMs) || 0;
   var fin = Number(r.finMs) || 0;
 
-  var pausas = [];
-  try {
-    pausas = r.pausasJson ? JSON.parse(r.pausasJson) : [];
-  } catch (err) {
-    pausas = [];
-  }
-  var campos = {};
-  try {
-    campos = r.camposJson ? JSON.parse(r.camposJson) : {};
-  } catch (err) {
-    campos = {};
-  }
+  var staff = parseJson_(r.staffJson, []);
+  var maquinas = parseJson_(r.maquinasJson, []);
+  var umbrales = umbralesSla_(r.cliente, r.material, r.etapa);
 
   return {
     id: String(r.id),
@@ -61,8 +56,14 @@ function registroParaCliente_(r) {
     numAyud: numeroODefault_(r.numAyud, ''),
     tipoMontacargas: String(r.tipoMontacargas || ''),
     numMontacargas: String(r.numMontacargas || ''),
+    staff: staff,
+    maquinas: maquinas,
+    horaArribo: textoHora_(r.horaArribo),
     horaInicio: textoHora_(r.horaInicio),
     horaFin: textoHora_(r.horaFin),
+    tiempoRecepcionMin: numeroODefault_(r.tiempoRecepcionMin, ''),
+    tiempoEsperaMin: numeroODefault_(r.tiempoEsperaMin, ''),
+    tiempoEjecucionMin: numeroODefault_(r.tiempoEjecucionMin, ''),
     tiempoTotalMin: numeroODefault_(r.tiempoTotalMin, ''),
     demoraMin: numeroODefault_(r.demoraMin, ''),
     causaDemora: String(r.causaDemora || ''),
@@ -73,14 +74,17 @@ function registroParaCliente_(r) {
     danoManiobra: esSi_(r.danoManiobra),
     detalleDano: String(r.detalleDano || ''),
     estado: String(r.estado || ''),
-    inicioMs: inicio,
-    finMs: fin,
-    pausaAbiertaMs: pausaAbierta,
-    demoraAcumMs: demoraAcum,
-    pausas: pausas,
-    campos: campos,
+    arriboMs: arribo, andenMs: anden, inicioMs: inicio, finMs: fin,
+    pausaAbiertaMs: Number(r.pausaAbiertaMs) || 0,
+    demoraAcumMs: Number(r.demoraAcumMs) || 0,
+    pausas: parseJson_(r.pausasJson, []),
+    campos: parseJson_(r.camposJson, {}),
     operadorId: String(r.operadorId || ''),
-    sla: r.estado === 'finalizado' ? semaforo_(Number(r.tiempoTotalMin) || 0) : ''
+    slaObjetivoMin: umbrales.objetivoMin,
+    slaAmbarMin: umbrales.ambarMin,
+    slaRegla: umbrales.regla,
+    sla: r.estado === 'finalizado'
+      ? colorSla_(Number(r.tiempoTotalMin) || 0, umbrales, false) : ''
   };
 }
 
@@ -92,36 +96,24 @@ function numeroODefault_(valor, porDefecto) {
   return isNaN(n) ? porDefecto : n;
 }
 
-/** Verde/ámbar/rojo según el tiempo total en minutos y los umbrales de Config. */
-function semaforo_(totalMin) {
-  var verde = Number(leerConfig('slaVerde')) || 45;
-  var ambar = Number(leerConfig('slaAmbar')) || 90;
-  if (totalMin <= verde) {
-    return 'verde';
-  }
-  if (totalMin <= ambar) {
-    return 'ambar';
-  }
-  return 'rojo';
+/** Registros no eliminados. @private */
+function registrosVigentes_() {
+  return leerTodo_('REGISTRO').filter(function (r) { return !esSi_(r.eliminado); });
 }
 
 /* --------------------------- estado que ve el cliente ---------------------- */
 
-/**
- * Todo lo que la app necesita al arrancar: el usuario, la config, los catálogos,
- * los campos dinámicos, las maniobras vivas y las últimas finalizadas.
- */
+/** Todo lo que la app necesita al arrancar. */
 function apiEstadoApp() {
   var u = usuarioActual_();
   if (!u) {
     return { sesion: false, operativos: apiOperativos() };
   }
 
-  var registros = leerTodo_('REGISTRO');
+  var registros = registrosVigentes_();
   var vivas = registros.filter(function (r) {
-    return String(r.estado) === 'en_proceso' || String(r.estado) === 'pausado';
+    return ['arribo', 'espera', 'ejecucion', 'pausado'].indexOf(String(r.estado)) !== -1;
   });
-  // El operativo solo ve maniobras vivas; admin y master ven también historial.
   var puedeHistorial = (JERARQUIA[u.rol] || 0) >= JERARQUIA.ADMINISTRADOR;
   var historial = [];
   if (puedeHistorial) {
@@ -138,6 +130,8 @@ function apiEstadoApp() {
     config: configCompleta_(),
     catalogos: catalogosAgrupados_(),
     camposCustom: camposCustomActivos_(),
+    empleados: empleadosActivos_(),
+    maquinas: maquinasActivas_(),
     vivas: vivas.map(registroParaCliente_),
     historial: historial.map(registroParaCliente_)
   };
@@ -146,32 +140,72 @@ function apiEstadoApp() {
 /** Refresco ligero de las maniobras vivas (para el reloj y cambios de otros). */
 function apiVivas() {
   exigirSesion_();
-  var vivas = leerTodo_('REGISTRO').filter(function (r) {
-    return String(r.estado) === 'en_proceso' || String(r.estado) === 'pausado';
+  var vivas = registrosVigentes_().filter(function (r) {
+    return ['arribo', 'espera', 'ejecucion', 'pausado'].indexOf(String(r.estado)) !== -1;
   });
+  return { serverNowMs: Date.now(), vivas: vivas.map(registroParaCliente_) };
+}
+
+/* ------------------------------ personal y equipos ------------------------- */
+
+/**
+ * Traduce IDs de empleados y equipos a los campos de texto y conteos que van
+ * en la hoja, para que el acta se lea sin resolver referencias.
+ * @private
+ */
+function resolverCuadrilla_(staffIds, maquinaIds) {
+  var emp = {};
+  leerTodo_('EMPLEADOS').forEach(function (e) { emp[String(e.id)] = e; });
+  var maq = {};
+  leerTodo_('MONTACARGAS').forEach(function (m) { maq[String(m.id)] = m; });
+
+  var staff = [];
+  (staffIds || []).forEach(function (id) {
+    var e = emp[String(id)];
+    if (e) { staff.push({ id: String(e.id), nombre: String(e.nombreCompleto), puesto: String(e.puesto) }); }
+  });
+  var montac = staff.filter(function (s) { return s.puesto === 'Montacarguista'; });
+  var ayud = staff.filter(function (s) { return s.puesto === 'Ayudante de Patio'; });
+
+  var maquinas = [];
+  (maquinaIds || []).forEach(function (id) {
+    var m = maq[String(id)];
+    if (m) { maquinas.push({ id: String(m.id), sku: String(m.skuEquipo), tipo: String(m.tipo || '') }); }
+  });
+  var tipos = maquinas.map(function (m) { return m.tipo; })
+    .filter(function (t, i, a) { return t && a.indexOf(t) === i; });
+
   return {
-    serverNowMs: Date.now(),
-    vivas: vivas.map(registroParaCliente_)
+    staff: staff, maquinas: maquinas,
+    montacarguistas: montac.map(function (s) { return s.nombre; }).join(', '),
+    numMontac: montac.length,
+    ayudantes: ayud.map(function (s) { return s.nombre; }).join(', '),
+    numAyud: ayud.length,
+    tipoMontacargas: tipos.join(', '),
+    numMontacargas: maquinas.map(function (m) { return m.sku; }).join(', ')
   };
 }
 
 /* ------------------------------- cronómetro -------------------------------- */
 
 /**
- * Arranca una maniobra. Requiere al menos folio y cliente; lo demás se puede
- * completar al cerrar. Devuelve la maniobra viva ya con su cronómetro corriendo.
- * @param {Object} datos Campos de la maniobra.
+ * Arranca una maniobra. Por defecto empieza en 'arribo'; con
+ * datos.arrancarEjecucion = true se salta directo a ejecución (cuando no se
+ * cronometra la recepción/espera).
  */
 function apiIniciar(datos) {
   var u = exigirSesion_();
   datos = datos || {};
 
   var folio = String(datos.folio || '').trim() || folioNuevo_();
-  if (buscar_('REGISTRO', function (r) { return String(r.folio) === folio; })) {
+  if (buscar_('REGISTRO', function (r) { return String(r.folio) === folio && !esSi_(r.eliminado); })) {
     throw new Error('Ya existe una maniobra con el folio ' + folio + '.');
   }
 
   var ahoraMs = Date.now();
+  var cuadrilla = resolverCuadrilla_(datos.staffIds, datos.maquinaIds);
+  var directo = !!datos.arrancarEjecucion;
+
   var registro = {
     id: nuevoId_(),
     folio: folio,
@@ -189,148 +223,173 @@ function apiIniciar(datos) {
     unidadMedida: String(datos.unidadMedida || ''),
     tarimas: datos.tarimas || '',
     pesoTons: datos.pesoTons || '',
-    montacarguistas: String(datos.montacarguistas || u.nombre),
-    numMontac: datos.numMontac || '',
-    ayudantes: String(datos.ayudantes || ''),
-    numAyud: datos.numAyud || '',
-    tipoMontacargas: String(datos.tipoMontacargas || ''),
-    numMontacargas: String(datos.numMontacargas || ''),
-    horaInicio: Utilities.formatDate(new Date(ahoraMs), zona_(), 'HH:mm:ss'),
+    montacarguistas: cuadrilla.montacarguistas,
+    numMontac: cuadrilla.numMontac,
+    ayudantes: cuadrilla.ayudantes,
+    numAyud: cuadrilla.numAyud,
+    tipoMontacargas: cuadrilla.tipoMontacargas,
+    numMontacargas: cuadrilla.numMontacargas,
+    horaArribo: hhmmss_(ahoraMs),
+    horaInicio: directo ? hhmmss_(ahoraMs) : '',
     horaFin: '',
+    tiempoRecepcionMin: '', tiempoEsperaMin: '', tiempoEjecucionMin: '',
     tiempoTotalMin: '', demoraMin: '', causaDemora: '',
     tiempoEfectivoMin: '', minPorPieza: '',
     observaciones: String(datos.observaciones || ''),
     danoLlegada: esSi_(datos.danoLlegada) ? 'SI' : 'NO',
     danoManiobra: 'NO',
     detalleDano: String(datos.detalleDano || ''),
-    estado: 'en_proceso',
-    inicioMs: ahoraMs,
+    estado: directo ? 'ejecucion' : 'arribo',
+    arriboMs: ahoraMs,
+    andenMs: directo ? ahoraMs : 0,
+    inicioMs: directo ? ahoraMs : 0,
     finMs: '',
     pausaAbiertaMs: 0,
     demoraAcumMs: 0,
     pausasJson: '[]',
+    staffJson: JSON.stringify(cuadrilla.staff),
+    maquinasJson: JSON.stringify(cuadrilla.maquinas),
     camposJson: JSON.stringify(datos.campos || {}),
     operadorId: u.id,
+    eliminado: 'NO',
     creado: ahora_(),
     actualizado: ahora_()
   };
   insertar_('REGISTRO', registro);
-  auditar_(folio, u.nombre, 'iniciar', 'estado', '', 'en_proceso');
+  auditar_(folio, u.nombre, 'iniciar', 'estado', '', registro.estado);
   return registroParaCliente_(registro);
 }
 
-/** Pausa una maniobra en curso; la causa de demora es obligatoria. */
+/**
+ * Avanza a la siguiente sub-etapa: arribo -> espera -> ejecucion. Para pasar de
+ * ejecución a cierre se usa apiFinalizar.
+ */
+function apiAvanzarEtapa(id) {
+  var u = exigirSesion_();
+  var r = exigirRegistroVivo_(id);
+  var ahoraMs = Date.now();
+  var estado = String(r.estado);
+
+  if (estado === 'arribo') {
+    actualizar_('REGISTRO', r, { estado: 'espera', andenMs: ahoraMs, actualizado: ahora_() });
+    auditar_(r.folio, u.nombre, 'avanzar', 'estado', 'arribo', 'espera');
+  } else if (estado === 'espera') {
+    actualizar_('REGISTRO', r, {
+      estado: 'ejecucion', inicioMs: ahoraMs, horaInicio: hhmmss_(ahoraMs), actualizado: ahora_()
+    });
+    auditar_(r.folio, u.nombre, 'avanzar', 'estado', 'espera', 'ejecucion');
+  } else {
+    throw new Error('La maniobra ya está en ejecución; ciérrala para terminar.');
+  }
+  return registroParaCliente_(r);
+}
+
+/** Pausa (demora) una maniobra activa; la causa es obligatoria. */
 function apiPausar(id, causa) {
   var u = exigirSesion_();
   var r = exigirRegistroVivo_(id);
-  if (String(r.estado) !== 'en_proceso') {
-    throw new Error('La maniobra no está corriendo.');
+  if (String(r.estado) === 'pausado') {
+    throw new Error('La maniobra ya está en demora.');
   }
   var motivo = String(causa || '').trim();
   if (!motivo) {
     throw new Error('Tienes que indicar la causa de la demora.');
   }
   var ahoraMs = Date.now();
-  var pausas = JSON.parse(r.pausasJson || '[]');
-  pausas.push({ desdeMs: ahoraMs, hastaMs: 0, causa: motivo });
+  var pausas = parseJson_(r.pausasJson, []);
+  pausas.push({ desdeMs: ahoraMs, hastaMs: 0, causa: motivo, etapa: String(r.estado) });
   actualizar_('REGISTRO', r, {
-    estado: 'pausado',
-    pausaAbiertaMs: ahoraMs,
-    pausasJson: JSON.stringify(pausas),
-    actualizado: ahora_()
+    estado: 'pausado', pausaAbiertaMs: ahoraMs,
+    pausasJson: JSON.stringify(pausas), actualizado: ahora_()
   });
   auditar_(r.folio, u.nombre, 'pausar', 'causaDemora', '', motivo);
   return registroParaCliente_(r);
 }
 
-/** Reanuda una maniobra pausada y cierra el tramo de demora. */
+/** Reanuda una maniobra en demora, regresando a la etapa donde estaba. */
 function apiReanudar(id) {
   var u = exigirSesion_();
-  var r = exigirRegistroVivo_(id);
+  var r = buscarPorId_('REGISTRO', id);
+  if (!r || esSi_(r.eliminado)) {
+    throw new Error('No encontré esa maniobra.');
+  }
   if (String(r.estado) !== 'pausado') {
-    throw new Error('La maniobra no está en pausa.');
+    throw new Error('La maniobra no está en demora.');
   }
   var ahoraMs = Date.now();
   var abierta = Number(r.pausaAbiertaMs) || ahoraMs;
   var demoraAcum = (Number(r.demoraAcumMs) || 0) + (ahoraMs - abierta);
 
-  var pausas = JSON.parse(r.pausasJson || '[]');
+  var pausas = parseJson_(r.pausasJson, []);
+  var etapaPrevia = 'ejecucion';
   for (var i = pausas.length - 1; i >= 0; i--) {
     if (!pausas[i].hastaMs) {
       pausas[i].hastaMs = ahoraMs;
+      etapaPrevia = pausas[i].etapa || etapaPrevia;
       break;
     }
   }
   actualizar_('REGISTRO', r, {
-    estado: 'en_proceso',
-    pausaAbiertaMs: 0,
-    demoraAcumMs: demoraAcum,
-    pausasJson: JSON.stringify(pausas),
-    actualizado: ahora_()
+    estado: etapaPrevia, pausaAbiertaMs: 0, demoraAcumMs: demoraAcum,
+    pausasJson: JSON.stringify(pausas), actualizado: ahora_()
   });
-  auditar_(r.folio, u.nombre, 'reanudar', 'estado', 'pausado', 'en_proceso');
+  auditar_(r.folio, u.nombre, 'reanudar', 'estado', 'pausado', etapaPrevia);
   return registroParaCliente_(r);
 }
 
-/**
- * Cierra la maniobra y calcula los tiempos. Acepta datos finales (piezas, peso,
- * observaciones, daño) que suelen conocerse hasta el final.
- */
+/** Cierra la maniobra, completa marcas faltantes y calcula todos los tiempos. */
 function apiFinalizar(id, datos) {
   var u = exigirSesion_();
   var r = exigirRegistroVivo_(id);
   datos = datos || {};
   var ahoraMs = Date.now();
 
-  // Si venía en pausa, se cierra el último tramo de demora.
+  // Cierra la demora abierta, si la hay.
   var demoraAcum = Number(r.demoraAcumMs) || 0;
-  var pausas = JSON.parse(r.pausasJson || '[]');
+  var pausas = parseJson_(r.pausasJson, []);
   if (String(r.estado) === 'pausado') {
     var abierta = Number(r.pausaAbiertaMs) || ahoraMs;
     demoraAcum += (ahoraMs - abierta);
     for (var i = pausas.length - 1; i >= 0; i--) {
-      if (!pausas[i].hastaMs) {
-        pausas[i].hastaMs = ahoraMs;
-        break;
-      }
+      if (!pausas[i].hastaMs) { pausas[i].hastaMs = ahoraMs; break; }
     }
   }
 
-  var inicio = Number(r.inicioMs) || ahoraMs;
-  var totalMs = ahoraMs - inicio;
-  var efectivoMs = Math.max(0, totalMs - demoraAcum);
+  // Completa marcas de sub-etapas que se hayan saltado (quedan en cero de duración).
+  var arribo = Number(r.arriboMs) || ahoraMs;
+  var anden = Number(r.andenMs) || 0;
+  var inicio = Number(r.inicioMs) || 0;
+  if (!anden) { anden = inicio || ahoraMs; }
+  if (!inicio) { inicio = ahoraMs; }
 
-  var totalMin = redondear2_(totalMs / 60000);
+  var recepcionMin = redondear2_(Math.max(0, anden - arribo) / 60000);
+  var esperaMin = redondear2_(Math.max(0, inicio - anden) / 60000);
+  var ejecBrutoMs = Math.max(0, ahoraMs - inicio);
+  var ejecucionMin = redondear2_(Math.max(0, ejecBrutoMs - demoraAcum) / 60000);
+  var totalMin = redondear2_(Math.max(0, ahoraMs - arribo) / 60000);
   var demoraMin = redondear2_(demoraAcum / 60000);
-  var efectivoMin = redondear2_(efectivoMs / 60000);
+  var efectivoMin = redondear2_(Math.max(0, (ahoraMs - arribo) - demoraAcum) / 60000);
 
   var piezas = Number(datos.cantPiezas !== undefined ? datos.cantPiezas : r.cantPiezas) || 0;
   var minPorPieza = piezas > 0 ? redondear2_(efectivoMin / piezas) : '';
 
   var causas = pausas.map(function (p) { return p.causa; })
-    .filter(function (c, idx, arr) { return c && arr.indexOf(c) === idx; })
-    .join(' · ');
+    .filter(function (c, idx, arr) { return c && arr.indexOf(c) === idx; }).join(' · ');
 
   var cambios = {
     estado: 'finalizado',
-    finMs: ahoraMs,
-    pausaAbiertaMs: 0,
-    demoraAcumMs: demoraAcum,
-    pausasJson: JSON.stringify(pausas),
-    horaFin: Utilities.formatDate(new Date(ahoraMs), zona_(), 'HH:mm:ss'),
-    tiempoTotalMin: totalMin,
-    demoraMin: demoraMin,
-    causaDemora: causas,
-    tiempoEfectivoMin: efectivoMin,
-    minPorPieza: minPorPieza,
+    andenMs: anden, inicioMs: inicio, finMs: ahoraMs,
+    pausaAbiertaMs: 0, demoraAcumMs: demoraAcum, pausasJson: JSON.stringify(pausas),
+    horaInicio: r.horaInicio ? r.horaInicio : hhmmss_(inicio),
+    horaFin: hhmmss_(ahoraMs),
+    tiempoRecepcionMin: recepcionMin, tiempoEsperaMin: esperaMin, tiempoEjecucionMin: ejecucionMin,
+    tiempoTotalMin: totalMin, demoraMin: demoraMin, causaDemora: causas,
+    tiempoEfectivoMin: efectivoMin, minPorPieza: minPorPieza,
     actualizado: ahora_()
   };
-  // Campos que se pueden completar al cerrar.
   ['cantPiezas', 'tarimas', 'pesoTons', 'material', 'presentacion',
    'unidadMedida', 'observaciones', 'detalleDano'].forEach(function (c) {
-    if (datos[c] !== undefined && datos[c] !== '') {
-      cambios[c] = datos[c];
-    }
+    if (datos[c] !== undefined && datos[c] !== '') { cambios[c] = datos[c]; }
   });
   if (datos.danoManiobra !== undefined) {
     cambios.danoManiobra = esSi_(datos.danoManiobra) ? 'SI' : 'NO';
@@ -344,17 +403,16 @@ function apiFinalizar(id, datos) {
   return registroParaCliente_(r);
 }
 
-/* ------------------------------ edición (admin) ---------------------------- */
+/* ------------------------------ edición / borrado -------------------------- */
 
 /**
- * Edita cualquier campo de una maniobra ya registrada. Solo ADMINISTRADOR o
- * MASTER. Cada cambio de valor queda en la bitácora con anterior y nuevo.
- * Si cambian piezas o los tiempos base, se recalcula el minuto por pieza.
+ * Edita cualquier campo de una maniobra. Solo ADMINISTRADOR o MASTER. Cada
+ * cambio de valor queda en la bitácora. Acepta también nueva cuadrilla y equipos.
  */
 function apiEditarRegistro(id, cambios) {
   var u = exigirRol_('ADMINISTRADOR');
   var r = buscarPorId_('REGISTRO', id);
-  if (!r) {
+  if (!r || esSi_(r.eliminado)) {
     throw new Error('No encontré esa maniobra.');
   }
   cambios = cambios || {};
@@ -362,16 +420,14 @@ function apiEditarRegistro(id, cambios) {
   var editables = [
     'folio', 'fecha', 'turno', 'cliente', 'flujo', 'etapa', 'tipoEquipo',
     'noUnidad', 'cantEquipos', 'material', 'presentacion', 'cantPiezas',
-    'unidadMedida', 'tarimas', 'pesoTons', 'montacarguistas', 'numMontac',
-    'ayudantes', 'numAyud', 'tipoMontacargas', 'numMontacargas',
+    'unidadMedida', 'tarimas', 'pesoTons',
+    'tiempoRecepcionMin', 'tiempoEsperaMin', 'tiempoEjecucionMin',
     'tiempoTotalMin', 'demoraMin', 'causaDemora', 'tiempoEfectivoMin',
     'observaciones', 'danoLlegada', 'danoManiobra', 'detalleDano'
   ];
   var aplicar = {};
   editables.forEach(function (campo) {
-    if (cambios[campo] === undefined) {
-      return;
-    }
+    if (cambios[campo] === undefined) { return; }
     var nuevo = cambios[campo];
     if (campo === 'danoLlegada' || campo === 'danoManiobra') {
       nuevo = esSi_(nuevo) ? 'SI' : 'NO';
@@ -383,16 +439,30 @@ function apiEditarRegistro(id, cambios) {
     }
   });
 
+  // Cambio de cuadrilla / equipos por IDs.
+  if (cambios.staffIds !== undefined || cambios.maquinaIds !== undefined) {
+    var staffIds = cambios.staffIds !== undefined
+      ? cambios.staffIds : parseJson_(r.staffJson, []).map(function (s) { return s.id; });
+    var maquinaIds = cambios.maquinaIds !== undefined
+      ? cambios.maquinaIds : parseJson_(r.maquinasJson, []).map(function (m) { return m.id; });
+    var cuad = resolverCuadrilla_(staffIds, maquinaIds);
+    aplicar.staffJson = JSON.stringify(cuad.staff);
+    aplicar.maquinasJson = JSON.stringify(cuad.maquinas);
+    aplicar.montacarguistas = cuad.montacarguistas; aplicar.numMontac = cuad.numMontac;
+    aplicar.ayudantes = cuad.ayudantes; aplicar.numAyud = cuad.numAyud;
+    aplicar.tipoMontacargas = cuad.tipoMontacargas; aplicar.numMontacargas = cuad.numMontacargas;
+    auditar_(r.folio, u.nombre, 'editar', 'cuadrilla', r.montacarguistas + '/' + r.ayudantes,
+      cuad.montacarguistas + '/' + cuad.ayudantes);
+  }
+
   if (cambios.campos !== undefined) {
     aplicar.camposJson = JSON.stringify(cambios.campos || {});
     auditar_(r.folio, u.nombre, 'editar', 'campos', r.camposJson || '{}', aplicar.camposJson);
   }
 
-  // Recalcula el minuto por pieza si cambió algo que lo afecta.
   var efectivo = Number(aplicar.tiempoEfectivoMin !== undefined
     ? aplicar.tiempoEfectivoMin : r.tiempoEfectivoMin) || 0;
-  var piezas = Number(aplicar.cantPiezas !== undefined
-    ? aplicar.cantPiezas : r.cantPiezas) || 0;
+  var piezas = Number(aplicar.cantPiezas !== undefined ? aplicar.cantPiezas : r.cantPiezas) || 0;
   if (piezas > 0) {
     aplicar.minPorPieza = redondear2_(efectivo / piezas);
   }
@@ -404,16 +474,38 @@ function apiEditarRegistro(id, cambios) {
   return registroParaCliente_(r);
 }
 
+/**
+ * Elimina una maniobra. Por defecto es borrado suave (queda oculta pero en la
+ * hoja). El MASTER puede pedir borrado duro (duro = true) que sí borra el
+ * renglón. Ambos quedan en la bitácora.
+ */
+function apiEliminarRegistro(id, duro, motivo) {
+  var u = exigirRol_('ADMINISTRADOR');
+  var r = buscarPorId_('REGISTRO', id);
+  if (!r) {
+    throw new Error('No encontré esa maniobra.');
+  }
+  if (duro && u.rol !== 'MASTER') {
+    throw new Error('El borrado definitivo es solo para el MASTER.');
+  }
+  if (duro) {
+    auditar_(r.folio, u.nombre, 'borrar_duro', 'registro', String(r.folio), motivo || '');
+    borrar_('REGISTRO', r);
+    return { borrado: 'duro' };
+  }
+  actualizar_('REGISTRO', r, { eliminado: 'SI', actualizado: ahora_() });
+  auditar_(r.folio, u.nombre, 'borrar_suave', 'registro', String(r.folio), motivo || '');
+  return { borrado: 'suave' };
+}
+
 /** Historial filtrable para admin/master. */
 function apiHistorial(desde, hasta, cliente) {
   exigirRol_('ADMINISTRADOR');
   var d = String(desde || '');
   var h = String(hasta || '');
   var c = String(cliente || '').toLowerCase().trim();
-  var filas = leerTodo_('REGISTRO').filter(function (r) {
-    if (String(r.estado) !== 'finalizado') {
-      return false;
-    }
+  var filas = registrosVigentes_().filter(function (r) {
+    if (String(r.estado) !== 'finalizado') { return false; }
     var f = textoFecha_(r.fecha);
     if (d && f < d) { return false; }
     if (h && f > h) { return false; }
@@ -428,7 +520,7 @@ function apiHistorial(desde, hasta, cliente) {
 
 function exigirRegistroVivo_(id) {
   var r = buscarPorId_('REGISTRO', id);
-  if (!r) {
+  if (!r || esSi_(r.eliminado)) {
     throw new Error('No encontré esa maniobra.');
   }
   if (String(r.estado) === 'finalizado') {
@@ -441,12 +533,15 @@ function redondear2_(n) {
   return Math.round((Number(n) || 0) * 100) / 100;
 }
 
+function hhmmss_(ms) {
+  return Utilities.formatDate(new Date(ms), zona_(), 'HH:mm:ss');
+}
+
 /** Folio automático: M-AAAAMMDD-### según cuántas maniobras van en el día. */
 function folioNuevo_() {
   var hoy = hoyTexto_();
   var delDia = leerTodo_('REGISTRO').filter(function (r) {
     return textoFecha_(r.fecha) === hoy;
   }).length;
-  var consecutivo = ('000' + (delDia + 1)).slice(-3);
-  return 'M-' + hoy.replace(/-/g, '') + '-' + consecutivo;
+  return 'M-' + hoy.replace(/-/g, '') + '-' + ('000' + (delDia + 1)).slice(-3);
 }

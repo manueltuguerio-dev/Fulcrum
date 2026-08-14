@@ -26,7 +26,17 @@ var TABLAS = {
   USUARIOS: ['id', 'nombre', 'email', 'pinHash', 'passHash', 'salt',
              'rol', 'estado', 'creado'],
 
+  EMPLEADOS: ['id', 'nombreCompleto', 'puesto', 'estado', 'creado'],
+
+  MONTACARGAS: ['id', 'skuEquipo', 'tipo', 'capacidad', 'estado', 'creado'],
+
   CATALOGOS: ['id', 'tipo', 'valor', 'extra', 'orden', 'activo'],
+
+  CONFIG_SLA: ['id', 'cliente', 'material', 'etapa',
+               'objetivoMin', 'ambarMin', 'rojaMin', 'activo'],
+
+  CONFIG_REPORTES: ['id', 'nombre', 'frecuencia', 'diaSemana', 'hora',
+                    'destinatarios', 'formato', 'activo', 'ultimoEnvio', 'creado'],
 
   REGISTRO: [
     'id', 'folio', 'fecha', 'turno', 'cliente', 'flujo', 'etapa',
@@ -34,11 +44,15 @@ var TABLAS = {
     'cantPiezas', 'unidadMedida', 'tarimas', 'pesoTons',
     'montacarguistas', 'numMontac', 'ayudantes', 'numAyud',
     'tipoMontacargas', 'numMontacargas',
-    'horaInicio', 'horaFin', 'tiempoTotalMin', 'demoraMin', 'causaDemora',
+    'horaArribo', 'horaInicio', 'horaFin',
+    'tiempoRecepcionMin', 'tiempoEsperaMin', 'tiempoEjecucionMin',
+    'tiempoTotalMin', 'demoraMin', 'causaDemora',
     'tiempoEfectivoMin', 'minPorPieza', 'observaciones',
     'danoLlegada', 'danoManiobra', 'detalleDano',
-    'estado', 'inicioMs', 'finMs', 'pausaAbiertaMs', 'demoraAcumMs',
-    'pausasJson', 'camposJson', 'operadorId', 'creado', 'actualizado'
+    'estado', 'arriboMs', 'andenMs', 'inicioMs', 'finMs',
+    'pausaAbiertaMs', 'demoraAcumMs', 'pausasJson',
+    'staffJson', 'maquinasJson', 'camposJson',
+    'operadorId', 'eliminado', 'creado', 'actualizado'
   ],
 
   LOG_AUDITORIA: ['id', 'folio', 'usuario', 'accion', 'campo',
@@ -51,8 +65,8 @@ var TABLAS = {
 
 var CONFIG_INICIAL = {
   empresa: 'TLTERMINALS',
-  slaVerde: '45',   // <= verde
-  slaAmbar: '90',   // <= ámbar; por encima, rojo
+  slaVerde: '45',   // objetivo por defecto cuando la matriz no aplica
+  slaAmbar: '90',   // umbral ámbar por defecto; por encima, rojo
   horasSesion: '12'
 };
 
@@ -338,6 +352,14 @@ function hoyTexto_() {
   return Utilities.formatDate(new Date(), zona_(), 'yyyy-MM-dd');
 }
 
+/** Suma (o resta) días a una fecha 'yyyy-MM-dd' y devuelve el texto resultante. */
+function sumarDias_(fechaTexto, dias) {
+  var p = String(fechaTexto).split('-');
+  var d = new Date(Number(p[0]), Number(p[1]) - 1, Number(p[2]));
+  d.setDate(d.getDate() + Number(dias));
+  return Utilities.formatDate(d, zona_(), 'yyyy-MM-dd');
+}
+
 /** Normaliza lo que Sheets pudo haber convertido en Date. @private */
 function textoFecha_(valor) {
   if (valor instanceof Date) {
@@ -356,4 +378,16 @@ function textoHora_(valor) {
 function esSi_(valor) {
   var t = String(valor).toUpperCase().trim();
   return t === 'SI' || t === 'SÍ' || t === 'TRUE' || t === 'VERDADERO' || t === 'X';
+}
+
+/** JSON.parse tolerante: si el texto está vacío o corrupto, devuelve el respaldo. */
+function parseJson_(texto, respaldo) {
+  if (!texto) {
+    return respaldo;
+  }
+  try {
+    return JSON.parse(texto);
+  } catch (err) {
+    return respaldo;
+  }
 }

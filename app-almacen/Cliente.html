@@ -15,9 +15,10 @@ function guardarToken(t) {
 }
 
 var estado = {
-  usuario: null, config: {}, catalogos: {}, camposCustom: [],
+  usuario: null, config: {}, catalogos: {}, camposCustom: [], empleados: [], maquinas: [],
   vivas: [], historial: [], vista: '', desfase: 0,
-  loginModo: 'operativo', pinSel: null, pinBuffer: ''
+  loginModo: 'operativo', pinSel: null, pinBuffer: '',
+  sel: { staff: [], maquinas: [] }
 };
 
 /* -------------------------------- utilidades ------------------------------- */
@@ -26,11 +27,11 @@ function $(id) { return document.getElementById(id) || nodoAusente(); }
 function nodoAusente() {
   return { innerHTML: '', textContent: '', value: '', checked: false, disabled: false,
     files: null, style: {}, classList: { add: function(){}, remove: function(){}, contains: function(){return false;} },
-    addEventListener: function(){}, insertAdjacentHTML: function(){}, focus: function(){}, ausente: true };
+    addEventListener: function(){}, insertAdjacentHTML: function(){}, focus: function(){}, querySelector: function(){return null;}, querySelectorAll: function(){return [];}, ausente: true };
 }
 function esc(t) {
   return String(t === null || t === undefined ? '' : t)
-    .replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+    .replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;').replace(/'/g,'&#39;');
 }
 function llamar(nombre, args) {
   return new Promise(function (resolver, rechazar) {
@@ -49,6 +50,7 @@ function avisar(msg, malo) {
   caja.classList.remove('oculto');
 }
 function fallo(err) { avisar(err && err.message ? err.message : 'Algo salió mal.', true); }
+function val(id) { return $(id).value; }
 
 function dosCifras(n) { return (n < 10 ? '0' : '') + n; }
 function relojDesde(ms) {
@@ -58,9 +60,9 @@ function relojDesde(ms) {
 }
 function ahoraServidor() { return Date.now() + estado.desfase; }
 function minutos(ms) { return Math.round(ms / 60000 * 100) / 100; }
-function clasePorMin(min) {
-  var v = Number(estado.config.slaVerde) || 45, a = Number(estado.config.slaAmbar) || 90;
-  return min <= v ? 'verde' : (min <= a ? 'ambar' : 'rojo');
+function descargar(nombre, dataUrl) {
+  var a = document.createElement('a'); a.href = dataUrl; a.download = nombre;
+  document.body.appendChild(a); a.click(); a.remove();
 }
 
 /* --------------------------------- arranque -------------------------------- */
@@ -68,47 +70,41 @@ function clasePorMin(min) {
 function arrancar() {
   llamar('apiEstadoApp').then(function (r) {
     $('cargando').classList.add('oculto');
-    if (!r.sesion) {
-      estado.operativos = r.operativos || [];
-      mostrarLogin();
-      return;
-    }
-    aplicarEstado(r);
-    mostrarApp();
+    if (!r.sesion) { estado.operativos = r.operativos || []; mostrarLogin(); return; }
+    aplicarEstado(r); mostrarApp();
   }).catch(function (err) {
     $('cargando').textContent = 'No pude cargar: ' + (err.message || err);
   });
 }
-
 function aplicarEstado(r) {
   estado.usuario = r.usuario;
   estado.config = r.config || {};
   estado.catalogos = r.catalogos || {};
   estado.camposCustom = r.camposCustom || [];
+  estado.empleados = r.empleados || [];
+  estado.maquinas = r.maquinas || [];
   estado.vivas = r.vivas || [];
   estado.historial = r.historial || [];
   estado.desfase = (r.serverNowMs || Date.now()) - Date.now();
+}
+function recargarBase() {
+  return llamar('apiEstadoApp').then(function (r) { if (r.sesion) { aplicarEstado(r); } return r; });
 }
 
 /* ---------------------------------- login ---------------------------------- */
 
 function mostrarLogin() {
   $('app').classList.add('oculto');
-  var caja = $('login');
-  caja.classList.remove('oculto');
+  var caja = $('login'); caja.classList.remove('oculto');
   var esOp = estado.loginModo === 'operativo';
   caja.innerHTML =
     '<div class="login"><div class="logo">ALMACÉN <span>TLTERMINALS</span></div>' +
-    '<div class="caja">' +
-      '<div class="segmentos">' +
-        '<button class="' + (esOp ? 'activa' : '') + '" onclick="cambiarLogin(\'operativo\')">Operativo · PIN</button>' +
-        '<button class="' + (!esOp ? 'activa' : '') + '" onclick="cambiarLogin(\'clave\')">Supervisor</button>' +
-      '</div>' +
-      (esOp ? loginOperativoHTML() : loginClaveHTML()) +
-    '</div></div>';
+    '<div class="caja"><div class="segmentos">' +
+      '<button class="' + (esOp ? 'activa' : '') + '" onclick="cambiarLogin(\'operativo\')">Operativo · PIN</button>' +
+      '<button class="' + (!esOp ? 'activa' : '') + '" onclick="cambiarLogin(\'clave\')">Supervisor</button>' +
+    '</div>' + (esOp ? loginOperativoHTML() : loginClaveHTML()) + '</div></div>';
 }
 function cambiarLogin(modo) { estado.loginModo = modo; estado.pinSel = null; estado.pinBuffer = ''; mostrarLogin(); }
-
 function loginOperativoHTML() {
   var ops = estado.operativos || [];
   if (estado.pinSel) {
@@ -118,18 +114,12 @@ function loginOperativoHTML() {
     var teclas = '';
     [1,2,3,4,5,6,7,8,9].forEach(function (n) { teclas += '<button onclick="tecla(\'' + n + '\')">' + n + '</button>'; });
     teclas += '<button onclick="tecla(\'x\')">←</button><button onclick="tecla(\'0\')">0</button><button onclick="tecla(\'ok\')">✓</button>';
-    return '<div class="tarjeta"><div class="sub">Operador</div>' +
-      '<h3>' + esc(op.nombre) + '</h3>' +
-      '<div class="puntos">' + puntos + '</div>' +
-      '<div class="teclado">' + teclas + '</div>' +
+    return '<div class="tarjeta"><div class="sub">Operador</div><h3>' + esc(op.nombre) + '</h3>' +
+      '<div class="puntos">' + puntos + '</div><div class="teclado">' + teclas + '</div>' +
       '<div class="fila-botones"><button class="btn chico" onclick="estado.pinSel=null;estado.pinBuffer=\'\';mostrarLogin()">Cambiar de operador</button></div></div>';
   }
-  if (!ops.length) {
-    return '<div class="tarjeta vacio">Aún no hay operativos dados de alta.<br><span class="mini">Un supervisor debe crearlos.</span></div>';
-  }
-  var botones = ops.map(function (o) {
-    return '<button onclick="elegirOperador(\'' + o.id + '\')">' + esc(o.nombre) + '</button>';
-  }).join('');
+  if (!ops.length) { return '<div class="tarjeta vacio">Aún no hay operativos dados de alta.<br><span class="mini">Un supervisor debe crearlos.</span></div>'; }
+  var botones = ops.map(function (o) { return '<button onclick="elegirOperador(\'' + o.id + '\')">' + esc(o.nombre) + '</button>'; }).join('');
   return '<div class="tarjeta"><div class="sub">Toca tu nombre</div><div class="operadores">' + botones + '</div></div>';
 }
 function elegirOperador(id) { estado.pinSel = id; estado.pinBuffer = ''; mostrarLogin(); }
@@ -141,12 +131,10 @@ function tecla(t) {
 }
 function entrarPin() {
   if (estado.pinBuffer.length !== 4) { return; }
-  var id = estado.pinSel, pin = estado.pinBuffer;
-  llamar('apiEntrarPin', [id, pin]).then(function (r) {
-    guardarToken(r.token); arrancar2();
+  llamar('apiEntrarPin', [estado.pinSel, estado.pinBuffer]).then(function (r) {
+    guardarToken(r.token); entrarOk();
   }).catch(function (err) { estado.pinBuffer = ''; mostrarLogin(); fallo(err); });
 }
-
 function loginClaveHTML() {
   return '<div class="tarjeta">' +
     '<label>Correo</label><input id="loginEmail" type="email" autocomplete="username" placeholder="tu@empresa.com" />' +
@@ -157,27 +145,17 @@ function loginClaveHTML() {
 function entrarClave() {
   var email = $('loginEmail').value.trim(), clave = $('loginClave').value;
   if (!email || !clave) { avisar('Escribe correo y contraseña.', true); return; }
-  llamar('apiEntrarClave', [email, clave]).then(function (r) {
-    guardarToken(r.token); arrancar2();
-  }).catch(fallo);
+  llamar('apiEntrarClave', [email, clave]).then(function (r) { guardarToken(r.token); entrarOk(); }).catch(fallo);
 }
-
-/** Recarga el estado tras entrar. */
-function arrancar2() {
+function entrarOk() {
   llamar('apiEstadoApp').then(function (r) {
     if (!r.sesion) { mostrarLogin(); return; }
-    $('login').classList.add('oculto');
-    aplicarEstado(r);
-    mostrarApp();
+    $('login').classList.add('oculto'); aplicarEstado(r); mostrarApp();
   }).catch(fallo);
 }
-
 function salir() {
   llamar('apiSalir').then(function () {}).catch(function () {});
-  guardarToken('');
-  estado.usuario = null;
-  detenerTic();
-  $('app').classList.add('oculto');
+  guardarToken(''); estado.usuario = null; detenerTic(); $('app').classList.add('oculto');
   llamar('apiEstadoApp').then(function (r) { estado.operativos = r.operativos || []; mostrarLogin(); });
 }
 
@@ -188,19 +166,29 @@ function esAdmin() { return rol() === 'ADMINISTRADOR' || rol() === 'MASTER'; }
 function esMaster() { return rol() === 'MASTER'; }
 
 function mostrarApp() {
-  $('login').classList.add('oculto');
-  $('app').classList.remove('oculto');
+  $('login').classList.add('oculto'); $('app').classList.remove('oculto');
   var u = estado.usuario;
   $('barra').innerHTML =
     '<div class="marca">ALMACÉN <span>TL</span></div>' +
-    '<div class="quien"><b>' + esc(u.nombre) + '</b>' +
-    '<span class="chip">' + esc(u.rol) + '</span> ' +
+    '<div class="quien"><b>' + esc(u.nombre) + '</b><span class="chip">' + esc(u.rol) + '</span> ' +
     '<button class="btn chico" style="margin-left:6px" onclick="salir()">Salir</button></div>';
 
   var tabs = [{ id: 'patio', txt: 'Patio' }];
-  if (esAdmin()) { tabs.push({ id: 'historial', txt: 'Historial' }); tabs.push({ id: 'catalogos', txt: 'Catálogos' }); }
-  if (esMaster()) { tabs.push({ id: 'usuarios', txt: 'Usuarios' }); tabs.push({ id: 'campos', txt: 'Campos' });
-                    tabs.push({ id: 'auditoria', txt: 'Auditoría' }); tabs.push({ id: 'ajustes', txt: 'Ajustes' }); }
+  if (esAdmin()) {
+    tabs.push({ id: 'dashboard', txt: 'Tablero' });
+    tabs.push({ id: 'historial', txt: 'Historial' });
+    tabs.push({ id: 'personal', txt: 'Personal' });
+    tabs.push({ id: 'equipos', txt: 'Equipos' });
+    tabs.push({ id: 'sla', txt: 'SLA' });
+    tabs.push({ id: 'catalogos', txt: 'Catálogos' });
+  }
+  if (esMaster()) {
+    tabs.push({ id: 'reportes', txt: 'Reportes' });
+    tabs.push({ id: 'usuarios', txt: 'Usuarios' });
+    tabs.push({ id: 'campos', txt: 'Campos' });
+    tabs.push({ id: 'auditoria', txt: 'Auditoría' });
+    tabs.push({ id: 'ajustes', txt: 'Ajustes' });
+  }
   if (!estado.vista || !tabs.some(function (t) { return t.id === estado.vista; })) { estado.vista = 'patio'; }
   $('tabs').innerHTML = tabs.map(function (t) {
     return '<button class="' + (estado.vista === t.id ? 'activa' : '') + '" onclick="ir(\'' + t.id + '\')">' + t.txt + '</button>';
@@ -208,20 +196,19 @@ function mostrarApp() {
   pintar();
 }
 function ir(v) { estado.vista = v; mostrarApp(); }
-
 function pintar() {
   detenerTic();
-  var v = estado.vista;
-  if (v === 'patio') { return pintarPatio(); }
-  if (v === 'historial') { return pintarHistorial(); }
-  if (v === 'catalogos') { return pintarCatalogos(); }
-  if (v === 'usuarios') { return pintarUsuarios(); }
-  if (v === 'campos') { return pintarCampos(); }
-  if (v === 'auditoria') { return pintarAuditoria(); }
-  if (v === 'ajustes') { return pintarAjustes(); }
+  var f = { patio: pintarPatio, dashboard: pintarDashboard, historial: pintarHistorial,
+    personal: pintarPersonal, equipos: pintarEquipos, sla: pintarSla, catalogos: pintarCatalogos,
+    reportes: pintarReportes, usuarios: pintarUsuarios, campos: pintarCampos,
+    auditoria: pintarAuditoria, ajustes: pintarAjustes }[estado.vista];
+  if (f) { f(); }
 }
 
 /* --------------------------------- patio ----------------------------------- */
+
+var ETAPAS_TXT = { arribo: 'Recepción en patio', espera: 'Espera de andén', ejecucion: 'En maniobra', pausado: 'EN DEMORA' };
+var SIGUIENTE_TXT = { arribo: 'Asignar andén', espera: 'Iniciar maniobra' };
 
 function pintarPatio() {
   var html = '<div class="fila-botones" style="margin-bottom:14px">' +
@@ -235,30 +222,41 @@ function pintarPatio() {
   $('vista').innerHTML = html;
   arrancarTic();
 }
-
 function tarjetaViva(r) {
   var pausado = r.estado === 'pausado';
-  var acciones = pausado
+  var acciones = '';
+  if (SIGUIENTE_TXT[r.estado]) {
+    acciones += '<button class="btn primario" onclick="avanzar(\'' + r.id + '\')">▶ ' + SIGUIENTE_TXT[r.estado] + '</button>';
+  }
+  acciones += pausado
     ? '<button class="btn verde" onclick="reanudar(\'' + r.id + '\')">▶ Reanudar</button>'
-    : '<button class="btn ambar" onclick="abrirPausar(\'' + r.id + '\')">⏸ Pausar</button>';
+    : '<button class="btn ambar" onclick="abrirPausar(\'' + r.id + '\')">⏸ Demora</button>';
   acciones += '<button class="btn rojo" onclick="abrirFinalizar(\'' + r.id + '\')">■ Finalizar</button>';
-  acciones += '<button class="btn chico" onclick="abrirFoto(\'' + r.id + '\')">📷 Foto</button>';
+  acciones += '<button class="btn chico" onclick="abrirFoto(\'' + r.id + '\')">📷</button>';
+  acciones += '<button class="btn chico" onclick="clonar(\'' + r.id + '\')">⧉ Clonar</button>';
+
+  var staff = (r.staff || []).map(function (s) { return esc(s.nombre); }).join(', ');
+  var maq = (r.maquinas || []).map(function (m) { return esc(m.sku); }).join(', ');
 
   return '<div class="tarjeta maniobra-viva ' + (pausado ? 'borde-pausa' : 'borde-verde') + '"' +
-    ' data-id="' + r.id + '" data-inicio="' + r.inicioMs + '" data-demora="' + r.demoraAcumMs +
-    '" data-pausa="' + r.pausaAbiertaMs + '" data-estado="' + r.estado + '">' +
+    ' data-id="' + r.id + '" data-arribo="' + r.arriboMs + '" data-anden="' + r.andenMs + '"' +
+    ' data-inicio="' + r.inicioMs + '" data-demora="' + r.demoraAcumMs + '" data-pausa="' + r.pausaAbiertaMs + '"' +
+    ' data-estado="' + r.estado + '" data-obj="' + r.slaObjetivoMin + '" data-ambar="' + r.slaAmbarMin + '">' +
     '<div class="encab-maniobra"><span class="folio">' + esc(r.folio) + '</span>' +
     '<span class="cli">' + esc(r.cliente || 'Sin cliente') + '</span>' +
     (r.flujo ? '<span class="chip">' + esc(r.flujo) + '</span>' : '') +
     '<span class="semaforo" data-sem style="margin-left:auto"></span></div>' +
-    '<div style="margin:10px 0"><span class="crono grande" data-crono>00:00</span>' +
-    (pausado ? ' <span class="en-pausa" data-pausatxt>EN PAUSA</span>' : '') + '</div>' +
+    '<div style="margin:8px 0 2px"><span class="chip" data-etapatxt>' + esc(ETAPAS_TXT[r.estado] || r.estado) + '</span>' +
+    (pausado && r.pausas.length ? ' <span class="en-pausa">· ' + esc(r.pausas[r.pausas.length - 1].causa) + '</span>' : '') + '</div>' +
+    '<div style="margin:8px 0"><span class="crono grande" data-crono>00:00</span></div>' +
     '<div class="metricas">' +
     '<div><span>Efectivo</span><b data-efectivo>—</b></div>' +
     '<div><span>Demora</span><b data-demoratxt>—</b></div>' +
-    (r.etapa ? '<div><span>Etapa</span><b>' + esc(r.etapa) + '</b></div>' : '') +
-    (pausado && r.pausas.length ? '<div><span>Causa</span><b>' + esc(r.pausas[r.pausas.length - 1].causa) + '</b></div>' : '') +
+    '<div><span>Recep./Espera/Ejec.</span><b data-subs>—</b></div>' +
+    '<div><span>Objetivo SLA</span><b>' + esc(r.slaObjetivoMin) + ' min</b></div>' +
     '</div>' +
+    (staff ? '<div class="mini">👷 ' + staff + '</div>' : '') +
+    (maq ? '<div class="mini">🚜 ' + maq + '</div>' : '') +
     '<div class="fila-botones">' + acciones + '</div></div>';
 }
 
@@ -270,20 +268,34 @@ function ttic() {
   var ahora = ahoraServidor();
   for (var i = 0; i < nodos.length; i++) {
     var n = nodos[i];
-    var inicio = Number(n.getAttribute('data-inicio')) || ahora;
+    var arribo = Number(n.getAttribute('data-arribo')) || ahora;
+    var anden = Number(n.getAttribute('data-anden')) || 0;
+    var inicio = Number(n.getAttribute('data-inicio')) || 0;
     var demora = Number(n.getAttribute('data-demora')) || 0;
     var pausa = Number(n.getAttribute('data-pausa')) || 0;
-    var pausado = n.getAttribute('data-estado') === 'pausado';
+    var estadoN = n.getAttribute('data-estado');
+    var pausado = estadoN === 'pausado';
+    var obj = Number(n.getAttribute('data-obj')) || 0;
+    var ambar = Number(n.getAttribute('data-ambar')) || 0;
+
     var demoraViva = demora + (pausado && pausa ? (ahora - pausa) : 0);
-    var totalMs = ahora - inicio;
+    var totalMs = ahora - arribo;
     var efectivoMs = Math.max(0, totalMs - demoraViva);
-    var c = n.querySelector('[data-crono]'); if (c) { c.textContent = relojDesde(totalMs); }
-    var e = n.querySelector('[data-efectivo]'); if (e) { e.textContent = relojDesde(efectivoMs); }
-    var d = n.querySelector('[data-demoratxt]'); if (d) { d.textContent = relojDesde(demoraViva); }
+    var recepMs = anden ? (anden - arribo) : (estadoN === 'arribo' ? totalMs : 0);
+    var esperaMs = anden ? (inicio ? (inicio - anden) : (ahora - anden)) : 0;
+    if (estadoN === 'arribo') { esperaMs = 0; }
+    var ejecMs = inicio ? Math.max(0, (ahora - inicio) - (demoraViva)) : 0;
+
+    var poner = function (sel, txt) { var el = n.querySelector(sel); if (el) { el.textContent = txt; } };
+    poner('[data-crono]', relojDesde(totalMs));
+    poner('[data-efectivo]', relojDesde(efectivoMs));
+    poner('[data-demoratxt]', relojDesde(demoraViva));
+    poner('[data-subs]', relojDesde(Math.max(0, recepMs)) + ' / ' + relojDesde(Math.max(0, esperaMs)) + ' / ' + relojDesde(ejecMs));
     var sem = n.querySelector('[data-sem]');
     if (sem) {
-      var cls = clasePorMin(minutos(totalMs));
-      sem.innerHTML = '<span class="luz ' + cls + '"></span>' + minutos(totalMs).toFixed(1) + ' min';
+      var min = minutos(totalMs);
+      var cls = pausado ? 'rojo' : (min <= obj ? 'verde' : (min <= ambar ? 'ambar' : 'rojo'));
+      sem.innerHTML = '<span class="luz ' + cls + '"></span>' + min.toFixed(1) + ' min';
     }
   }
 }
@@ -294,20 +306,27 @@ function refrescarVivas() {
     if (estado.vista === 'patio') { pintarPatio(); }
   }).catch(fallo);
 }
+function avanzar(id) {
+  llamar('apiAvanzarEtapa', [id]).then(function (r) { reemplazarViva(r); if (estado.vista === 'patio') { pintarPatio(); } }).catch(fallo);
+}
+function reanudar(id) {
+  llamar('apiReanudar', [id]).then(function (r) { reemplazarViva(r); if (estado.vista === 'patio') { pintarPatio(); } }).catch(fallo);
+}
+function reemplazarViva(r) {
+  var hecho = false;
+  estado.vivas = estado.vivas.map(function (x) { if (x.id === r.id) { hecho = true; return r; } return x; });
+  if (!hecho && ['arribo','espera','ejecucion','pausado'].indexOf(r.estado) !== -1) { estado.vivas.unshift(r); }
+}
 </script>
 <script>
-/* Segunda parte: modales de maniobra, catálogos, usuarios, campos, auditoría,
-   ajustes. Se separa para mantener los bloques legibles. */
-
-/* ------------------------------ modal genérico ----------------------------- */
+/* Segunda parte: modal genérico, selección múltiple de cuadrilla/equipos,
+   iniciar/clonar, demora, finalizar y fotos. */
 
 function abrirModal(titulo, cuerpo, ancho) {
-  var m = $('modal');
-  m.classList.remove('oculto');
+  var m = $('modal'); m.classList.remove('oculto');
   m.innerHTML = '<div class="telon" onclick="if(event.target===this)cerrarModal()">' +
     '<div class="modal" style="max-width:' + (ancho || 560) + 'px">' +
-    '<button class="cerrar" onclick="cerrarModal()">×</button>' +
-    '<h3>' + esc(titulo) + '</h3>' + cuerpo + '</div></div>';
+    '<button class="cerrar" onclick="cerrarModal()">×</button><h3>' + esc(titulo) + '</h3>' + cuerpo + '</div></div>';
 }
 function cerrarModal() { $('modal').classList.add('oculto'); $('modal').innerHTML = ''; }
 
@@ -315,11 +334,30 @@ function opcionesDe(tipo, seleccion, incluirVacio) {
   var lista = (estado.catalogos[tipo] || []);
   var html = incluirVacio ? '<option value="">—</option>' : '';
   lista.forEach(function (o) {
-    var sel = String(seleccion || '') === o.valor ? ' selected' : '';
-    html += '<option value="' + esc(o.valor) + '"' + sel + '>' + esc(o.valor) + '</option>';
+    html += '<option value="' + esc(o.valor) + '"' + (String(seleccion || '') === o.valor ? ' selected' : '') + '>' + esc(o.valor) + '</option>';
   });
   return html;
 }
+
+/* selección múltiple por chips */
+function chipsHTML(grupo) {
+  var items = grupo === 'staff'
+    ? estado.empleados.map(function (e) { return { id: e.id, txt: e.nombre + ' · ' + e.puesto }; })
+    : estado.maquinas.map(function (m) { return { id: m.id, txt: m.sku + (m.tipo ? ' · ' + m.tipo : '') }; });
+  if (!items.length) { return '<div class="mini">Nada dado de alta todavía.</div>'; }
+  var seleccion = estado.sel[grupo] || [];
+  return '<div class="chips">' + items.map(function (it) {
+    var sel = seleccion.indexOf(it.id) !== -1;
+    return '<button type="button" class="chip-sel ' + (sel ? 'on' : '') + '" data-grp="' + grupo + '" data-id="' + it.id + '" onclick="toggleChip(this)">' + esc(it.txt) + '</button>';
+  }).join('') + '</div>';
+}
+function toggleChip(el) {
+  var grupo = el.getAttribute('data-grp'), id = el.getAttribute('data-id');
+  var arr = estado.sel[grupo] || (estado.sel[grupo] = []);
+  var i = arr.indexOf(id);
+  if (i === -1) { arr.push(id); el.classList.add('on'); } else { arr.splice(i, 1); el.classList.remove('on'); }
+}
+
 function camposCustomHTML(valores) {
   valores = valores || {};
   if (!estado.camposCustom.length) { return ''; }
@@ -338,79 +376,81 @@ function camposCustomHTML(valores) {
 function leerCamposCustom(cont) {
   var res = {};
   (cont || document).querySelectorAll('[data-cc]').forEach(function (el) {
-    var v = el.value;
-    if (v !== '' && v !== null && v !== undefined) { res[el.getAttribute('data-cc')] = v; }
+    if (el.value !== '' && el.value !== null) { res[el.getAttribute('data-cc')] = el.value; }
   });
   return res;
 }
 
-/* ------------------------------- iniciar ----------------------------------- */
+/* -------------------------------- iniciar / clonar ------------------------- */
 
-function abrirIniciar() {
-  var cuerpo =
-    '<div class="rejilla">' +
+function abrirIniciar(prefill) {
+  prefill = prefill || {};
+  estado.sel = {
+    staff: (prefill.staff || []).map(function (s) { return s.id; }),
+    maquinas: (prefill.maquinas || []).map(function (m) { return m.id; })
+  };
+  var g = function (k) { return prefill[k] === undefined ? '' : prefill[k]; };
+  var cuerpo = '<div class="rejilla">' +
     '<div class="ancho"><label>Folio (opcional, se genera solo)</label><input id="f_folio" placeholder="Automático" /></div>' +
-    '<div><label>Cliente</label><select id="f_cliente">' + opcionesDe('clientes', '', true) + '</select></div>' +
-    '<div><label>Turno</label><select id="f_turno">' + opcionesDe('turnos', '', true) + '</select></div>' +
-    '<div><label>Flujo</label><select id="f_flujo">' + opcionesDe('flujos', '', true) + '</select></div>' +
-    '<div><label>Etapa</label><select id="f_etapa">' + opcionesDe('etapas', '', true) + '</select></div>' +
-    '<div><label>Tipo de equipo</label><select id="f_tipoEquipo">' + opcionesDe('tiposEquipo', '', true) + '</select></div>' +
-    '<div><label>No. de unidad</label><input id="f_noUnidad" /></div>' +
-    '<div><label>Material</label><select id="f_material">' + opcionesDe('materiales', '', true) + '</select></div>' +
-    '<div><label>Presentación</label><select id="f_presentacion">' + opcionesDe('presentaciones', '', true) + '</select></div>' +
-    '<div><label>Cant. piezas</label><input id="f_cantPiezas" type="number" inputmode="numeric" /></div>' +
-    '<div><label>Tarimas</label><input id="f_tarimas" type="number" /></div>' +
-    '<div><label>Peso (tons)</label><input id="f_pesoTons" type="number" step="0.01" /></div>' +
-    '<div><label>Montacargas</label><select id="f_tipoMontacargas">' + opcionesDe('montacargas', '', true) + '</select></div>' +
+    '<div><label>Cliente</label><select id="f_cliente">' + opcionesDe('clientes', g('cliente'), true) + '</select></div>' +
+    '<div><label>Turno</label><select id="f_turno">' + opcionesDe('turnos', g('turno'), true) + '</select></div>' +
+    '<div><label>Flujo</label><select id="f_flujo">' + opcionesDe('flujos', g('flujo'), true) + '</select></div>' +
+    '<div><label>Etapa</label><select id="f_etapa">' + opcionesDe('etapas', g('etapa'), true) + '</select></div>' +
+    '<div><label>Tipo de equipo</label><select id="f_tipoEquipo">' + opcionesDe('tiposEquipo', g('tipoEquipo'), true) + '</select></div>' +
+    '<div><label>No. de unidad</label><input id="f_noUnidad" value="' + esc(g('noUnidad')) + '" /></div>' +
+    '<div><label>Material</label><select id="f_material">' + opcionesDe('materiales', g('material'), true) + '</select></div>' +
+    '<div><label>Presentación</label><select id="f_presentacion">' + opcionesDe('presentaciones', g('presentacion'), true) + '</select></div>' +
+    '<div><label>Cant. piezas</label><input id="f_cantPiezas" type="number" inputmode="numeric" value="' + esc(g('cantPiezas')) + '" /></div>' +
+    '<div><label>Tarimas</label><input id="f_tarimas" type="number" value="' + esc(g('tarimas')) + '" /></div>' +
+    '<div><label>Peso (tons)</label><input id="f_pesoTons" type="number" step="0.01" value="' + esc(g('pesoTons')) + '" /></div>' +
     '<div><label>Daño al llegar</label><select id="f_danoLlegada"><option value="NO">No</option><option value="SI">Sí</option></select></div>' +
-    camposCustomHTML({}) +
-    '<div class="ancho"><label>Observaciones</label><textarea id="f_observaciones"></textarea></div>' +
+    '<div class="ancho"><label>Cuadrilla (montacarguistas / ayudantes / inspector...)</label>' + chipsHTML('staff') + '</div>' +
+    '<div class="ancho"><label>Equipos (montacargas por SKU)</label>' + chipsHTML('maquinas') + '</div>' +
+    camposCustomHTML(prefill.campos) +
+    '<div class="ancho"><label>Observaciones</label><textarea id="f_observaciones">' + esc(g('observaciones')) + '</textarea></div>' +
     '</div>' +
+    '<label style="margin-top:10px"><input type="checkbox" id="f_directo" style="width:auto;margin-right:6px" />Empezar directo en “maniobra” (sin cronometrar recepción/espera)</label>' +
     '<div class="fila-botones"><button class="btn verde bloque" onclick="iniciar()">▶ Iniciar cronómetro</button></div>';
-  abrirModal('Nueva maniobra', cuerpo);
+  abrirModal(prefill.id ? 'Clonar maniobra' : 'Nueva maniobra', cuerpo, 640);
 }
-function val(id) { return $(id).value; }
 function iniciar() {
   var datos = {
-    folio: val('f_folio'), cliente: val('f_cliente'), turno: val('f_turno'),
-    flujo: val('f_flujo'), etapa: val('f_etapa'), tipoEquipo: val('f_tipoEquipo'),
-    noUnidad: val('f_noUnidad'), material: val('f_material'), presentacion: val('f_presentacion'),
-    cantPiezas: val('f_cantPiezas'), tarimas: val('f_tarimas'), pesoTons: val('f_pesoTons'),
-    tipoMontacargas: val('f_tipoMontacargas'), danoLlegada: val('f_danoLlegada'),
-    observaciones: val('f_observaciones'), campos: leerCamposCustom($('modal'))
+    folio: val('f_folio'), cliente: val('f_cliente'), turno: val('f_turno'), flujo: val('f_flujo'),
+    etapa: val('f_etapa'), tipoEquipo: val('f_tipoEquipo'), noUnidad: val('f_noUnidad'),
+    material: val('f_material'), presentacion: val('f_presentacion'), cantPiezas: val('f_cantPiezas'),
+    tarimas: val('f_tarimas'), pesoTons: val('f_pesoTons'), danoLlegada: val('f_danoLlegada'),
+    observaciones: val('f_observaciones'),
+    staffIds: estado.sel.staff, maquinaIds: estado.sel.maquinas,
+    arrancarEjecucion: $('f_directo').checked,
+    campos: leerCamposCustom($('modal'))
   };
   llamar('apiIniciar', [datos]).then(function (r) {
     estado.vivas.unshift(r); cerrarModal(); avisar('Maniobra ' + r.folio + ' iniciada.');
-    if (estado.vista === 'patio') { pintarPatio(); }
+    estado.vista = 'patio'; mostrarApp();
   }).catch(fallo);
 }
+function clonar(id) {
+  var r = estado.vivas.concat(estado.historial).filter(function (x) { return x.id === id; })[0];
+  if (!r) { return; }
+  abrirIniciar({ cliente: r.cliente, turno: r.turno, flujo: r.flujo, etapa: r.etapa, tipoEquipo: r.tipoEquipo,
+    noUnidad: r.noUnidad, material: r.material, presentacion: r.presentacion, cantPiezas: r.cantPiezas,
+    tarimas: r.tarimas, pesoTons: r.pesoTons, staff: r.staff, maquinas: r.maquinas, campos: r.campos, id: 'clon' });
+}
 
-/* -------------------------------- pausar ----------------------------------- */
+/* -------------------------------- demora ----------------------------------- */
 
 function abrirPausar(id) {
   var ops = (estado.catalogos.causasDemora || []).map(function (o) {
-    return '<button class="btn bloque" style="margin-bottom:8px;text-align:left" onclick="pausar(\'' + id + '\',\'' + esc(o.valor).replace(/'/g, "\\'") + '\')">' + esc(o.valor) + '</button>';
+    return '<button class="btn bloque" style="margin-bottom:8px;text-align:left" onclick="pausar(\'' + id + '\',\'' + esc(o.valor) + '\')">' + esc(o.valor) + '</button>';
   }).join('');
   var cuerpo = '<div class="sub">Elige la causa de la demora (obligatoria).</div>' + (ops || '') +
     '<label>Otra causa</label><input id="causaLibre" placeholder="Escríbela y confirma" />' +
-    '<div class="fila-botones"><button class="btn ambar bloque" onclick="pausar(\'' + id + '\', $(\'causaLibre\').value)">⏸ Pausar</button></div>';
-  abrirModal('Pausar maniobra', cuerpo);
+    '<div class="fila-botones"><button class="btn ambar bloque" onclick="pausar(\'' + id + '\', $(\'causaLibre\').value)">⏸ Registrar demora</button></div>';
+  abrirModal('Demora', cuerpo);
 }
 function pausar(id, causa) {
   if (!causa || !String(causa).trim()) { avisar('Indica la causa de la demora.', true); return; }
-  llamar('apiPausar', [id, causa]).then(function (r) {
-    reemplazarViva(r); cerrarModal(); if (estado.vista === 'patio') { pintarPatio(); }
-  }).catch(fallo);
-}
-function reanudar(id) {
-  llamar('apiReanudar', [id]).then(function (r) {
-    reemplazarViva(r); if (estado.vista === 'patio') { pintarPatio(); }
-  }).catch(fallo);
-}
-function reemplazarViva(r) {
-  var reemplazado = false;
-  estado.vivas = estado.vivas.map(function (x) { if (x.id === r.id) { reemplazado = true; return r; } return x; });
-  if (!reemplazado && (r.estado === 'en_proceso' || r.estado === 'pausado')) { estado.vivas.unshift(r); }
+  llamar('apiPausar', [id, causa]).then(function (r) { reemplazarViva(r); cerrarModal(); if (estado.vista === 'patio') { pintarPatio(); } }).catch(fallo);
 }
 
 /* ------------------------------- finalizar --------------------------------- */
@@ -425,25 +465,19 @@ function abrirFinalizar(id) {
     '<div><label>Daño en maniobra</label><select id="c_danoManiobra"><option value="NO">No</option><option value="SI"' + (r.danoManiobra ? ' selected' : '') + '>Sí</option></select></div>' +
     '<div class="ancho"><label>Observaciones</label><textarea id="c_observaciones">' + esc(r.observaciones) + '</textarea></div>' +
     '<div class="ancho"><label>Detalle del daño / notas</label><textarea id="c_detalleDano">' + esc(r.detalleDano) + '</textarea></div>' +
-    camposCustomHTML(r.campos) +
-    '</div>' +
-    '<div class="mini">Se calcularán tiempo total, demora, efectivo y min/pieza al cerrar.</div>' +
+    camposCustomHTML(r.campos) + '</div>' +
+    '<div class="mini">Se calcularán recepción, espera, ejecución, total, demora, efectivo y min/pieza.</div>' +
     '<div class="fila-botones"><button class="btn rojo bloque" onclick="finalizar(\'' + id + '\')">■ Finalizar y calcular</button></div>';
   abrirModal('Cerrar maniobra ' + (r.folio || ''), cuerpo);
 }
 function finalizar(id) {
-  var datos = {
-    cantPiezas: val('c_cantPiezas'), tarimas: val('c_tarimas'), pesoTons: val('c_pesoTons'),
+  var datos = { cantPiezas: val('c_cantPiezas'), tarimas: val('c_tarimas'), pesoTons: val('c_pesoTons'),
     unidadMedida: val('c_unidadMedida'), danoManiobra: val('c_danoManiobra'),
-    observaciones: val('c_observaciones'), detalleDano: val('c_detalleDano'),
-    campos: leerCamposCustom($('modal'))
-  };
+    observaciones: val('c_observaciones'), detalleDano: val('c_detalleDano'), campos: leerCamposCustom($('modal')) };
   llamar('apiFinalizar', [id, datos]).then(function (r) {
     estado.vivas = estado.vivas.filter(function (x) { return x.id !== id; });
     if (esAdmin()) { estado.historial.unshift(r); }
-    cerrarModal();
-    avisar('Maniobra ' + r.folio + ' cerrada · ' + r.tiempoTotalMin + ' min.');
-    pintar();
+    cerrarModal(); avisar('Maniobra ' + r.folio + ' cerrada · ' + r.tiempoTotalMin + ' min.'); pintar();
   }).catch(fallo);
 }
 
@@ -459,8 +493,7 @@ function abrirFoto(id) {
 function subirFoto(id) {
   var input = $('foto_input');
   if (!input.files || !input.files.length) { avisar('Elige una foto.', true); return; }
-  var archivo = input.files[0];
-  var lector = new FileReader();
+  var archivo = input.files[0], lector = new FileReader();
   lector.onload = function () {
     avisar('Subiendo foto…');
     llamar('apiSubirFoto', [id, { nombre: archivo.name, tipo: archivo.type, dataUrl: lector.result }, val('foto_etiqueta')])
@@ -468,33 +501,100 @@ function subirFoto(id) {
   };
   lector.readAsDataURL(archivo);
 }
+</script>
+<script>
+/* Tercera parte: tablero, historial + exportación, ver/editar/eliminar
+   maniobra, catálogos, personal, equipos y matriz de SLA. */
+
+/* --------------------------------- tablero --------------------------------- */
+
+function pintarDashboard() {
+  var cab = '<div class="tarjeta"><div class="rejilla">' +
+    '<div><label>Desde</label><input id="db_desde" type="date" /></div>' +
+    '<div><label>Hasta</label><input id="db_hasta" type="date" /></div>' +
+    '<div style="display:flex;align-items:flex-end"><button class="btn primario bloque" onclick="cargarDashboard()">Actualizar</button></div>' +
+    '<div style="display:flex;align-items:flex-end;gap:6px"><button class="btn chico" onclick="exportar(\'xlsx\')">⬇ Excel</button><button class="btn chico" onclick="exportar(\'pdf\')">⬇ PDF</button></div>' +
+    '</div></div><div id="db_cuerpo"><div class="vacio">Cargando…</div></div>';
+  $('vista').innerHTML = cab;
+  cargarDashboard();
+}
+function cargarDashboard() {
+  llamar('apiDashboard', [val('db_desde'), val('db_hasta')]).then(function (d) {
+    var tile = function (et, v, cls) { return '<div class="kpi ' + (cls || '') + '"><span>' + et + '</span><b>' + v + '</b></div>'; };
+    var html = '<div class="kpis">' +
+      tile('Maniobras', d.total) +
+      tile('Cumplimiento SLA', d.cumplimiento + '%', d.cumplimiento >= 80 ? 'verde' : (d.cumplimiento >= 50 ? 'ambar' : 'rojo')) +
+      tile('Prom. total (min)', d.promTotal) +
+      tile('Prom. efectivo (min)', d.promEfectivo) +
+      tile('Demora total (min)', d.demoraTotal) +
+      tile('Prom. min/pieza', d.promMinPieza) +
+      tile('Con daño', d.conDano) +
+      '</div>';
+
+    html += '<div class="rejilla">';
+    html += '<div class="tarjeta"><h3>Semáforo SLA</h3>' +
+      '<div class="metricas"><div class="semaforo"><span class="luz verde"></span> ' + d.sla.verde + '</div>' +
+      '<div class="semaforo"><span class="luz ambar"></span> ' + d.sla.ambar + '</div>' +
+      '<div class="semaforo"><span class="luz rojo"></span> ' + d.sla.rojo + '</div></div>' + barras_(d.sla) + '</div>';
+
+    html += '<div class="tarjeta"><h3>Demoras por causa</h3>' + listaBarras_(d.topCausas, 'causa', 'n') + '</div>';
+    html += '<div class="tarjeta"><h3>Productividad por operador</h3>' +
+      (d.operadores.length ? '<div class="tabla-scroll"><table><thead><tr><th>Operador</th><th>Maniobras</th><th>Min/pza</th></tr></thead><tbody>' +
+      d.operadores.map(function (o) { return '<tr><td>' + esc(o.operador) + '</td><td>' + o.maniobras + '</td><td>' + esc(o.minPorPieza) + '</td></tr>'; }).join('') +
+      '</tbody></table></div>' : '<div class="mini">Sin datos.</div>') + '</div>';
+    html += '<div class="tarjeta"><h3>Uso de maquinaria (SKU)</h3>' + listaBarras_(d.maquinas, 'sku', 'n') + '</div>';
+    html += '<div class="tarjeta"><h3>Volumen por día</h3>' + listaBarras_(d.dias, 'fecha', 'n') + '</div>';
+    html += '</div>';
+    $('db_cuerpo').innerHTML = html;
+  }).catch(fallo);
+}
+function barras_(sla) {
+  var total = (sla.verde + sla.ambar + sla.rojo) || 1;
+  return '<div class="barra-sla">' +
+    '<span class="seg verde" style="width:' + (sla.verde / total * 100) + '%"></span>' +
+    '<span class="seg ambar" style="width:' + (sla.ambar / total * 100) + '%"></span>' +
+    '<span class="seg rojo" style="width:' + (sla.rojo / total * 100) + '%"></span></div>';
+}
+function listaBarras_(items, campo, num) {
+  if (!items || !items.length) { return '<div class="mini">Sin datos.</div>'; }
+  var max = items.reduce(function (m, it) { return Math.max(m, it[num]); }, 1);
+  return items.map(function (it) {
+    return '<div class="barra-fila"><span class="barra-et">' + esc(it[campo]) + '</span>' +
+      '<span class="barra-track"><span class="barra-val" style="width:' + (it[num] / max * 100) + '%"></span></span>' +
+      '<span class="barra-n">' + it[num] + '</span></div>';
+  }).join('');
+}
+function exportar(formato) {
+  avisar('Generando ' + formato.toUpperCase() + '…');
+  llamar('apiExportar', [formato, val('db_desde') || val('h_desde'), val('db_hasta') || val('h_hasta'), val('h_cliente')]).then(function (a) {
+    descargar(a.nombre, a.dataUrl); avisar('Descarga lista.');
+  }).catch(fallo);
+}
 
 /* ------------------------------- historial --------------------------------- */
 
 function pintarHistorial() {
-  var filas = estado.historial;
   var cab = '<div class="tarjeta"><div class="rejilla">' +
     '<div><label>Desde</label><input id="h_desde" type="date" /></div>' +
     '<div><label>Hasta</label><input id="h_hasta" type="date" /></div>' +
     '<div><label>Cliente</label><input id="h_cliente" /></div>' +
-    '<div style="display:flex;align-items:flex-end"><button class="btn primario bloque" onclick="buscarHistorial()">Buscar</button></div>' +
-    '</div></div>';
-  $('vista').innerHTML = cab + '<div id="tabla-hist">' + tablaHistorial(filas) + '</div>';
+    '<div style="display:flex;align-items:flex-end;gap:6px"><button class="btn primario" onclick="buscarHistorial()">Buscar</button>' +
+    '<button class="btn chico" onclick="exportar(\'xlsx\')">⬇ Excel</button><button class="btn chico" onclick="exportar(\'pdf\')">⬇ PDF</button></div>' +
+    '</div></div><div id="tabla-hist">' + tablaHistorial(estado.historial) + '</div>';
+  $('vista').innerHTML = cab;
 }
 function tablaHistorial(filas) {
   if (!filas.length) { return '<div class="tarjeta vacio">Sin maniobras finalizadas.</div>'; }
-  var filasHtml = filas.map(function (r) {
+  var f = filas.map(function (r) {
     return '<tr onclick="verManiobra(\'' + r.id + '\')" style="cursor:pointer">' +
       '<td>' + esc(r.folio) + '</td><td>' + esc(r.fecha) + '</td><td>' + esc(r.cliente) + '</td>' +
       '<td>' + esc(r.flujo) + '</td><td>' + esc(r.cantPiezas) + '</td>' +
-      '<td>' + esc(r.tiempoTotalMin) + '</td><td>' + esc(r.demoraMin) + '</td>' +
-      '<td>' + esc(r.minPorPieza) + '</td>' +
+      '<td>' + esc(r.tiempoTotalMin) + '</td><td>' + esc(r.demoraMin) + '</td><td>' + esc(r.minPorPieza) + '</td>' +
       '<td><span class="etiq ' + esc(r.sla) + '">' + esc(r.sla || '') + '</span></td></tr>';
   }).join('');
   return '<div class="tarjeta tabla-scroll"><table><thead><tr>' +
-    '<th>Folio</th><th>Fecha</th><th>Cliente</th><th>Flujo</th><th>Piezas</th>' +
-    '<th>Total (min)</th><th>Demora</th><th>Min/pza</th><th>SLA</th></tr></thead><tbody>' +
-    filasHtml + '</tbody></table></div>';
+    '<th>Folio</th><th>Fecha</th><th>Cliente</th><th>Flujo</th><th>Piezas</th><th>Total</th><th>Demora</th><th>Min/pza</th><th>SLA</th>' +
+    '</tr></thead><tbody>' + f + '</tbody></table></div>';
 }
 function buscarHistorial() {
   llamar('apiHistorial', [val('h_desde'), val('h_hasta'), val('h_cliente')]).then(function (filas) {
@@ -505,64 +605,71 @@ function buscarHistorial() {
 function verManiobra(id) {
   var r = estado.historial.filter(function (x) { return x.id === id; })[0];
   if (!r) { return; }
-  var soloAdmin = esAdmin();
-  var campo = function (et, val, id2, tipo) {
-    var input = soloAdmin ? '<input id="' + id2 + '" ' + (tipo === 'num' ? 'type="number" step="0.01"' : '') + ' value="' + esc(val) + '" />' : '<b>' + esc(val || '—') + '</b>';
-    return '<div><label>' + et + '</label>' + input + '</div>';
+  var adm = esAdmin();
+  estado.sel = { staff: (r.staff || []).map(function (s) { return s.id; }), maquinas: (r.maquinas || []).map(function (m) { return m.id; }) };
+  var campo = function (et, v, id2, tipo) {
+    return '<div><label>' + et + '</label>' + (adm ? '<input id="' + id2 + '" ' + (tipo === 'num' ? 'type="number" step="0.01"' : '') + ' value="' + esc(v) + '" />' : '<b>' + esc(v || '—') + '</b>') + '</div>';
   };
   var cuerpo = '<div class="rejilla">' +
     campo('Folio', r.folio, 'e_folio') + campo('Cliente', r.cliente, 'e_cliente') +
     campo('Flujo', r.flujo, 'e_flujo') + campo('Etapa', r.etapa, 'e_etapa') +
-    campo('Piezas', r.cantPiezas, 'e_cantPiezas', 'num') + campo('Tarimas', r.tarimas, 'e_tarimas', 'num') +
-    campo('Peso (tons)', r.pesoTons, 'e_pesoTons', 'num') +
-    campo('Tiempo total (min)', r.tiempoTotalMin, 'e_tiempoTotalMin', 'num') +
+    campo('Material', r.material, 'e_material') + campo('Piezas', r.cantPiezas, 'e_cantPiezas', 'num') +
+    campo('Tarimas', r.tarimas, 'e_tarimas', 'num') + campo('Peso (tons)', r.pesoTons, 'e_pesoTons', 'num') +
+    campo('Recepción (min)', r.tiempoRecepcionMin, 'e_tiempoRecepcionMin', 'num') +
+    campo('Espera (min)', r.tiempoEsperaMin, 'e_tiempoEsperaMin', 'num') +
+    campo('Ejecución (min)', r.tiempoEjecucionMin, 'e_tiempoEjecucionMin', 'num') +
+    campo('Total (min)', r.tiempoTotalMin, 'e_tiempoTotalMin', 'num') +
     campo('Demora (min)', r.demoraMin, 'e_demoraMin', 'num') +
     campo('Efectivo (min)', r.tiempoEfectivoMin, 'e_tiempoEfectivoMin', 'num') +
-    '<div class="ancho"><label>Causa de demora</label>' + (soloAdmin ? '<input id="e_causaDemora" value="' + esc(r.causaDemora) + '" />' : '<b>' + esc(r.causaDemora || '—') + '</b>') + '</div>' +
-    '<div class="ancho"><label>Observaciones</label>' + (soloAdmin ? '<textarea id="e_observaciones">' + esc(r.observaciones) + '</textarea>' : '<b>' + esc(r.observaciones || '—') + '</b>') + '</div>' +
-    '<div class="ancho"><label>Detalle del daño / fotos</label>' + (soloAdmin ? '<textarea id="e_detalleDano">' + esc(r.detalleDano) + '</textarea>' : '<div class="mini" style="white-space:pre-wrap">' + esc(r.detalleDano || '—') + '</div>') + '</div>' +
+    '<div class="ancho"><label>Causa de demora</label>' + (adm ? '<input id="e_causaDemora" value="' + esc(r.causaDemora) + '" />' : '<b>' + esc(r.causaDemora || '—') + '</b>') + '</div>' +
+    (adm ? '<div class="ancho"><label>Cuadrilla</label>' + chipsHTML('staff') + '</div><div class="ancho"><label>Equipos (SKU)</label>' + chipsHTML('maquinas') + '</div>'
+         : '<div class="ancho mini">👷 ' + esc((r.staff || []).map(function (s) { return s.nombre; }).join(', ')) + '<br>🚜 ' + esc((r.maquinas || []).map(function (m) { return m.sku; }).join(', ')) + '</div>') +
+    '<div class="ancho"><label>Observaciones</label>' + (adm ? '<textarea id="e_observaciones">' + esc(r.observaciones) + '</textarea>' : '<b>' + esc(r.observaciones || '—') + '</b>') + '</div>' +
+    '<div class="ancho"><label>Detalle del daño / fotos</label>' + (adm ? '<textarea id="e_detalleDano">' + esc(r.detalleDano) + '</textarea>' : '<div class="mini" style="white-space:pre-wrap">' + esc(r.detalleDano || '—') + '</div>') + '</div>' +
     '</div>' +
     '<div class="metricas" style="margin-top:12px"><div><span>Min/pieza</span><b>' + esc(r.minPorPieza) + '</b></div>' +
-    '<div><span>SLA</span><b><span class="etiq ' + esc(r.sla) + '">' + esc(r.sla) + '</span></b></div>' +
-    '<div><span>Inicio–Fin</span><b>' + esc(r.horaInicio) + ' – ' + esc(r.horaFin) + '</b></div></div>' +
-    (soloAdmin ? '<div class="fila-botones"><button class="btn primario bloque" onclick="guardarEdicion(\'' + id + '\')">Guardar cambios</button></div>' : '');
-  abrirModal('Maniobra ' + r.folio, cuerpo, 640);
+    '<div><span>SLA (' + esc(r.slaRegla) + ')</span><b><span class="etiq ' + esc(r.sla) + '">' + esc(r.sla) + '</span></b></div>' +
+    '<div><span>Arribo–Inicio–Fin</span><b>' + esc(r.horaArribo) + ' · ' + esc(r.horaInicio) + ' · ' + esc(r.horaFin) + '</b></div></div>' +
+    (adm ? '<div class="fila-botones"><button class="btn primario" onclick="guardarEdicion(\'' + id + '\')">Guardar cambios</button>' +
+      '<button class="btn rojo" onclick="eliminarManiobra(\'' + id + '\')">🗑 Eliminar</button></div>' : '');
+  abrirModal('Maniobra ' + r.folio, cuerpo, 680);
 }
 function guardarEdicion(id) {
-  var cambios = {
-    folio: val('e_folio'), cliente: val('e_cliente'), flujo: val('e_flujo'), etapa: val('e_etapa'),
-    cantPiezas: val('e_cantPiezas'), tarimas: val('e_tarimas'), pesoTons: val('e_pesoTons'),
-    tiempoTotalMin: val('e_tiempoTotalMin'), demoraMin: val('e_demoraMin'),
-    tiempoEfectivoMin: val('e_tiempoEfectivoMin'), causaDemora: val('e_causaDemora'),
-    observaciones: val('e_observaciones'), detalleDano: val('e_detalleDano')
-  };
+  var cambios = { folio: val('e_folio'), cliente: val('e_cliente'), flujo: val('e_flujo'), etapa: val('e_etapa'),
+    material: val('e_material'), cantPiezas: val('e_cantPiezas'), tarimas: val('e_tarimas'), pesoTons: val('e_pesoTons'),
+    tiempoRecepcionMin: val('e_tiempoRecepcionMin'), tiempoEsperaMin: val('e_tiempoEsperaMin'), tiempoEjecucionMin: val('e_tiempoEjecucionMin'),
+    tiempoTotalMin: val('e_tiempoTotalMin'), demoraMin: val('e_demoraMin'), tiempoEfectivoMin: val('e_tiempoEfectivoMin'),
+    causaDemora: val('e_causaDemora'), observaciones: val('e_observaciones'), detalleDano: val('e_detalleDano'),
+    staffIds: estado.sel.staff, maquinaIds: estado.sel.maquinas };
   llamar('apiEditarRegistro', [id, cambios]).then(function (r) {
     estado.historial = estado.historial.map(function (x) { return x.id === id ? r : x; });
     cerrarModal(); avisar('Cambios guardados.'); if (estado.vista === 'historial') { $('tabla-hist').innerHTML = tablaHistorial(estado.historial); }
   }).catch(fallo);
 }
-</script>
-<script>
-/* Tercera parte: catálogos, usuarios, campos dinámicos, auditoría y ajustes. */
+function eliminarManiobra(id) {
+  var duro = esMaster() && confirm('¿Borrado DEFINITIVO? Aceptar = borra el renglón. Cancelar = solo ocultar (borrado suave).');
+  if (!esMaster()) { if (!confirm('¿Ocultar esta maniobra del historial? (borrado suave)')) { return; } }
+  llamar('apiEliminarRegistro', [id, duro, '']).then(function () {
+    estado.historial = estado.historial.filter(function (x) { return x.id !== id; });
+    cerrarModal(); avisar('Maniobra eliminada.'); if (estado.vista === 'historial') { $('tabla-hist').innerHTML = tablaHistorial(estado.historial); }
+  }).catch(fallo);
+}
 
 /* -------------------------------- catálogos -------------------------------- */
 
 var ETIQUETAS_CAT = { clientes: 'Clientes', turnos: 'Turnos', flujos: 'Flujos', etapas: 'Etapas',
   tiposEquipo: 'Tipos de equipo', materiales: 'Materiales', presentaciones: 'Presentaciones',
-  montacargas: 'Montacargas', causasDemora: 'Causas de demora', unidadesMedida: 'Unidades de medida' };
+  montacargas: 'Montacargas (lista libre)', causasDemora: 'Causas de demora', unidadesMedida: 'Unidades de medida' };
 
 function pintarCatalogos() {
   llamar('apiCatalogosAdmin').then(function (r) {
     var html = '';
     r.tipos.forEach(function (tipo) {
       var items = (r.porTipo[tipo] || []).map(function (it) {
-        return '<div class="item ' + (it.activo ? '' : 'inactivo') + '">' +
-          '<span class="val">' + esc(it.valor) + '</span>' +
-          '<button class="btn chico" onclick="toggleCatalogo(\'' + it.id + '\',' + (!it.activo) + ')">' + (it.activo ? 'Ocultar' : 'Activar') + '</button>' +
-          '</div>';
+        return '<div class="item ' + (it.activo ? '' : 'inactivo') + '"><span class="val">' + esc(it.valor) + '</span>' +
+          '<button class="btn chico" onclick="toggleCatalogo(\'' + it.id + '\',' + (!it.activo) + ')">' + (it.activo ? 'Ocultar' : 'Activar') + '</button></div>';
       }).join('');
-      html += '<div class="tarjeta"><h3>' + esc(ETIQUETAS_CAT[tipo] || tipo) + '</h3>' +
-        '<div class="lista-cat">' + (items || '<div class="mini">Vacío</div>') + '</div>' +
+      html += '<div class="tarjeta"><h3>' + esc(ETIQUETAS_CAT[tipo] || tipo) + '</h3><div class="lista-cat">' + (items || '<div class="mini">Vacío</div>') + '</div>' +
         '<div class="fila-botones"><input id="cat_' + tipo + '" placeholder="Nuevo valor" style="flex:1" />' +
         '<button class="btn primario" onclick="agregarCatalogo(\'' + tipo + '\')">Agregar</button></div></div>';
     });
@@ -570,34 +677,191 @@ function pintarCatalogos() {
   }).catch(fallo);
 }
 function agregarCatalogo(tipo) {
-  var v = $('cat_' + tipo).value.trim();
-  if (!v) { return; }
-  llamar('apiGuardarCatalogo', [{ tipo: tipo, valor: v }]).then(function () {
-    recargarCatalogosBase(); pintarCatalogos();
-  }).catch(fallo);
+  var v = $('cat_' + tipo).value.trim(); if (!v) { return; }
+  llamar('apiGuardarCatalogo', [{ tipo: tipo, valor: v }]).then(function () { recargarBase().then(pintarCatalogos); }).catch(fallo);
 }
 function toggleCatalogo(id, activar) {
-  llamar('apiCambiarCatalogo', [id, activar]).then(function () {
-    recargarCatalogosBase(); pintarCatalogos();
+  llamar('apiCambiarCatalogo', [id, activar]).then(function () { recargarBase().then(pintarCatalogos); }).catch(fallo);
+}
+
+/* -------------------------------- personal --------------------------------- */
+
+function pintarPersonal() {
+  llamar('apiEmpleados').then(function (r) {
+    estado._empleados = r.empleados; estado._puestos = r.puestos;
+    var filas = r.empleados.map(function (e) {
+      return '<tr><td>' + esc(e.nombreCompleto) + '</td><td>' + esc(e.puesto) + '</td>' +
+        '<td>' + (String(e.estado) === 'ACTIVO' ? '<span class="etiq verde">activo</span>' : '<span class="etiq rojo">inactivo</span>') + '</td>' +
+        '<td><button class="btn chico" onclick="editarEmpleado(\'' + e.id + '\')">Editar</button> ' +
+        '<button class="btn chico" onclick="toggleEmpleado(\'' + e.id + '\',' + (String(e.estado) !== 'ACTIVO') + ')">' + (String(e.estado) === 'ACTIVO' ? 'Baja' : 'Alta') + '</button></td></tr>';
+    }).join('');
+    $('vista').innerHTML = '<div class="fila-botones" style="margin-bottom:12px"><button class="btn primario" onclick="editarEmpleado()">＋ Nuevo empleado</button></div>' +
+      '<div class="tarjeta tabla-scroll"><table><thead><tr><th>Nombre</th><th>Puesto</th><th>Estado</th><th></th></tr></thead><tbody>' + (filas || '<tr><td colspan="4" class="mini">Sin empleados.</td></tr>') + '</tbody></table></div>';
   }).catch(fallo);
 }
-function recargarCatalogosBase() {
-  llamar('apiEstadoApp').then(function (r) { if (r.sesion) { estado.catalogos = r.catalogos || {}; } });
+function editarEmpleado(id) {
+  var e = id ? (estado._empleados || []).filter(function (x) { return x.id === id; })[0] : null;
+  e = e || { nombreCompleto: '', puesto: 'Montacarguista' };
+  var puestos = (estado._puestos || []).map(function (p) { return '<option' + (e.puesto === p ? ' selected' : '') + '>' + esc(p) + '</option>'; }).join('');
+  var cuerpo = '<label>Nombre completo</label><input id="em_nombre" value="' + esc(e.nombreCompleto) + '" />' +
+    '<label>Puesto</label><select id="em_puesto">' + puestos + '</select>' +
+    '<input type="hidden" id="em_id" value="' + esc(id || '') + '" />' +
+    '<div class="fila-botones"><button class="btn primario bloque" onclick="guardarEmpleado()">Guardar</button></div>';
+  abrirModal(id ? 'Editar empleado' : 'Nuevo empleado', cuerpo);
+}
+function guardarEmpleado() {
+  llamar('apiGuardarEmpleado', [{ id: val('em_id') || '', nombreCompleto: val('em_nombre'), puesto: val('em_puesto') }])
+    .then(function () { cerrarModal(); avisar('Empleado guardado.'); recargarBase().then(pintarPersonal); }).catch(fallo);
+}
+function toggleEmpleado(id, activar) {
+  llamar('apiCambiarEstadoEmpleado', [id, activar]).then(function () { recargarBase().then(pintarPersonal); }).catch(fallo);
+}
+
+/* --------------------------------- equipos --------------------------------- */
+
+function pintarEquipos() {
+  llamar('apiMontacargas').then(function (ms) {
+    estado._maquinas = ms;
+    var filas = ms.map(function (m) {
+      return '<tr><td>' + esc(m.skuEquipo) + '</td><td>' + esc(m.tipo) + '</td><td>' + esc(m.capacidad) + '</td>' +
+        '<td>' + (String(m.estado) === 'ACTIVO' ? '<span class="etiq verde">activo</span>' : '<span class="etiq rojo">inactivo</span>') + '</td>' +
+        '<td><button class="btn chico" onclick="editarEquipo(\'' + m.id + '\')">Editar</button> ' +
+        '<button class="btn chico" onclick="toggleEquipo(\'' + m.id + '\',' + (String(m.estado) !== 'ACTIVO') + ')">' + (String(m.estado) === 'ACTIVO' ? 'Baja' : 'Alta') + '</button></td></tr>';
+    }).join('');
+    $('vista').innerHTML = '<div class="fila-botones" style="margin-bottom:12px"><button class="btn primario" onclick="editarEquipo()">＋ Nuevo equipo</button></div>' +
+      '<div class="tarjeta tabla-scroll"><table><thead><tr><th>SKU</th><th>Tipo</th><th>Capacidad</th><th>Estado</th><th></th></tr></thead><tbody>' + (filas || '<tr><td colspan="5" class="mini">Sin equipos.</td></tr>') + '</tbody></table></div>';
+  }).catch(fallo);
+}
+function editarEquipo(id) {
+  var m = id ? (estado._maquinas || []).filter(function (x) { return x.id === id; })[0] : null;
+  m = m || { skuEquipo: '', tipo: '', capacidad: '' };
+  var cuerpo = '<div class="rejilla">' +
+    '<div><label>SKU único</label><input id="mq_sku" value="' + esc(m.skuEquipo) + '" placeholder="MTC-01" /></div>' +
+    '<div><label>Tipo</label><input id="mq_tipo" value="' + esc(m.tipo) + '" placeholder="Clamp, Frontal…" /></div>' +
+    '<div><label>Capacidad</label><input id="mq_cap" value="' + esc(m.capacidad) + '" placeholder="2.5 T" /></div>' +
+    '</div><input type="hidden" id="mq_id" value="' + esc(id || '') + '" />' +
+    '<div class="fila-botones"><button class="btn primario bloque" onclick="guardarEquipo()">Guardar</button></div>';
+  abrirModal(id ? 'Editar equipo' : 'Nuevo equipo', cuerpo);
+}
+function guardarEquipo() {
+  llamar('apiGuardarMontacargas', [{ id: val('mq_id') || '', skuEquipo: val('mq_sku'), tipo: val('mq_tipo'), capacidad: val('mq_cap') }])
+    .then(function () { cerrarModal(); avisar('Equipo guardado.'); recargarBase().then(pintarEquipos); }).catch(fallo);
+}
+function toggleEquipo(id, activar) {
+  llamar('apiCambiarEstadoMontacargas', [id, activar]).then(function () { recargarBase().then(pintarEquipos); }).catch(fallo);
+}
+
+/* ------------------------------- matriz SLA -------------------------------- */
+
+function pintarSla() {
+  llamar('apiSlaMatriz').then(function (rs) {
+    estado._sla = rs;
+    var filas = rs.map(function (r) {
+      return '<tr><td>' + esc(r.cliente || '·') + '</td><td>' + esc(r.material || '·') + '</td><td>' + esc(r.etapa || '·') + '</td>' +
+        '<td>' + r.objetivoMin + '</td><td>' + r.ambarMin + '</td>' +
+        '<td>' + (r.activo ? '<span class="etiq verde">activo</span>' : '<span class="etiq rojo">inactivo</span>') + '</td>' +
+        '<td><button class="btn chico" onclick="editarSla(\'' + r.id + '\')">Editar</button> <button class="btn chico" onclick="borrarSla(\'' + r.id + '\')">Borrar</button></td></tr>';
+    }).join('');
+    $('vista').innerHTML = '<div class="tarjeta"><div class="sub">Objetivo por Cliente + Material + Etapa. Deja un campo vacío para que aplique a todos (comodín). La regla más específica gana; si ninguna aplica, se usan los umbrales de Ajustes.</div>' +
+      '<div class="fila-botones"><button class="btn primario" onclick="editarSla()">＋ Nueva regla</button></div></div>' +
+      '<div class="tarjeta tabla-scroll"><table><thead><tr><th>Cliente</th><th>Material</th><th>Etapa</th><th>Objetivo</th><th>Ámbar ≤</th><th>Estado</th><th></th></tr></thead><tbody>' +
+      (filas || '<tr><td colspan="7" class="mini">Sin reglas: se usa el umbral general.</td></tr>') + '</tbody></table></div>';
+  }).catch(fallo);
+}
+function editarSla(id) {
+  var r = id ? (estado._sla || []).filter(function (x) { return x.id === id; })[0] : null;
+  r = r || { cliente: '', material: '', etapa: '', objetivoMin: 30, ambarMin: '', rojaMin: '' };
+  var cuerpo = '<div class="rejilla">' +
+    '<div><label>Cliente</label><select id="s_cliente">' + opcionesDe('clientes', r.cliente, true) + '</select></div>' +
+    '<div><label>Material</label><select id="s_material">' + opcionesDe('materiales', r.material, true) + '</select></div>' +
+    '<div><label>Etapa</label><select id="s_etapa">' + opcionesDe('etapas', r.etapa, true) + '</select></div>' +
+    '<div><label>Objetivo (min)</label><input id="s_obj" type="number" value="' + esc(r.objetivoMin) + '" /></div>' +
+    '<div><label>Ámbar ≤ (min)</label><input id="s_ambar" type="number" value="' + esc(r.ambarMin) + '" placeholder="por defecto 125%" /></div>' +
+    '</div><div class="mini">Verde ≤ objetivo · Ámbar ≤ umbral ámbar · Rojo por encima (o con demora activa).</div>' +
+    '<input type="hidden" id="s_id" value="' + esc(id || '') + '" />' +
+    '<div class="fila-botones"><button class="btn primario bloque" onclick="guardarSla()">Guardar</button></div>';
+  abrirModal(id ? 'Editar regla SLA' : 'Nueva regla SLA', cuerpo);
+}
+function guardarSla() {
+  llamar('apiGuardarSla', [{ id: val('s_id') || '', cliente: val('s_cliente'), material: val('s_material'),
+    etapa: val('s_etapa'), objetivoMin: val('s_obj'), ambarMin: val('s_ambar') }])
+    .then(function () { cerrarModal(); avisar('Regla guardada.'); pintarSla(); }).catch(fallo);
+}
+function borrarSla(id) {
+  if (!confirm('¿Borrar esta regla de SLA?')) { return; }
+  llamar('apiBorrarSla', [id]).then(function () { pintarSla(); }).catch(fallo);
+}
+</script>
+<script>
+/* Cuarta parte: reportes por correo, usuarios, campos dinámicos, auditoría y
+   ajustes (perfil MASTER en su mayoría). */
+
+/* ------------------------------ reportes correo ---------------------------- */
+
+function pintarReportes() {
+  llamar('apiReportes').then(function (r) {
+    estado._reportes = r.reportes;
+    var filas = r.reportes.map(function (x) {
+      return '<tr><td>' + esc(x.nombre) + '</td><td>' + esc(x.frecuencia) + '</td><td>' + esc(x.hora) + ':00</td>' +
+        '<td class="mini">' + esc(x.destinatarios) + '</td><td>' + esc(x.formato) + '</td>' +
+        '<td>' + (x.activo ? '<span class="etiq verde">activo</span>' : '<span class="etiq rojo">inactivo</span>') + '</td>' +
+        '<td><button class="btn chico" onclick="editarReporte(\'' + x.id + '\')">Editar</button> ' +
+        '<button class="btn chico" onclick="enviarReporte(\'' + x.id + '\')">Enviar</button> ' +
+        '<button class="btn chico" onclick="borrarReporte(\'' + x.id + '\')">Borrar</button></td></tr>';
+    }).join('');
+    var aviso = r.disparadorActivo ? '<span class="etiq verde">disparador activo</span>'
+      : '<span class="etiq ambar">sin disparador — se instala al guardar un reporte</span>';
+    $('vista').innerHTML = '<div class="tarjeta"><div class="sub">Reportes automáticos por correo (se envían con la cuenta que publicó la app). ' + aviso + '</div>' +
+      '<div class="fila-botones"><button class="btn primario" onclick="editarReporte()">＋ Nuevo reporte</button></div></div>' +
+      '<div class="tarjeta tabla-scroll"><table><thead><tr><th>Nombre</th><th>Frecuencia</th><th>Hora</th><th>Destinatarios</th><th>Formato</th><th>Estado</th><th></th></tr></thead><tbody>' +
+      (filas || '<tr><td colspan="7" class="mini">Sin reportes programados.</td></tr>') + '</tbody></table></div>';
+  }).catch(fallo);
+}
+function editarReporte(id) {
+  var x = id ? (estado._reportes || []).filter(function (r) { return r.id === id; })[0] : null;
+  x = x || { nombre: '', frecuencia: 'diario', diaSemana: '1', hora: '07', destinatarios: '', formato: 'xlsx' };
+  var freqs = ['diario', 'semanal', 'mensual'].map(function (f) { return '<option' + (x.frecuencia === f ? ' selected' : '') + '>' + f + '</option>'; }).join('');
+  var dias = ['0','1','2','3','4','5','6'];
+  var nom = ['Domingo','Lunes','Martes','Miércoles','Jueves','Viernes','Sábado'];
+  var diasHtml = dias.map(function (d, i) { return '<option value="' + d + '"' + (String(x.diaSemana) === d ? ' selected' : '') + '>' + nom[i] + '</option>'; }).join('');
+  var cuerpo = '<div class="rejilla">' +
+    '<div class="ancho"><label>Nombre</label><input id="r_nombre" value="' + esc(x.nombre) + '" /></div>' +
+    '<div><label>Frecuencia</label><select id="r_frecuencia">' + freqs + '</select></div>' +
+    '<div><label>Día (si es semanal)</label><select id="r_dia">' + diasHtml + '</select></div>' +
+    '<div><label>Hora (0–23)</label><input id="r_hora" type="number" min="0" max="23" value="' + esc(Number(x.hora)) + '" /></div>' +
+    '<div><label>Formato</label><select id="r_formato"><option value="xlsx"' + (x.formato === 'xlsx' ? ' selected' : '') + '>Excel</option><option value="pdf"' + (x.formato === 'pdf' ? ' selected' : '') + '>PDF</option></select></div>' +
+    '<div class="ancho"><label>Destinatarios (correos separados por coma)</label><input id="r_dest" value="' + esc(x.destinatarios) + '" /></div>' +
+    '</div><input type="hidden" id="r_id" value="' + esc(id || '') + '" />' +
+    '<div class="mini">Diario = día anterior · Semanal = últimos 7 días · Mensual = últimos 31 días.</div>' +
+    '<div class="fila-botones"><button class="btn primario bloque" onclick="guardarReporte()">Guardar</button></div>';
+  abrirModal(id ? 'Editar reporte' : 'Nuevo reporte', cuerpo);
+}
+function guardarReporte() {
+  llamar('apiGuardarReporte', [{ id: val('r_id') || '', nombre: val('r_nombre'), frecuencia: val('r_frecuencia'),
+    diaSemana: val('r_dia'), hora: val('r_hora'), destinatarios: val('r_dest'), formato: val('r_formato') }])
+    .then(function () { cerrarModal(); avisar('Reporte guardado y disparador programado.'); pintarReportes(); }).catch(fallo);
+}
+function enviarReporte(id) {
+  avisar('Enviando…');
+  llamar('apiEnviarReporteAhora', [id]).then(function () { avisar('Reporte enviado.'); pintarReportes(); }).catch(fallo);
+}
+function borrarReporte(id) {
+  if (!confirm('¿Borrar este reporte programado?')) { return; }
+  llamar('apiBorrarReporte', [id]).then(function () { pintarReportes(); }).catch(fallo);
 }
 
 /* --------------------------------- usuarios -------------------------------- */
 
 function pintarUsuarios() {
   llamar('apiUsuarios').then(function (us) {
+    estado._usuarios = us;
     var filas = us.map(function (u) {
-      return '<tr><td>' + esc(u.nombre) + '</td><td>' + esc(u.email || '—') + '</td>' +
-        '<td><span class="chip">' + esc(u.rol) + '</span></td>' +
+      return '<tr><td>' + esc(u.nombre) + '</td><td>' + esc(u.email || '—') + '</td><td><span class="chip">' + esc(u.rol) + '</span></td>' +
         '<td>' + (u.estado === 'activo' ? '<span class="etiq verde">activo</span>' : '<span class="etiq rojo">inactivo</span>') + '</td>' +
         '<td><button class="btn chico" onclick="editarUsuario(\'' + u.id + '\')">Editar</button> ' +
         (u.rol === 'OPERATIVO' ? '<button class="btn chico" onclick="resetPin(\'' + u.id + '\')">PIN</button> ' : '') +
         '<button class="btn chico" onclick="toggleUsuario(\'' + u.id + '\',' + (u.estado !== 'activo') + ')">' + (u.estado === 'activo' ? 'Desactivar' : 'Activar') + '</button></td></tr>';
     }).join('');
-    estado._usuarios = us;
     $('vista').innerHTML = '<div class="fila-botones" style="margin-bottom:12px"><button class="btn primario" onclick="editarUsuario()">＋ Nuevo usuario</button></div>' +
       '<div class="tarjeta tabla-scroll"><table><thead><tr><th>Nombre</th><th>Correo</th><th>Rol</th><th>Estado</th><th></th></tr></thead><tbody>' + filas + '</tbody></table></div>';
   }).catch(fallo);
@@ -605,17 +869,14 @@ function pintarUsuarios() {
 function editarUsuario(id) {
   var u = id ? (estado._usuarios || []).filter(function (x) { return x.id === id; })[0] : null;
   u = u || { nombre: '', email: '', rol: 'OPERATIVO' };
-  var roles = ['OPERATIVO', 'ADMINISTRADOR', 'MASTER'].map(function (r) {
-    return '<option' + (u.rol === r ? ' selected' : '') + '>' + r + '</option>';
-  }).join('');
+  var roles = ['OPERATIVO', 'ADMINISTRADOR', 'MASTER'].map(function (r) { return '<option' + (u.rol === r ? ' selected' : '') + '>' + r + '</option>'; }).join('');
   var cuerpo = '<div class="rejilla">' +
     '<div class="ancho"><label>Nombre</label><input id="u_nombre" value="' + esc(u.nombre) + '" /></div>' +
     '<div><label>Rol</label><select id="u_rol" onchange="ajustarCamposRol()">' + roles + '</select></div>' +
     '<div><label>Correo (admin/master)</label><input id="u_email" value="' + esc(u.email) + '" /></div>' +
     '<div id="wrap_pin"><label>PIN (4 dígitos)</label><input id="u_pin" inputmode="numeric" maxlength="4" placeholder="' + (id ? 'Dejar vacío = sin cambio' : '') + '" /></div>' +
     '<div id="wrap_clave"><label>Contraseña</label><input id="u_clave" type="password" placeholder="' + (id ? 'Dejar vacío = sin cambio' : '') + '" /></div>' +
-    '</div>' +
-    '<input type="hidden" id="u_id" value="' + esc(id || '') + '" />' +
+    '</div><input type="hidden" id="u_id" value="' + esc(id || '') + '" />' +
     '<div class="fila-botones"><button class="btn primario bloque" onclick="guardarUsuario()">Guardar</button></div>';
   abrirModal(id ? 'Editar usuario' : 'Nuevo usuario', cuerpo);
   ajustarCamposRol();
@@ -626,18 +887,12 @@ function ajustarCamposRol() {
   $('wrap_clave').style.display = esOp ? 'none' : '';
 }
 function guardarUsuario() {
-  var datos = { id: val('u_id') || '', nombre: val('u_nombre'), rol: val('u_rol'),
-    email: val('u_email'), pin: val('u_pin'), clave: val('u_clave') };
-  llamar('apiGuardarUsuario', [datos]).then(function () {
-    cerrarModal(); avisar('Usuario guardado.'); pintarUsuarios();
-  }).catch(fallo);
+  llamar('apiGuardarUsuario', [{ id: val('u_id') || '', nombre: val('u_nombre'), rol: val('u_rol'), email: val('u_email'), pin: val('u_pin'), clave: val('u_clave') }])
+    .then(function () { cerrarModal(); avisar('Usuario guardado.'); pintarUsuarios(); }).catch(fallo);
 }
-function toggleUsuario(id, activar) {
-  llamar('apiCambiarEstadoUsuario', [id, activar]).then(function () { pintarUsuarios(); }).catch(fallo);
-}
+function toggleUsuario(id, activar) { llamar('apiCambiarEstadoUsuario', [id, activar]).then(function () { pintarUsuarios(); }).catch(fallo); }
 function resetPin(id) {
-  var pin = prompt('Nuevo PIN de 4 dígitos:');
-  if (pin === null) { return; }
+  var pin = prompt('Nuevo PIN de 4 dígitos:'); if (pin === null) { return; }
   llamar('apiResetPin', [id, pin]).then(function () { avisar('PIN actualizado.'); }).catch(fallo);
 }
 
@@ -671,17 +926,11 @@ function editarCampo(id) {
   abrirModal(id ? 'Editar campo' : 'Nuevo campo', cuerpo);
 }
 function guardarCampo() {
-  var datos = { id: val('cc_id') || '', etiqueta: val('cc_etiqueta'), tipo: val('cc_tipo'), opciones: val('cc_opciones') };
-  llamar('apiGuardarCampoCustom', [datos]).then(function () {
-    cerrarModal(); avisar('Campo guardado.'); pintarCampos(); recargarCatalogosBase();
-    llamar('apiEstadoApp').then(function (r) { if (r.sesion) { estado.camposCustom = r.camposCustom || []; } });
-  }).catch(fallo);
+  llamar('apiGuardarCampoCustom', [{ id: val('cc_id') || '', etiqueta: val('cc_etiqueta'), tipo: val('cc_tipo'), opciones: val('cc_opciones') }])
+    .then(function () { cerrarModal(); avisar('Campo guardado.'); recargarBase().then(pintarCampos); }).catch(fallo);
 }
 function toggleCampo(id, activar) {
-  llamar('apiCambiarCampoCustom', [id, activar]).then(function () {
-    pintarCampos();
-    llamar('apiEstadoApp').then(function (r) { if (r.sesion) { estado.camposCustom = r.camposCustom || []; } });
-  }).catch(fallo);
+  llamar('apiCambiarCampoCustom', [id, activar]).then(function () { recargarBase().then(pintarCampos); }).catch(fallo);
 }
 
 /* -------------------------------- auditoría -------------------------------- */
@@ -689,13 +938,11 @@ function toggleCampo(id, activar) {
 function pintarAuditoria() {
   llamar('apiAuditoria', [200]).then(function (ls) {
     var filas = ls.map(function (l) {
-      return '<tr><td class="mini">' + esc(l.fechaHora) + '</td><td>' + esc(l.usuario) + '</td>' +
-        '<td>' + esc(l.accion) + '</td><td>' + esc(l.folio) + '</td><td>' + esc(l.campo) + '</td>' +
-        '<td class="mini">' + esc(l.valorAnterior) + '</td><td class="mini">' + esc(l.valorNuevo) + '</td></tr>';
+      return '<tr><td class="mini">' + esc(l.fechaHora) + '</td><td>' + esc(l.usuario) + '</td><td>' + esc(l.accion) + '</td>' +
+        '<td>' + esc(l.folio) + '</td><td>' + esc(l.campo) + '</td><td class="mini">' + esc(l.valorAnterior) + '</td><td class="mini">' + esc(l.valorNuevo) + '</td></tr>';
     }).join('');
-    $('vista').innerHTML = '<div class="tarjeta tabla-scroll"><table><thead><tr>' +
-      '<th>Fecha/hora</th><th>Usuario</th><th>Acción</th><th>Folio</th><th>Campo</th><th>Antes</th><th>Después</th>' +
-      '</tr></thead><tbody>' + (filas || '<tr><td colspan="7" class="mini">Sin movimientos.</td></tr>') + '</tbody></table></div>';
+    $('vista').innerHTML = '<div class="tarjeta tabla-scroll"><table><thead><tr><th>Fecha/hora</th><th>Usuario</th><th>Acción</th><th>Folio</th><th>Campo</th><th>Antes</th><th>Después</th></tr></thead><tbody>' +
+      (filas || '<tr><td colspan="7" class="mini">Sin movimientos.</td></tr>') + '</tbody></table></div>';
   }).catch(fallo);
 }
 
@@ -703,25 +950,17 @@ function pintarAuditoria() {
 
 function pintarAjustes() {
   var c = estado.config;
-  $('vista').innerHTML = '<div class="tarjeta"><h3>Ajustes generales</h3>' +
-    '<div class="rejilla">' +
+  $('vista').innerHTML = '<div class="tarjeta"><h3>Ajustes generales</h3><div class="rejilla">' +
     '<div class="ancho"><label>Empresa</label><input id="cfg_empresa" value="' + esc(c.empresa || '') + '" /></div>' +
-    '<div><label>SLA verde ≤ (min)</label><input id="cfg_slaVerde" type="number" value="' + esc(c.slaVerde || 45) + '" /></div>' +
-    '<div><label>SLA ámbar ≤ (min)</label><input id="cfg_slaAmbar" type="number" value="' + esc(c.slaAmbar || 90) + '" /></div>' +
+    '<div><label>SLA objetivo por defecto (min)</label><input id="cfg_slaVerde" type="number" value="' + esc(c.slaVerde || 45) + '" /></div>' +
+    '<div><label>SLA ámbar por defecto (min)</label><input id="cfg_slaAmbar" type="number" value="' + esc(c.slaAmbar || 90) + '" /></div>' +
     '<div><label>Horas de sesión</label><input id="cfg_horasSesion" type="number" value="' + esc(c.horasSesion || 12) + '" /></div>' +
-    '</div><div class="mini" style="margin-top:8px">Por encima del umbral ámbar, el semáforo se pone en rojo.</div>' +
-    '<div class="fila-botones"><button class="btn primario bloque" onclick="guardarAjustes()">Guardar</button></div></div>' +
-    '<div class="tarjeta"><h3>Semáforo SLA</h3>' +
-    '<div class="metricas"><div class="semaforo"><span class="luz verde"></span> ≤ ' + esc(c.slaVerde || 45) + ' min</div>' +
-    '<div class="semaforo"><span class="luz ambar"></span> ≤ ' + esc(c.slaAmbar || 90) + ' min</div>' +
-    '<div class="semaforo"><span class="luz rojo"></span> más</div></div></div>';
+    '</div><div class="mini" style="margin-top:8px">Estos umbrales aplican cuando ninguna regla de la matriz de SLA coincide.</div>' +
+    '<div class="fila-botones"><button class="btn primario bloque" onclick="guardarAjustes()">Guardar</button></div></div>';
 }
 function guardarAjustes() {
-  var datos = { empresa: val('cfg_empresa'), slaVerde: val('cfg_slaVerde'),
-    slaAmbar: val('cfg_slaAmbar'), horasSesion: val('cfg_horasSesion') };
-  llamar('apiGuardarConfig', [datos]).then(function (cfg) {
-    estado.config = cfg; avisar('Ajustes guardados.'); pintarAjustes();
-  }).catch(fallo);
+  llamar('apiGuardarConfig', [{ empresa: val('cfg_empresa'), slaVerde: val('cfg_slaVerde'), slaAmbar: val('cfg_slaAmbar'), horasSesion: val('cfg_horasSesion') }])
+    .then(function (cfg) { estado.config = cfg; avisar('Ajustes guardados.'); pintarAjustes(); }).catch(fallo);
 }
 
 /* --------------------------------- arranque -------------------------------- */

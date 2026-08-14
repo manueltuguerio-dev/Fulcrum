@@ -4,14 +4,18 @@
  * Aplicación web sobre Google Apps Script. La lógica está repartida así:
  *   Db.gs         hoja de cálculo como base de datos y utilidades
  *   Auth.gs       acceso por PIN / contraseña, sesiones y bitácora
- *   Registro.gs   maniobras y cronómetro multietapa (el corazón)
+ *   Registro.gs   maniobras y cronómetro por sub-etapas (el corazón)
+ *   Empleados.gs  padrón de personal (cuadrillas) y equipos (montacargas/SKU)
+ *   Sla.gs        matriz de SLA configurable por cliente/material/etapa
  *   Catalogos.gs  listas desplegables y campos dinámicos (lectura)
+ *   Reportes.gs   tablero (KPIs), exportación y reportes por correo
  *   Master.gs     usuarios, roles, campos dinámicos, auditoría, ajustes
  *   Fotos.gs      fotos de carga y daño en Drive
  *
  * Para instalar, ejecuta desde el editor, en este orden:
- *   1. instalar()       crea la hoja de cálculo y te deja como MASTER
- *   2. cargarEjemplo()  (opcional) llena catálogos para probar de inmediato
+ *   1. instalar()              crea la hoja de cálculo y te deja como MASTER
+ *   2. cargarEjemplo()         (opcional) llena catálogos para probar
+ *   3. instalarDisparadores()  programa el envío automático de reportes
  * y luego publica: Implementar > Nueva implementación > Aplicación web.
  * Tu contraseña temporal de MASTER es "almacen"; cámbiala en Ajustes.
  */
@@ -42,14 +46,22 @@ var FUNCIONES_PUBLICAS = [
   'apiOperativos', 'apiEntrarPin', 'apiEntrarClave', 'apiSalir',
   // app
   'apiEstadoApp', 'apiVivas',
-  // cronómetro
-  'apiIniciar', 'apiPausar', 'apiReanudar', 'apiFinalizar',
+  // cronómetro y sub-etapas
+  'apiIniciar', 'apiAvanzarEtapa', 'apiPausar', 'apiReanudar', 'apiFinalizar',
   // maniobras (admin)
-  'apiEditarRegistro', 'apiHistorial',
+  'apiEditarRegistro', 'apiEliminarRegistro', 'apiHistorial',
   // fotos
   'apiSubirFoto',
   // catálogos (admin)
   'apiCatalogosAdmin', 'apiGuardarCatalogo', 'apiCambiarCatalogo',
+  // personal y equipos (admin)
+  'apiEmpleados', 'apiGuardarEmpleado', 'apiCambiarEstadoEmpleado',
+  'apiMontacargas', 'apiGuardarMontacargas', 'apiCambiarEstadoMontacargas',
+  // matriz de SLA (admin)
+  'apiSlaMatriz', 'apiGuardarSla', 'apiBorrarSla',
+  // tablero y reportes
+  'apiDashboard', 'apiGuardarWidgets', 'apiExportar',
+  'apiReportes', 'apiGuardarReporte', 'apiBorrarReporte', 'apiEnviarReporteAhora',
   // master
   'apiUsuarios', 'apiGuardarUsuario', 'apiCambiarEstadoUsuario', 'apiResetPin',
   'apiCamposCustom', 'apiGuardarCampoCustom', 'apiCambiarCampoCustom',
@@ -67,6 +79,7 @@ var FUNCIONES_PUBLICAS = [
  */
 function ejecutar(token, nombre, args) {
   SESION_TOKEN = token ? String(token) : '';
+  _reglasSlaCache = null; // memoria de SLA fresca en cada petición (ver Sla.gs)
   if (FUNCIONES_PUBLICAS.indexOf(String(nombre)) === -1) {
     throw new Error('Operación no permitida: ' + nombre);
   }
@@ -116,6 +129,15 @@ function verificar() {
     problemas.push('No hay ningún MASTER activo. Ejecuta instalar().');
   }
 
+  var hayReportes = leerTodo_('CONFIG_REPORTES').length > 0;
+  var hayDisparador = ScriptApp.getProjectTriggers().some(function (t) {
+    return t.getHandlerFunction() === 'jobReportes';
+  });
+  if (hayReportes && !hayDisparador) {
+    Logger.log('AVISO: hay reportes programados pero falta el disparador. '
+      + 'Ejecuta instalarDisparadores().');
+  }
+
   if (problemas.length) {
     Logger.log('NO ESTÁ LISTO:');
     problemas.forEach(function (p) { Logger.log('  - ' + p); });
@@ -124,7 +146,10 @@ function verificar() {
 
   Logger.log('OK — todo listo.');
   Logger.log('Usuarios: ' + leerTodo_('USUARIOS').length
+    + ' | Empleados: ' + leerTodo_('EMPLEADOS').length
+    + ' | Equipos: ' + leerTodo_('MONTACARGAS').length
     + ' | Catálogos: ' + leerTodo_('CATALOGOS').length
+    + ' | Reglas SLA: ' + leerTodo_('CONFIG_SLA').length
     + ' | Maniobras: ' + leerTodo_('REGISTRO').length);
   return true;
 }
