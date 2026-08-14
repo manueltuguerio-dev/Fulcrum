@@ -775,6 +775,46 @@ function eliminarManiobra(id) {
   return { ok: true };
 }
 
+function editarManiobra(id, data) {
+  var sh   = hoja_(HOJA, COLUMNAS);
+  var fila = buscarFila_(sh, id);
+  if (fila < 0) throw new Error('Maniobra no encontrada: ' + id);
+  var row  = sh.getRange(fila, 1, 1, COLUMNAS.length).getValues()[0];
+  if (data.cliente       !== undefined) row[6]  = data.cliente;
+  if (data.no_unidad     !== undefined) row[7]  = data.no_unidad;
+  if (data.tipo_equipo   !== undefined) row[8]  = data.tipo_equipo;
+  if (data.material      !== undefined) row[10] = data.material;
+  if (data.presentacion  !== undefined) row[11] = data.presentacion;
+  if (data.observaciones !== undefined) row[35] = data.observaciones;
+  sh.getRange(fila, 1, 1, COLUMNAS.length).setValues([row]);
+  return { ok: true };
+}
+
+function forzarCierreManiobra(id) {
+  var sh    = hoja_(HOJA, COLUMNAS);
+  var shEta = hoja_(HOJA_ETA, COL_ETA);
+  var fila  = buscarFila_(sh, id);
+  if (fila < 0) throw new Error('Maniobra no encontrada: ' + id);
+  var row   = sh.getRange(fila, 1, 1, COLUMNAS.length).getValues()[0];
+  var ahora = new Date();
+  row[20] = 'finalizada';
+  row[22] = ahora;
+  sh.getRange(fila, 1, 1, COLUMNAS.length).setValues([row]);
+  if (shEta.getLastRow() >= 2) {
+    var etaVals = shEta.getRange(2, 1, shEta.getLastRow() - 1, COL_ETA.length).getValues();
+    var props   = PropertiesService.getScriptProperties();
+    etaVals.forEach(function(r, i) {
+      if (String(r[1]) !== String(id)) return;
+      if (r[5] === 'en_curso' || r[5] === 'en_pausa') {
+        r[5] = 'finalizada'; r[8] = ahora; r[18] = ahora;
+        props.deleteProperty('pe_' + String(r[0]));
+        shEta.getRange(i + 2, 1, 1, COL_ETA.length).setValues([r]);
+      }
+    });
+  }
+  return { ok: true };
+}
+
 function getManiobras(filtros) {
   filtros = filtros || {};
   var sh = hoja_(HOJA, COLUMNAS);

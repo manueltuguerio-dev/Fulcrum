@@ -4,59 +4,106 @@
   <base target="_top">
   <?!= include('Estilos') ?>
   <style>
-    .man-card         { display:flex;flex-direction:column;gap:0; }
-    .man-card-head    { display:flex;justify-content:space-between;align-items:flex-start;gap:8px;margin-bottom:12px; }
-    .man-folio        { font-size:11px;color:var(--muted);letter-spacing:.04em;margin-bottom:2px; }
-    .man-title        { font-size:16px;font-weight:700; }
-    .man-sub          { font-size:12px;color:var(--muted);margin-top:3px; }
-    .crono-block      { background:var(--bg);border:1px solid var(--line);border-radius:10px;
-                        text-align:center;padding:14px 12px;margin:12px 0; }
-    .crono-label      { font-size:10px;text-transform:uppercase;letter-spacing:.08em;color:var(--muted);margin-bottom:6px; }
-    .eta-name         { font-size:13px;font-weight:600;margin-bottom:10px;color:var(--txt); }
-    .action-bar       { display:flex;gap:6px;flex-wrap:wrap;align-items:center;padding-top:10px;border-top:1px solid var(--line); }
-    .empty-state      { text-align:center;padding:40px 20px;color:var(--muted); }
-    .empty-icon       { font-size:36px;margin-bottom:10px; }
-    .loading-dots::after { content:'…'; animation:dots 1.2s step-end infinite; }
-    @keyframes dots { 0%,100%{content:'.'} 33%{content:'..'} 66%{content:'…'} }
-    .section-sep      { height:1px;background:var(--line);margin:8px 0; }
-    .refresh-hint     { font-size:11px;color:var(--muted);display:flex;align-items:center;gap:6px; }
-    .pulse-dot        { width:6px;height:6px;border-radius:50%;background:var(--green);
-                        animation:pulse 2s ease-in-out infinite; }
-    @keyframes pulse  { 0%,100%{opacity:1}50%{opacity:.3} }
-    .kpi-mini         { font-size:11px;color:var(--muted);margin-top:2px; }
+    /* ════════════════════════════════════════════
+       STAGE TIMELINE
+    ════════════════════════════════════════════ */
+    .eta-list        { display:flex;flex-direction:column;gap:6px;margin:10px 0; }
+    .eta-item        { display:flex;align-items:center;gap:10px;padding:8px 10px;
+                       border-radius:8px;border:1px solid var(--line);background:var(--bg); }
+    .eta-item.active { border-color:var(--brand);background:rgba(47,109,246,.07); }
+    .eta-item.done   { border-color:var(--step-done-brd);background:var(--step-done-bg); }
+    .eta-item.skip   { opacity:.55; }
+    .eta-icon        { width:22px;height:22px;border-radius:50%;display:flex;align-items:center;
+                       justify-content:center;flex-shrink:0;font-size:11px;font-weight:700; }
+    .eta-icon.active { background:var(--brand);color:#fff; }
+    .eta-icon.done   { background:var(--green);color:#fff; }
+    .eta-icon.skip   { background:var(--line);color:var(--muted); }
+    .eta-icon.pend   { background:var(--line);color:var(--muted); }
+    .eta-name        { flex:1;font-size:13px;font-weight:500; }
+    .eta-name.active { font-weight:700;color:var(--brand); }
+    .eta-name.done   { color:var(--step-done-txt); }
+    .eta-name.skip   { text-decoration:line-through; }
+    .eta-time        { font-size:13px;font-weight:700;font-variant-numeric:tabular-nums; }
+    .eta-time.active { color:var(--amber); }
+    .eta-time.done   { color:var(--step-done-txt); }
+    .eta-est         { font-size:11px;color:var(--muted); }
+    .eta-est.over    { color:var(--red);font-weight:600; }
+
+    /* ════════════════════════════════════════════
+       MANIOBRA CARD
+    ════════════════════════════════════════════ */
+    .man-card        { display:flex;flex-direction:column;gap:0; }
+    .man-head        { display:flex;justify-content:space-between;align-items:flex-start;
+                       gap:8px;margin-bottom:12px; }
+    .man-folio       { font-size:11px;color:var(--muted);letter-spacing:.04em;margin-bottom:2px; }
+    .man-title       { font-size:16px;font-weight:700; }
+    .man-sub         { font-size:12px;color:var(--muted);margin-top:3px; }
+    .man-total       { display:flex;justify-content:space-between;align-items:center;
+                       padding:10px 12px;background:var(--bg);border:1px solid var(--line);
+                       border-radius:8px;margin-top:8px; }
+    .man-total-lbl   { font-size:11px;text-transform:uppercase;letter-spacing:.06em;color:var(--muted); }
+    .man-total-val   { font-size:20px;font-weight:700;font-variant-numeric:tabular-nums;color:var(--txt); }
+    .action-bar      { display:flex;gap:6px;flex-wrap:wrap;align-items:center;
+                       padding-top:10px;margin-top:8px;border-top:1px solid var(--line); }
+
+    /* ════════════════════════════════════════════
+       FORM — SECCIONES
+    ════════════════════════════════════════════ */
+    .section-toggle  { display:flex;align-items:center;justify-content:space-between;
+                       cursor:pointer;user-select:none;padding:4px 0; }
+    .section-toggle h2 { margin:0; }
+    .chevron         { font-size:16px;color:var(--muted);transition:transform .2s; }
+    .chevron.open    { transform:rotate(180deg); }
+    .collapsible     { overflow:hidden;transition:max-height .3s ease; }
+
+    /* ════════════════════════════════════════════
+       REGISTRO SUMMARY
+    ════════════════════════════════════════════ */
+    .reg-grid        { display:grid;grid-template-columns:repeat(auto-fill,minmax(180px,1fr));gap:10px; }
+    .reg-item        { display:flex;flex-direction:column;gap:2px; }
+    .reg-key         { font-size:10px;text-transform:uppercase;letter-spacing:.06em;color:var(--muted); }
+    .reg-val         { font-size:14px;font-weight:600;color:var(--txt); }
+
+    /* ════════════════════════════════════════════
+       MISC
+    ════════════════════════════════════════════ */
+    .empty-state     { text-align:center;padding:40px 20px;color:var(--muted); }
+    .refresh-hint    { display:flex;align-items:center;gap:6px;font-size:11px;color:var(--muted); }
+    .pulse-dot       { width:6px;height:6px;border-radius:50%;background:var(--green);
+                       animation:pulse 2s ease-in-out infinite;flex-shrink:0; }
+    @keyframes pulse { 0%,100%{opacity:1}50%{opacity:.3} }
+    .badge-count     { display:inline-block;background:var(--brand);color:#fff;border-radius:999px;
+                       font-size:10px;font-weight:700;padding:1px 7px;vertical-align:middle; }
   </style>
 </head>
 <body>
 
-<!-- ══════════════════════════════════════════════
+<!-- ══════════════════════════════════════════
      LOGIN OVERLAY
-══════════════════════════════════════════════ -->
+══════════════════════════════════════════ -->
 <div id="login-overlay" style="
   position:fixed;inset:0;z-index:999;
   display:flex;align-items:center;justify-content:center;
-  background:var(--bg);
-">
+  background:var(--bg);">
   <div style="background:var(--card);border:1px solid var(--line);border-radius:16px;
               padding:36px 32px;width:92%;max-width:380px;box-shadow:var(--shadow);">
     <div style="text-align:center;margin-bottom:28px">
       <div style="width:52px;height:52px;border-radius:14px;background:var(--brand);
                   display:inline-flex;align-items:center;justify-content:center;margin-bottom:12px;">
         <svg width="26" height="26" viewBox="0 0 24 24" fill="#fff">
-          <path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm0 18c-4.41 0-8-3.59-8-8s3.59-8 8-8 8 3.59 8 8-3.59 8-8 8zm.5-13H11v6l5.25 3.15.75-1.23-4.5-2.67V7z"/>
+          <path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm.5 5H11v6l5.25 3.15.75-1.23-4.5-2.67V7z"/>
         </svg>
       </div>
       <div style="font-size:22px;font-weight:700;margin-bottom:4px">LogiTime</div>
-      <div style="font-size:13px;color:var(--muted)">Gestión de maniobras de almacén</div>
+      <div style="font-size:13px;color:var(--muted)">Control de maniobras de almacén</div>
     </div>
     <div style="display:flex;flex-direction:column;gap:14px">
-      <div>
-        <label>Correo electrónico</label>
+      <div><label>Correo electrónico</label>
         <input id="l-email" type="email" placeholder="usuario@empresa.com" autocomplete="username">
       </div>
-      <div>
-        <label>PIN de acceso</label>
-        <input id="l-pin" type="password" placeholder="••••" maxlength="10" autocomplete="current-password"
-               onkeydown="if(event.key==='Enter')doLogin()">
+      <div><label>PIN de acceso</label>
+        <input id="l-pin" type="password" placeholder="••••" maxlength="10"
+               autocomplete="current-password" onkeydown="if(event.key==='Enter')doLogin()">
       </div>
       <div id="l-err" style="display:none;color:var(--red);font-size:13px;text-align:center;
                               background:rgba(229,72,77,.1);border-radius:8px;padding:8px 12px"></div>
@@ -70,7 +117,7 @@
 
 <div class="wrap">
 
-  <!-- ── Encabezado ──────────────────────────────────────────── -->
+  <!-- ENCABEZADO -->
   <header>
     <div style="display:flex;align-items:center;gap:12px">
       <div style="width:34px;height:34px;border-radius:9px;background:var(--brand);
@@ -94,11 +141,11 @@
     </div>
   </header>
 
-  <!-- ── Pestañas ────────────────────────────────────────────── -->
+  <!-- PESTAÑAS -->
   <div class="tabs">
     <button class="active" data-tab="nueva"      onclick="tab('nueva')">Nueva maniobra</button>
     <button               data-tab="curso"       onclick="tab('curso')">
-      En curso <span id="badge-curso" style="opacity:.7;font-size:11px"></span>
+      En curso <span id="badge-curso" class="badge-count" style="display:none"></span>
     </button>
     <button               data-tab="lista"       onclick="tab('lista')">Listado</button>
     <button               data-tab="empleados"   onclick="tab('empleados')">Empleados</button>
@@ -106,118 +153,131 @@
     <button id="tab-btn-admin" data-tab="admin"  onclick="tab('admin')" style="display:none">Admin ⚙</button>
   </div>
 
-  <!-- ════════════════════════════════════════════════════════════
+  <!-- ════════════════════════════════════════
        NUEVA MANIOBRA
-  ════════════════════════════════════════════════════════════ -->
+  ════════════════════════════════════════ -->
   <section id="tab-nueva">
 
+    <!-- DATOS CRÍTICOS (siempre visible) -->
     <div class="card">
-      <h2>1 · Identificación</h2>
+      <h2>Datos esenciales</h2>
       <div class="grid">
         <div><label>Fecha</label><input type="date" id="fecha"></div>
         <div><label>Turno</label><select id="turno"></select></div>
-        <div><label>Flujo de maniobra</label><select id="flujo" onchange="onFlujoChange()"></select></div>
-        <div><label>Cliente</label><select id="cliente"></select></div>
-      </div>
-    </div>
-
-    <div class="card">
-      <h2>2 · Unidad / Equipo</h2>
-      <div class="grid">
-        <div><label>No. de furgón / unidad</label><input id="no_unidad" placeholder="TL-1234"></div>
-        <div><label>Tipo de equipo</label><select id="tipo_equipo"></select></div>
-        <div><label>Cantidad de equipos</label><input type="number" id="cant_equipos" value="1" min="1"></div>
-      </div>
-    </div>
-
-    <div class="card">
-      <h2>3 · Carga</h2>
-      <div class="grid">
-        <div><label>Material</label><select id="material"></select></div>
-        <div><label>Presentación</label><select id="presentacion"></select></div>
-        <div><label>Cantidad de piezas</label><input type="number" id="cant_piezas" step="any"></div>
-        <div><label>Unidad de medida</label><select id="unidad_medida"></select></div>
-        <div><label>Tarimas</label><input type="number" id="tarimas"></div>
-        <div><label>Peso (toneladas)</label><input type="number" id="peso_tons" step="any"></div>
-      </div>
-    </div>
-
-    <div class="card">
-      <h2>4 · Personal y montacargas</h2>
-      <div class="grid">
-        <div><label>Montacarguistas (Ctrl = varios)</label><select id="montacarguistas" multiple></select></div>
-        <div><label>Ayudantes (Ctrl = varios)</label><select id="ayudantes" multiple></select></div>
-        <div><label>Tipo de montacargas</label><select id="tipo_montacargas"></select></div>
-        <div><label>Núm. de montacargas</label><input type="number" id="num_montacargas"></div>
-      </div>
-    </div>
-
-    <!-- Campos adicionales de catálogos personalizados -->
-    <div class="card" id="card-campos-extra" style="display:none">
-      <h2>5 · Campos adicionales</h2>
-      <div class="grid" id="grid-campos-extra"></div>
-    </div>
-
-    <div class="card">
-      <h2>6 · Daños y observaciones</h2>
-      <div class="grid">
-        <div>
-          <label>¿Daño de origen?</label>
-          <select id="dano_origen">
-            <option value="">No</option>
-            <option value="1">Sí</option>
-          </select>
+        <div><label>Flujo <span style="color:var(--red)">*</span></label>
+          <select id="flujo" onchange="onFlujoChange()"></select>
         </div>
-        <div><label>Descripción del daño de origen</label><input id="dano_origen_desc" placeholder="Describe el daño…"></div>
-        <div style="grid-column:1/-1">
-          <label>Observaciones generales</label>
-          <textarea id="observaciones" placeholder="Notas adicionales…"></textarea>
+        <div><label>Cliente <span style="color:var(--red)">*</span></label>
+          <select id="cliente"></select>
+        </div>
+        <div><label>No. de unidad / furgón <span style="color:var(--red)">*</span></label>
+          <input id="no_unidad" placeholder="TL-1234">
+        </div>
+        <div><label>Tipo de equipo <span style="color:var(--red)">*</span></label>
+          <select id="tipo_equipo"></select>
+        </div>
+        <div><label>Montacarguistas <span style="color:var(--red)">*</span></label>
+          <select id="montacarguistas" multiple></select>
+        </div>
+        <div><label>Ayudantes</label>
+          <select id="ayudantes" multiple></select>
         </div>
       </div>
-    </div>
 
-    <!-- Secuencia de etapas + Iniciar -->
-    <div class="card">
-      <h2>Secuencia de etapas del flujo seleccionado</h2>
-      <div id="etapas-preview" class="progress-steps" style="margin-bottom:14px"></div>
-      <div class="row">
-        <button id="btn-iniciar" onclick="iniciar(this)">▶ Iniciar maniobra con cronómetro</button>
+      <!-- Etapas preview -->
+      <div style="margin-top:14px">
+        <div style="font-size:11px;color:var(--muted);text-transform:uppercase;letter-spacing:.06em;margin-bottom:8px">
+          Secuencia de etapas
+        </div>
+        <div id="etapas-preview" class="progress-steps"></div>
+      </div>
+
+      <div class="row" style="margin-top:14px">
+        <button id="btn-iniciar" onclick="iniciar(this)">▶ Iniciar con cronómetro</button>
         <span class="muted" id="msg-nueva"></span>
       </div>
     </div>
 
-    <!-- Registro retroactivo -->
+    <!-- DETALLES DE CARGA (colapsable) -->
     <div class="card">
-      <h2>Registro retroactivo (horas manuales)</h2>
-      <p class="muted" style="margin:0 0 14px">
-        Usa esta opción para registrar maniobras que ya ocurrieron. No usa cronómetro ni flujo por etapas.
-      </p>
-      <div class="grid">
-        <div><label>Etapa realizada</label><select id="etapa"></select></div>
-        <div><label>Hora inicio</label><input type="time" id="hora_inicio"></div>
-        <div><label>Hora fin</label><input type="time" id="hora_fin"></div>
-        <div><label>Demora adicional (min)</label><input type="number" id="demora_min" value="0" min="0"></div>
-        <div><label>Causa de demora</label><select id="causa_demora"></select></div>
-        <div>
-          <label>¿Daño en maniobra?</label>
-          <select id="dano_maniobra">
-            <option value="">No</option>
-            <option value="1">Sí</option>
-          </select>
-        </div>
-        <div><label>Desc. daño en maniobra</label><input id="dano_maniobra_desc"></div>
+      <div class="section-toggle" onclick="toggleSection('sec-carga','chev-carga')">
+        <h2 style="margin:0">Detalle de carga <span style="font-weight:400;font-size:11px;color:var(--muted)">(opcional)</span></h2>
+        <span id="chev-carga" class="chevron">▾</span>
       </div>
-      <div class="row" style="margin-top:12px">
-        <button id="btn-manual" class="ghost" onclick="guardarManual(this)">Guardar con horas manuales</button>
-        <span class="muted" id="msg-manual"></span>
+      <div id="sec-carga" class="collapsible" style="max-height:0">
+        <div class="grid" style="margin-top:12px">
+          <div><label>Material</label><select id="material"></select></div>
+          <div><label>Presentación</label><select id="presentacion"></select></div>
+          <div><label>Cantidad de piezas</label><input type="number" id="cant_piezas" step="any"></div>
+          <div><label>Unidad de medida</label><select id="unidad_medida"></select></div>
+          <div><label>Tarimas</label><input type="number" id="tarimas"></div>
+          <div><label>Peso (toneladas)</label><input type="number" id="peso_tons" step="any"></div>
+          <div><label>Cant. equipos</label><input type="number" id="cant_equipos" value="1" min="1"></div>
+          <div><label>Tipo de montacargas</label><select id="tipo_montacargas"></select></div>
+          <div><label>Núm. de montacargas</label><input type="number" id="num_montacargas"></div>
+        </div>
+      </div>
+    </div>
+
+    <!-- CAMPOS ADICIONALES (catálogos extra) -->
+    <div class="card" id="card-campos-extra" style="display:none">
+      <h2>Campos adicionales</h2>
+      <div class="grid" id="grid-campos-extra"></div>
+    </div>
+
+    <!-- DAÑOS / OBSERVACIONES (colapsable) -->
+    <div class="card">
+      <div class="section-toggle" onclick="toggleSection('sec-danos','chev-danos')">
+        <h2 style="margin:0">Daños y observaciones <span style="font-weight:400;font-size:11px;color:var(--muted)">(opcional)</span></h2>
+        <span id="chev-danos" class="chevron">▾</span>
+      </div>
+      <div id="sec-danos" class="collapsible" style="max-height:0">
+        <div class="grid" style="margin-top:12px">
+          <div><label>¿Daño de origen?</label>
+            <select id="dano_origen"><option value="">No</option><option value="1">Sí</option></select>
+          </div>
+          <div><label>Desc. daño de origen</label><input id="dano_origen_desc"></div>
+          <div style="grid-column:1/-1">
+            <label>Observaciones</label>
+            <textarea id="observaciones" placeholder="Notas adicionales…"></textarea>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- REGISTRO RETROACTIVO (colapsable) -->
+    <div class="card">
+      <div class="section-toggle" onclick="toggleSection('sec-retro','chev-retro')">
+        <h2 style="margin:0">Registro retroactivo <span style="font-weight:400;font-size:11px;color:var(--muted)">(horas manuales)</span></h2>
+        <span id="chev-retro" class="chevron">▾</span>
+      </div>
+      <div id="sec-retro" class="collapsible" style="max-height:0">
+        <p class="muted" style="margin:12px 0 10px;font-size:13px">
+          Para registrar maniobras que ya ocurrieron sin usar el cronómetro.
+        </p>
+        <div class="grid">
+          <div><label>Etapa realizada</label><select id="etapa"></select></div>
+          <div><label>Hora inicio</label><input type="time" id="hora_inicio"></div>
+          <div><label>Hora fin</label><input type="time" id="hora_fin"></div>
+          <div><label>Demora adicional (min)</label><input type="number" id="demora_min" value="0" min="0"></div>
+          <div><label>Causa de demora</label><select id="causa_demora"></select></div>
+          <div><label>¿Daño en maniobra?</label>
+            <select id="dano_maniobra"><option value="">No</option><option value="1">Sí</option></select>
+          </div>
+          <div><label>Desc. daño maniobra</label><input id="dano_maniobra_desc"></div>
+        </div>
+        <div class="row" style="margin-top:12px">
+          <button id="btn-manual" class="ghost" onclick="guardarManual(this)">Guardar con horas manuales</button>
+          <span class="muted" id="msg-manual"></span>
+        </div>
       </div>
     </div>
 
   </section>
 
-  <!-- ════════════════════════════════════════════════════════════
-       EN CURSO
-  ════════════════════════════════════════════════════════════ -->
+  <!-- ════════════════════════════════════════
+       EN CURSO — tarjetas con cronómetro en vivo
+  ════════════════════════════════════════ -->
   <section id="tab-curso" class="hidden">
     <div class="card">
       <div class="row" style="justify-content:space-between;margin-bottom:14px">
@@ -225,18 +285,18 @@
           <h2 style="margin:0 0 4px">Maniobras activas</h2>
           <div class="refresh-hint">
             <span class="pulse-dot"></span>
-            <span id="curso-refresh-ts">Actualizando cada 30 segundos</span>
+            <span id="curso-ts">Cronómetros en tiempo real · datos cada 30 seg</span>
           </div>
         </div>
-        <button class="ghost sm" onclick="cargarCurso()">↺ Actualizar ahora</button>
+        <button class="ghost sm" onclick="cargarCurso()">↺ Actualizar</button>
       </div>
       <div id="curso" class="grid" style="margin:0;grid-template-columns:repeat(auto-fill,minmax(320px,1fr))"></div>
     </div>
   </section>
 
-  <!-- ════════════════════════════════════════════════════════════
+  <!-- ════════════════════════════════════════
        LISTADO
-  ════════════════════════════════════════════════════════════ -->
+  ════════════════════════════════════════ -->
   <section id="tab-lista" class="hidden">
     <div class="card">
       <h2>Filtros</h2>
@@ -244,8 +304,7 @@
         <div><label>Buscar folio / unidad</label>
           <input id="f_q" oninput="cargarLista()" placeholder="Escribe para filtrar…">
         </div>
-        <div>
-          <label>Estado</label>
+        <div><label>Estado</label>
           <select id="f_estado" onchange="cargarLista()">
             <option value="">Todos</option>
             <option value="en_curso">En curso</option>
@@ -260,16 +319,16 @@
     </div>
   </section>
 
-  <!-- ════════════════════════════════════════════════════════════
+  <!-- ════════════════════════════════════════
        EMPLEADOS
-  ════════════════════════════════════════════════════════════ -->
+  ════════════════════════════════════════ -->
   <section id="tab-empleados" class="hidden">
     <div class="card">
       <h2>Alta de empleado</h2>
       <div class="grid">
         <div><label>Nombre completo</label><input id="e_nombre" placeholder="Nombre Apellido"></div>
         <div><label>Posición</label><input id="e_posicion" placeholder="Montacarguista / Ayudante / Supervisor"></div>
-        <div><label>Núm. de montacargas (opcional)</label><input id="e_montacargas" placeholder="Equipo asignado"></div>
+        <div><label>Núm. montacargas (opcional)</label><input id="e_montacargas"></div>
       </div>
       <div class="row" style="margin-top:12px">
         <button onclick="guardarEmpleado()">Guardar empleado</button>
@@ -281,39 +340,33 @@
     </div>
   </section>
 
-  <!-- ════════════════════════════════════════════════════════════
+  <!-- ════════════════════════════════════════
        INCIDENCIAS
-  ════════════════════════════════════════════════════════════ -->
+  ════════════════════════════════════════ -->
   <section id="tab-incidencias" class="hidden">
     <div class="card">
       <h2>Registrar incidencia</h2>
       <div class="grid">
         <div><label>Fecha</label><input type="date" id="i_fecha"></div>
         <div><label>Folio de maniobra (opcional)</label><input id="i_folio" placeholder="LT-XXXX"></div>
-        <div><label>Empleado involucrado</label><select id="i_empleado"></select></div>
-        <div><label>Tipo de incidencia</label><input id="i_tipo" placeholder="Daño, retraso, seguridad…"></div>
-        <div>
-          <label>Severidad</label>
+        <div><label>Empleado</label><select id="i_empleado"></select></div>
+        <div><label>Tipo</label><input id="i_tipo" placeholder="Daño, retraso, seguridad…"></div>
+        <div><label>Severidad</label>
           <select id="i_severidad">
-            <option>baja</option>
-            <option selected>media</option>
-            <option>alta</option>
-            <option>crítica</option>
+            <option>baja</option><option selected>media</option>
+            <option>alta</option><option>crítica</option>
           </select>
         </div>
-        <div>
-          <label>Estado</label>
+        <div><label>Estado</label>
           <select id="i_estado">
-            <option>abierta</option>
-            <option>en proceso</option>
-            <option>cerrada</option>
+            <option>abierta</option><option>en proceso</option><option>cerrada</option>
           </select>
         </div>
         <div style="grid-column:1/-1"><label>Descripción</label>
-          <textarea id="i_desc" placeholder="Describe la incidencia con detalle…"></textarea>
+          <textarea id="i_desc" placeholder="Describe la incidencia…"></textarea>
         </div>
         <div style="grid-column:1/-1"><label>Resolución</label>
-          <textarea id="i_resolucion" placeholder="Acciones tomadas / resolución…"></textarea>
+          <textarea id="i_resolucion" placeholder="Acciones tomadas…"></textarea>
         </div>
       </div>
       <div class="row" style="margin-top:12px">
@@ -326,11 +379,11 @@
     </div>
   </section>
 
-  <!-- ════════════════════════════════════════════════════════════
+  <!-- ════════════════════════════════════════
        ADMINISTRACIÓN (MASTER)
-  ════════════════════════════════════════════════════════════ -->
+  ════════════════════════════════════════ -->
   <section id="tab-admin" class="hidden">
-    <div class="tabs" style="border-radius:12px;overflow:hidden;margin-bottom:0">
+    <div class="tabs">
       <button id="adm-btn-cat" class="active" onclick="admTab('cat')">Catálogos</button>
       <button id="adm-btn-usr"                onclick="admTab('usr')">Usuarios</button>
       <button id="adm-btn-tem"                onclick="admTab('tem')">Tiempos estimados</button>
@@ -341,10 +394,10 @@
       <div class="card">
         <div class="row" style="justify-content:space-between;margin-bottom:14px">
           <h2 style="margin:0">Catálogos del sistema</h2>
-          <button onclick="admNuevoCat()">+ Nuevo tipo de catálogo</button>
+          <button onclick="admNuevoCat()">+ Nuevo tipo</button>
         </div>
         <div id="adm-cat-tipos" style="display:flex;flex-wrap:wrap;gap:8px">
-          <span class="muted">Cargando catálogos…</span>
+          <span class="muted">Cargando…</span>
         </div>
       </div>
       <div id="adm-cat-editor" class="card hidden">
@@ -371,28 +424,19 @@
     <div id="adm-usr" class="hidden">
       <div class="card">
         <div class="row" style="justify-content:space-between;margin-bottom:14px">
-          <h2 style="margin:0">Gestión de usuarios</h2>
+          <h2 style="margin:0">Usuarios</h2>
           <button onclick="admToggleFormUsr()">+ Nuevo usuario</button>
         </div>
         <div id="adm-usr-form" class="hidden"
              style="border:1px solid var(--line);border-radius:12px;padding:16px;margin-bottom:16px">
-          <div style="font-weight:700;font-size:14px;margin-bottom:12px">Crear nuevo usuario</div>
+          <div style="font-weight:700;font-size:14px;margin-bottom:12px">Nuevo usuario</div>
           <div class="grid">
-            <div><label>Correo electrónico</label>
-              <input id="adm-u-email" type="email" placeholder="usuario@empresa.com">
-            </div>
-            <div><label>Nombre completo</label>
-              <input id="adm-u-nombre" placeholder="Nombre Apellido">
-            </div>
-            <div><label>PIN de acceso</label>
-              <input id="adm-u-pin" type="password" maxlength="10" placeholder="Mín. 4 caracteres">
-            </div>
-            <div>
-              <label>Rol</label>
+            <div><label>Email</label><input id="adm-u-email" type="email" placeholder="usuario@empresa.com"></div>
+            <div><label>Nombre</label><input id="adm-u-nombre"></div>
+            <div><label>PIN</label><input id="adm-u-pin" type="password" maxlength="10" placeholder="Mín. 4 caracteres"></div>
+            <div><label>Rol</label>
               <select id="adm-u-rol">
-                <option>OPERADOR</option>
-                <option>DASHBOARD</option>
-                <option>MASTER</option>
+                <option>OPERADOR</option><option>DASHBOARD</option><option>MASTER</option>
               </select>
             </div>
           </div>
@@ -413,13 +457,13 @@
           <button class="success" onclick="admGuardarTiempos()">Guardar cambios</button>
         </div>
         <p class="muted" style="font-size:13px;margin-bottom:14px">
-          Define el tiempo objetivo en minutos para cada etapa. Se usa como referencia en el cronómetro.
+          Referencia para el cronómetro. Aplica a maniobras iniciadas después de guardar.
         </p>
         <div class="scroll"><table id="adm-tabla-tem"></table></div>
         <div class="row" style="margin-top:12px;gap:8px">
           <input id="adm-tem-etapa" placeholder="Nombre de etapa…" style="flex:2">
-          <input id="adm-tem-min" type="number" placeholder="Minutos" style="flex:1;min-width:80px" min="0">
-          <button onclick="admAgregarEtapa()">Agregar etapa</button>
+          <input id="adm-tem-min" type="number" placeholder="Min" style="flex:1;min-width:70px" min="0">
+          <button onclick="admAgregarEtapa()">Agregar</button>
         </div>
       </div>
     </div>
@@ -428,37 +472,49 @@
 
 </div><!-- /wrap -->
 
-<!-- ══════════════════════════════════════════════
+<!-- ══════════════════════════════════════
      MODAL — Finalizar etapa
-══════════════════════════════════════════════ -->
+══════════════════════════════════════ -->
 <div id="modal" class="modal-overlay hidden">
   <div class="modal-box">
     <h2 id="modal-titulo" style="margin:0 0 14px;font-size:16px;font-weight:700">Finalizar etapa</h2>
     <div class="grid">
-      <div>
-        <label>Causa de demora</label>
-        <select id="modal-causa"></select>
+      <div><label>Causa de demora</label><select id="modal-causa"></select></div>
+      <div><label>Demora adicional (min)</label><input type="number" id="modal-demora" value="0" min="0"></div>
+      <div><label>¿Daño en esta etapa?</label>
+        <select id="modal-dano"><option value="">No</option><option value="1">Sí</option></select>
       </div>
-      <div>
-        <label>Demora adicional (min)</label>
-        <input type="number" id="modal-demora" value="0" min="0">
-      </div>
-      <div>
-        <label>¿Daño en esta etapa?</label>
-        <select id="modal-dano">
-          <option value="">No</option>
-          <option value="1">Sí</option>
-        </select>
-      </div>
-      <div><label>Descripción del daño</label><input id="modal-dano-desc"></div>
+      <div><label>Desc. del daño</label><input id="modal-dano-desc"></div>
       <div style="grid-column:1/-1">
         <label>Observaciones de la etapa</label>
-        <textarea id="modal-obs" style="min-height:60px" placeholder="Notas específicas de esta etapa…"></textarea>
+        <textarea id="modal-obs" style="min-height:56px" placeholder="Notas específicas…"></textarea>
       </div>
     </div>
     <div class="row" style="margin-top:16px;justify-content:flex-end;gap:8px">
       <button class="ghost" onclick="cerrarModal()">Cancelar</button>
       <button id="modal-confirm" class="success" onclick="confirmarFinalizar()">Confirmar y avanzar ›</button>
+    </div>
+  </div>
+</div>
+
+<!-- ══════════════════════════════════════
+     MODAL — Editar maniobra (MASTER)
+══════════════════════════════════════ -->
+<div id="modal-edit" class="modal-overlay hidden">
+  <div class="modal-box">
+    <h2 style="margin:0 0 14px;font-size:16px;font-weight:700">Editar maniobra</h2>
+    <div class="grid">
+      <div><label>Cliente</label><select id="edit-cliente"></select></div>
+      <div><label>No. de unidad</label><input id="edit-no_unidad"></div>
+      <div><label>Tipo de equipo</label><select id="edit-tipo_equipo"></select></div>
+      <div><label>Material</label><select id="edit-material"></select></div>
+      <div style="grid-column:1/-1"><label>Observaciones</label>
+        <textarea id="edit-obs" style="min-height:56px"></textarea>
+      </div>
+    </div>
+    <div class="row" style="margin-top:16px;justify-content:flex-end;gap:8px">
+      <button class="ghost" onclick="cerrarEdit()">Cancelar</button>
+      <button class="success" onclick="confirmarEdit()">Guardar cambios</button>
     </div>
   </div>
 </div>
@@ -473,10 +529,11 @@
 var CAT   = {};
 var CURSO = [];
 var USR   = null;
-var _cursoInterval = null;
-var _tickInterval  = null;
+var _cursoInterval   = null;
+var _tickInterval    = null;
 var _modalEtapaId    = '';
 var _modalManiobraId = '';
+var _editManiobraId  = '';
 
 /* ══════════════════════════════════════════════
    UTILIDADES
@@ -494,15 +551,17 @@ function multi(id) {
   return Array.prototype.slice.call($(id).selectedOptions).map(function(o) { return o.value; });
 }
 
-function fmt(seg) {
-  seg = Math.max(0, Math.floor(seg));
-  var h = Math.floor(seg / 3600), m = Math.floor((seg % 3600) / 60), s = seg % 60;
+// hh:mm:ss desde segundos
+function fmt(sec) {
+  sec = Math.max(0, Math.floor(sec));
+  var h = Math.floor(sec / 3600), m = Math.floor((sec % 3600) / 60), s = sec % 60;
   return p2(h) + ':' + p2(m) + ':' + p2(s);
 }
 function p2(n) { return (n < 10 ? '0' : '') + n; }
 
-function fmtMin(m) {
-  m = Math.round(Number(m) || 0);
+// minutos → "Xh Ymin"
+function fmtMin(min) {
+  var m = Math.round(Number(min) || 0);
   if (!m) return '0 min';
   var h = Math.floor(m / 60), mm = m % 60;
   return h > 0 ? h + 'h ' + (mm ? mm + 'min' : '') : mm + ' min';
@@ -518,24 +577,43 @@ function toast(msg, type) {
 
 function setMsg(id, txt) { var e = $(id); if (e) e.textContent = txt; }
 function disableBtn(btn, state) { if (btn) btn.disabled = state; }
-function esc(s) { return String(s || '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;').replace(/'/g,'&#39;'); }
-
-/* ══════════════════════════════════════════════
-   TEMA CLARO / OSCURO
-══════════════════════════════════════════════ */
-function initTheme() {
-  var saved  = localStorage.getItem('lt_theme');
-  var theme  = saved || (window.matchMedia('(prefers-color-scheme: light)').matches ? 'light' : 'dark');
-  applyTheme(theme);
+function esc(s) {
+  return String(s === null || s === undefined ? '' : s)
+    .replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;')
+    .replace(/"/g,'&quot;').replace(/'/g,'&#39;');
 }
 
+/* ══════════════════════════════════════════════
+   SECCIONES COLAPSABLES
+══════════════════════════════════════════════ */
+function toggleSection(secId, chevId) {
+  var sec  = $(secId);
+  var chev = $(chevId);
+  if (!sec) return;
+  var open = sec.style.maxHeight && sec.style.maxHeight !== '0px' && sec.style.maxHeight !== '0';
+  if (open) {
+    sec.style.maxHeight = '0';
+    if (chev) chev.classList.remove('open');
+  } else {
+    sec.style.maxHeight = sec.scrollHeight + 'px';
+    if (chev) chev.classList.add('open');
+  }
+}
+
+/* ══════════════════════════════════════════════
+   TEMA
+══════════════════════════════════════════════ */
+function initTheme() {
+  var saved = localStorage.getItem('lt_theme');
+  var theme = saved || (window.matchMedia('(prefers-color-scheme: light)').matches ? 'light' : 'dark');
+  applyTheme(theme);
+}
 function applyTheme(theme) {
   document.documentElement.setAttribute('data-theme', theme);
   var btn = $('theme-btn');
   if (btn) btn.textContent = theme === 'light' ? '🌙' : '☀️';
   localStorage.setItem('lt_theme', theme);
 }
-
 function toggleTheme() {
   var curr = document.documentElement.getAttribute('data-theme') || 'dark';
   applyTheme(curr === 'dark' ? 'light' : 'dark');
@@ -554,7 +632,6 @@ function tab(n) {
   });
 
   if (_cursoInterval) { clearInterval(_cursoInterval); _cursoInterval = null; }
-
   if (n === 'curso')       { cargarCurso(); _cursoInterval = setInterval(cargarCurso, 30000); }
   if (n === 'lista')       cargarLista();
   if (n === 'empleados')   cargarEmpleados();
@@ -568,21 +645,13 @@ function tab(n) {
 function doLogin() {
   var email = ($('l-email').value || '').trim();
   var pin   = ($('l-pin').value   || '').trim();
-  var err   = $('l-err');
-  var btn   = $('l-btn');
-  if (!email || !pin) {
-    err.textContent = 'Ingresa tu correo electrónico y PIN';
-    err.style.display = '';
-    return;
-  }
-  btn.disabled = true;
-  btn.textContent = 'Verificando…';
+  var err   = $('l-err'), btn = $('l-btn');
+  if (!email || !pin) { err.textContent = 'Ingresa correo y PIN'; err.style.display = ''; return; }
+  btn.disabled = true; btn.textContent = 'Verificando…';
   err.style.display = 'none';
-
   google.script.run
     .withSuccessHandler(function(r) {
-      btn.disabled = false;
-      btn.textContent = 'Iniciar sesión';
+      btn.disabled = false; btn.textContent = 'Iniciar sesión';
       if (r.ok) {
         USR = r;
         try { sessionStorage.setItem('lt_usr', JSON.stringify(r)); } catch(e) {}
@@ -590,13 +659,11 @@ function doLogin() {
       } else {
         err.textContent = r.msg || 'Credenciales incorrectas';
         err.style.display = '';
-        $('l-pin').value = '';
-        $('l-pin').focus();
+        $('l-pin').value = ''; $('l-pin').focus();
       }
     })
     .withFailureHandler(function(e) {
-      btn.disabled = false;
-      btn.textContent = 'Iniciar sesión';
+      btn.disabled = false; btn.textContent = 'Iniciar sesión';
       err.textContent = 'Error de conexión: ' + (e.message || e);
       err.style.display = '';
     })
@@ -608,8 +675,8 @@ function logout() {
   USR = null;
   if (_cursoInterval) { clearInterval(_cursoInterval); _cursoInterval = null; }
   $('login-overlay').style.display = 'flex';
-  $('usr-badge').style.display     = 'none';
-  $('logout-btn').style.display    = 'none';
+  $('usr-badge').style.display = 'none';
+  $('logout-btn').style.display = 'none';
   $('l-pin').value = '';
 }
 
@@ -619,21 +686,18 @@ function aplicarSesion() {
   badge.textContent = (USR.nombre || USR.email) + ' · ' + USR.rol;
   badge.style.display = '';
   $('logout-btn').style.display = '';
-
-  if (USR.rol === 'DASHBOARD') {
-    window.location.href = '?page=Dashboard';
-    return;
-  }
+  if (USR.rol === 'DASHBOARD') { window.location.href = '?page=Dashboard'; return; }
   var adminBtn = $('tab-btn-admin');
   if (adminBtn) adminBtn.style.display = USR.rol === 'MASTER' ? '' : 'none';
 }
+
+function isMaster() { return USR && USR.rol === 'MASTER'; }
 
 /* ══════════════════════════════════════════════
    INICIALIZACIÓN
 ══════════════════════════════════════════════ */
 function init() {
   initTheme();
-
   try {
     var guardada = sessionStorage.getItem('lt_usr');
     if (guardada) { USR = JSON.parse(guardada); aplicarSesion(); }
@@ -659,43 +723,48 @@ function init() {
       CAT = c;
       opts('turno',            c.TURNOS);
       opts('flujo',            c.FLUJOS);
-      opts('cliente',          c.CLIENTES,       '— Selecciona —');
-      opts('tipo_equipo',      c.TIPOS_EQUIPO,   '—');
-      opts('material',         c.MATERIALES,     '—');
-      opts('presentacion',     c.PRESENTACIONES, '—');
-      opts('unidad_medida',    c.UNIDADES_MEDIDA,'—');
+      opts('cliente',          c.CLIENTES,          '— Selecciona —');
+      opts('tipo_equipo',      c.TIPOS_EQUIPO,      '—');
+      opts('material',         c.MATERIALES,        '—');
+      opts('presentacion',     c.PRESENTACIONES,    '—');
+      opts('unidad_medida',    c.UNIDADES_MEDIDA,   '—');
       opts('tipo_montacargas', c.TIPOS_MONTACARGAS, '—');
-      opts('causa_demora',     c.CAUSAS_DEMORA,  '—');
+      opts('causa_demora',     c.CAUSAS_DEMORA,     '—');
       opts('montacarguistas',  c.EMPLEADOS);
       opts('ayudantes',        c.EMPLEADOS);
-      opts('i_empleado',       c.EMPLEADOS,      '—');
-      opts('f_cliente',        c.CLIENTES,       'Todos');
-      opts('f_flujo',          c.FLUJOS,         'Todos');
-      opts('modal-causa',      c.CAUSAS_DEMORA,  '—');
+      opts('i_empleado',       c.EMPLEADOS,         '—');
+      opts('f_cliente',        c.CLIENTES,          'Todos');
+      opts('f_flujo',          c.FLUJOS,            'Todos');
+      opts('modal-causa',      c.CAUSAS_DEMORA,     '—');
+      // Edit modal dropdowns
+      opts('edit-cliente',     c.CLIENTES,          '— Selecciona —');
+      opts('edit-tipo_equipo', c.TIPOS_EQUIPO,      '—');
+      opts('edit-material',    c.MATERIALES,        '—');
       renderCamposExtra(c);
       onFlujoChange();
     })
     .withFailureHandler(function(e) { toast('Error al cargar catálogos: ' + e.message, 'err'); })
     .getCatalogos();
 
+  // Cronómetro en tiempo real — corre cada segundo en el cliente
   _tickInterval = setInterval(tick, 1000);
 }
 
 /* ══════════════════════════════════════════════
-   FLUJO Y ETAPAS
+   FLUJO
 ══════════════════════════════════════════════ */
 function onFlujoChange() {
   var f = ($('flujo').value || '').toUpperCase();
-  var etapasDelFlujo = (CAT.ETAPAS_FLUJO || {})[f] || CAT.ETAPAS || [];
-  $('etapas-preview').innerHTML = etapasDelFlujo.map(function(e, i) {
+  var lista = (CAT.ETAPAS_FLUJO || {})[f] || CAT.ETAPAS || [];
+  $('etapas-preview').innerHTML = lista.map(function(e, i) {
     return (i > 0 ? '<span class="step-arrow">›</span>' : '') +
       '<span class="step ' + (i === 0 ? 'active' : 'pending') + '">' + esc(e) + '</span>';
   }).join('');
-  opts('etapa', etapasDelFlujo, '— Selecciona —');
+  opts('etapa', lista, '— Selecciona —');
 }
 
 /* ══════════════════════════════════════════════
-   CAMPOS ADICIONALES (CATÁLOGOS PERSONALIZADOS)
+   CAMPOS EXTRA
 ══════════════════════════════════════════════ */
 var BUILTIN_CATS = [
   'TURNOS','FLUJOS','CLIENTES','TIPOS_EQUIPO','TIPOS_MONTACARGAS',
@@ -705,17 +774,15 @@ var BUILTIN_CATS = [
 
 function renderCamposExtra(c) {
   var extras = Object.keys(c).filter(function(k) { return BUILTIN_CATS.indexOf(k) === -1; });
-  var card   = $('card-campos-extra');
-  var grid   = $('grid-campos-extra');
+  var card = $('card-campos-extra'), grid = $('grid-campos-extra');
   if (!card || !grid) return;
   if (!extras.length) { card.style.display = 'none'; return; }
   grid.innerHTML = extras.map(function(k) {
     var lista = c[k] || [];
-    return '<div><label>' + esc(k) + '</label>' +
-      '<select id="ce-' + esc(k) + '">' +
-        '<option value="">— Selecciona —</option>' +
-        lista.map(function(v) { return '<option>' + esc(v) + '</option>'; }).join('') +
-      '</select></div>';
+    return '<div><label>' + esc(k) + '</label><select id="ce-' + esc(k) + '">' +
+      '<option value="">— Selecciona —</option>' +
+      lista.map(function(v) { return '<option>' + esc(v) + '</option>'; }).join('') +
+    '</select></div>';
   }).join('');
   card.style.display = '';
 }
@@ -751,8 +818,9 @@ function payload() {
 }
 
 function valida(d, msgId) {
-  if (!d.cliente) { setMsg(msgId, 'Selecciona un cliente'); return false; }
-  if (!d.flujo)   { setMsg(msgId, 'Selecciona un flujo');   return false; }
+  if (!d.flujo)   { setMsg(msgId, 'Selecciona el flujo');   return false; }
+  if (!d.cliente) { setMsg(msgId, 'Selecciona el cliente'); return false; }
+  if (!d.no_unidad) { setMsg(msgId, 'Ingresa el no. de unidad'); return false; }
   return true;
 }
 
@@ -763,18 +831,16 @@ function iniciar(btn) {
   var d = payload();
   if (!valida(d, 'msg-nueva')) return;
   disableBtn(btn, true);
-  setMsg('msg-nueva', 'Iniciando maniobra…');
-
+  setMsg('msg-nueva', 'Iniciando…');
   google.script.run
     .withSuccessHandler(function(r) {
       disableBtn(btn, false);
-      setMsg('msg-nueva', '✓ ' + r.folio + ' iniciada · Primera etapa: ' + r.etapa.nombre);
-      toast('✓ Maniobra ' + r.folio + ' iniciada correctamente', 'ok');
+      setMsg('msg-nueva', '✓ ' + r.folio + ' · Etapa 1: ' + r.etapa.nombre);
+      toast('✓ Maniobra ' + r.folio + ' iniciada', 'ok');
       tab('curso');
     })
     .withFailureHandler(function(e) {
-      disableBtn(btn, false);
-      setMsg('msg-nueva', '');
+      disableBtn(btn, false); setMsg('msg-nueva', '');
       toast('Error al iniciar: ' + (e.message || e), 'err');
     })
     .iniciarManiobra(d);
@@ -785,39 +851,29 @@ function iniciar(btn) {
 ══════════════════════════════════════════════ */
 function guardarManual(btn) {
   var d = payload();
-  d.etapa            = $('etapa').value;
-  d.hora_inicio      = $('hora_inicio').value;
-  d.hora_fin         = $('hora_fin').value;
-  d.demora_min       = $('demora_min').value;
-  d.causa_demora     = $('causa_demora').value;
-  d.dano_maniobra    = !!$('dano_maniobra').value;
+  d.etapa = $('etapa').value; d.hora_inicio = $('hora_inicio').value;
+  d.hora_fin = $('hora_fin').value; d.demora_min = $('demora_min').value;
+  d.causa_demora = $('causa_demora').value;
+  d.dano_maniobra = !!$('dano_maniobra').value;
   d.dano_maniobra_desc = $('dano_maniobra_desc').value;
-
   if (!valida(d, 'msg-manual')) return;
-  if (!d.hora_inicio || !d.hora_fin) {
-    setMsg('msg-manual', 'Captura hora de inicio y hora de fin');
-    return;
-  }
-
-  disableBtn(btn, true);
-  setMsg('msg-manual', 'Guardando…');
-
+  if (!d.hora_inicio || !d.hora_fin) { setMsg('msg-manual', 'Ingresa hora inicio y fin'); return; }
+  disableBtn(btn, true); setMsg('msg-manual', 'Guardando…');
   google.script.run
     .withSuccessHandler(function(r) {
       disableBtn(btn, false);
-      setMsg('msg-manual', '✓ Guardada ' + r.folio + ' · ' + r.tiempo_total_min + ' min total');
+      setMsg('msg-manual', '✓ ' + r.folio + ' guardada · ' + r.tiempo_total_min + ' min');
       toast('✓ Registro guardado: ' + r.folio, 'ok');
     })
     .withFailureHandler(function(e) {
-      disableBtn(btn, false);
-      setMsg('msg-manual', '');
+      disableBtn(btn, false); setMsg('msg-manual', '');
       toast('Error: ' + (e.message || e), 'err');
     })
     .registrarManiobra(d);
 }
 
 /* ══════════════════════════════════════════════
-   EN CURSO — carga y render
+   EN CURSO — Carga datos del servidor
 ══════════════════════════════════════════════ */
 function cargarCurso() {
   google.script.run
@@ -825,24 +881,32 @@ function cargarCurso() {
       CURSO = rows;
       renderCurso(rows);
       var ts = new Date().toLocaleTimeString('es-MX', { hour:'2-digit', minute:'2-digit', second:'2-digit' });
-      setMsg('curso-refresh-ts', 'Última actualización: ' + ts);
+      setMsg('curso-ts', 'Datos actualizados: ' + ts + ' · cronómetros en vivo');
     })
     .withFailureHandler(function(e) {
-      toast('Error al cargar maniobras activas: ' + (e.message || e), 'err');
+      toast('Error al cargar maniobras: ' + (e.message || e), 'err');
     })
     .getManiobrasEnCurso();
 }
 
+/* ══════════════════════════════════════════════
+   EN CURSO — Render de tarjetas
+   Cada tarjeta muestra TODAS las etapas con
+   su tiempo individual y el total acumulado.
+══════════════════════════════════════════════ */
 function renderCurso(rows) {
   var badge = $('badge-curso');
-  if (badge) badge.textContent = rows.length ? '(' + rows.length + ')' : '';
+  if (badge) {
+    badge.textContent  = rows.length || '';
+    badge.style.display = rows.length ? '' : 'none';
+  }
 
   if (!rows.length) {
     $('curso').innerHTML =
       '<div class="empty-state" style="grid-column:1/-1">' +
-        '<div class="empty-icon">📦</div>' +
+        '<div style="font-size:36px;margin-bottom:10px">📦</div>' +
         '<div style="font-size:15px;font-weight:600;margin-bottom:6px">Sin maniobras activas</div>' +
-        '<div class="muted">Inicia una nueva maniobra desde la pestaña "Nueva maniobra".</div>' +
+        '<div>Inicia una nueva maniobra desde la pestaña "Nueva maniobra".</div>' +
       '</div>';
     return;
   }
@@ -851,33 +915,44 @@ function renderCurso(rows) {
     var eta     = m.etapa_actual;
     var pausada = eta ? eta.is_paused : false;
     var etaId   = eta ? eta.id : '';
+    var master  = isMaster();
 
-    var stepsHtml = m.etapas.map(function(e, i) {
-      var cls = e.estado === 'finalizada' ? 'done'
-              : e.estado === 'no_aplica'  ? 'skip'
-              : (e.estado === 'en_curso' || e.estado === 'en_pausa') ? 'active'
-              : 'pending';
-      return (i > 0 ? '<span class="step-arrow">›</span>' : '') +
-        '<span class="step ' + cls + '" title="' + esc(e.nombre) + '">' + esc(e.nombre) + '</span>';
+    // Calcular tiempo total acumulado (completadas + activa)
+    var totalCompletadoMin = m.etapas.reduce(function(sum, e) {
+      return sum + (e.estado === 'finalizada' ? (Number(e.tiempo_min) || 0) : 0);
+    }, 0);
+
+    // Lista de etapas
+    var etaListHtml = m.etapas.map(function(e) {
+      var isActive = e.estado === 'en_curso' || e.estado === 'en_pausa';
+      var isDone   = e.estado === 'finalizada';
+      var isSkip   = e.estado === 'no_aplica';
+      var cls      = isActive ? 'active' : isDone ? 'done' : isSkip ? 'skip' : 'pend';
+      var icon     = isDone ? '✓' : isActive ? (pausada ? '⏸' : '▶') : isSkip ? '—' : '·';
+
+      var timeHtml = '';
+      if (isDone) {
+        timeHtml = '<span class="eta-time done">' + fmtMin(e.tiempo_min) + '</span>';
+      } else if (isActive) {
+        timeHtml = '<span class="eta-time active" data-crono="' + esc(e.id) + '">00:00:00</span>';
+      } else {
+        timeHtml = '<span class="eta-time" style="color:var(--muted);font-size:12px">—</span>';
+      }
+
+      var estHtml = '';
+      if (isActive && e.tiempo_estimado_min) {
+        estHtml = '<br><span class="eta-est" data-est="' + esc(e.id) + '">Est: ' + fmtMin(e.tiempo_estimado_min) + '</span>';
+      }
+
+      return '<div class="eta-item ' + cls + '">' +
+        '<div class="eta-icon ' + cls + '">' + icon + '</div>' +
+        '<div class="eta-name ' + cls + '">' + esc(e.nombre) + estHtml + '</div>' +
+        timeHtml +
+      '</div>';
     }).join('');
 
-    var cronoHtml = '';
-    if (eta) {
-      var estHtml = eta.tiempo_estimado_min
-        ? '<div class="crono-est muted" data-est="' + esc(etaId) + '">Estimado: ' + eta.tiempo_estimado_min + ' min</div>'
-        : '<div class="crono-est" data-est="' + esc(etaId) + '"></div>';
-      cronoHtml =
-        '<div class="crono-block">' +
-          '<div class="crono-label">' + (pausada ? '⏸ PAUSADA' : '▶ ETAPA EN CURSO') + '</div>' +
-          '<div style="font-size:12px;font-weight:600;color:var(--muted);margin-bottom:8px">' + esc(eta.nombre) + '</div>' +
-          '<div class="crono" data-crono="' + esc(etaId) + '">--:--:--</div>' +
-          estHtml +
-        '</div>';
-    } else {
-      cronoHtml = '<div class="crono-block"><div class="muted" style="padding:8px">Sin etapa activa</div></div>';
-    }
-
-    var btnPausa   = eta
+    // Botones de acción
+    var btnPausa = eta
       ? '<button class="' + (pausada ? 'ghost' : 'warn') + ' sm" onclick="pausarEt(\'' + esc(etaId) + '\')">' +
           (pausada ? '▶ Reanudar' : '⏸ Pausar') + '</button>'
       : '';
@@ -887,77 +962,98 @@ function renderCurso(rows) {
     var btnFin = eta
       ? '<button class="success sm" onclick="abrirModalFinalizar(\'' + esc(etaId) + '\',\'' +
           esc(eta.nombre) + '\',\'' + esc(m.id) + '\')">Finalizar etapa ›</button>'
+      : '<button class="ghost sm" disabled>Completa</button>';
+
+    // Botones MASTER
+    var masterBtns = master
+      ? '<button class="ghost sm" style="margin-left:auto" onclick="abrirEdit(\'' + esc(m.id) + '\',\'' +
+          esc(m.cliente) + '\',\'' + esc(m.no_unidad) + '\',\'' + esc(m.flujo) + '\')">✎ Editar</button>' +
+        '<button class="warn sm" onclick="forzarCierre(\'' + esc(m.id) + '\')">⛔ Forzar cierre</button>' +
+        '<button class="danger sm" onclick="borrar(\'' + esc(m.id) + '\')">🗑</button>'
       : '';
 
     var estadoBadge = pausada ? 'EN_PAUSA' : 'EN_CURSO';
-    var estadoLabel = pausada ? 'EN PAUSA' : 'EN CURSO';
+    var estadoLabel = pausada ? 'EN PAUSA'  : 'EN CURSO';
 
     return '<div class="card man-card" style="margin:0">' +
-      '<div class="man-card-head">' +
+      '<div class="man-head">' +
         '<div>' +
-          '<div class="man-folio">' + esc(m.folio) + ' · ' + esc(m.flujo) + ' · ' + esc(m.fecha || '') + '</div>' +
+          '<div class="man-folio">' + esc(m.folio) + ' · ' + esc(m.flujo) + (m.fecha ? ' · ' + esc(m.fecha) : '') + '</div>' +
           '<div class="man-title">' + esc(m.cliente) + '</div>' +
-          '<div class="man-sub">' +
-            (m.no_unidad ? 'Unidad: ' + esc(m.no_unidad) : '') +
-            (m.material  ? ' · ' + esc(m.material) : '') +
-          '</div>' +
+          '<div class="man-sub">' + (m.no_unidad ? 'Unidad: ' + esc(m.no_unidad) : '') + (m.material ? ' · ' + esc(m.material) : '') + '</div>' +
         '</div>' +
         '<span class="badge ' + estadoBadge + '">' + estadoLabel + '</span>' +
       '</div>' +
-      '<div class="progress-steps" style="margin-bottom:10px">' + stepsHtml + '</div>' +
-      cronoHtml +
+
+      '<div class="eta-list">' + etaListHtml + '</div>' +
+
+      '<div class="man-total">' +
+        '<div>' +
+          '<div class="man-total-lbl">Tiempo total acumulado</div>' +
+          '<div class="man-total-val" data-total="' + esc(m.id) + '">—</div>' +
+        '</div>' +
+        (eta ? '<div style="font-size:11px;color:var(--muted);text-align:right">Etapa ' + eta.num + '/' + m.etapas.length + '</div>' : '') +
+      '</div>' +
+
       '<div class="action-bar">' +
-        btnPausa + btnNoAplica + btnFin +
-        '<button class="danger sm" style="margin-left:auto" title="Eliminar maniobra" onclick="borrar(\'' + esc(m.id) + '\')">🗑 Eliminar</button>' +
+        btnPausa + btnNoAplica + btnFin + masterBtns +
       '</div>' +
     '</div>';
   }).join('');
 
-  tick();
+  tick(); // actualizar cronómetros inmediatamente tras render
 }
 
 /* ══════════════════════════════════════════════
-   CRONÓMETRO EN TIEMPO REAL
-   Usa elapsed_seg + deriva cliente respecto al
-   timestamp refresh_ms del servidor → siempre preciso.
+   CRONÓMETRO EN VIVO
+   Cada segundo actualiza:
+   - Cronómetro de etapa activa (elapsed_seg + deriva cliente)
+   - Display de tiempo estimado (quedan / se pasó)
+   - Total acumulado de la maniobra
 ══════════════════════════════════════════════ */
 function tick() {
   var now = Date.now();
   CURSO.forEach(function(m) {
     var eta = m.etapa_actual;
-    if (!eta) return;
 
-    var cronoEl = document.querySelector('[data-crono="' + eta.id + '"]');
-    var estEl   = document.querySelector('[data-est="'   + eta.id + '"]');
-    if (!cronoEl) return;
+    // Tiempo de la etapa activa
+    var activeSec = 0;
+    if (eta) {
+      activeSec = eta.is_paused
+        ? eta.elapsed_seg
+        : Math.max(0, eta.elapsed_seg + (now - eta.refresh_ms) / 1000);
 
-    // Si está pausada, mostramos el acumulado fijo; si no, sumamos la deriva del cliente
-    var elapsed = eta.is_paused
-      ? eta.elapsed_seg
-      : Math.max(0, eta.elapsed_seg + (now - eta.refresh_ms) / 1000);
+      // Actualizar display del cronómetro de la etapa activa
+      var cronoEl = document.querySelector('[data-crono="' + eta.id + '"]');
+      if (cronoEl) cronoEl.textContent = fmt(activeSec);
 
-    cronoEl.textContent = fmt(elapsed);
-
-    if (estEl) {
-      if (eta.tiempo_estimado_min) {
-        var estSeg   = eta.tiempo_estimado_min * 60;
-        var restante = estSeg - elapsed;
+      // Actualizar display de tiempo estimado
+      var estEl = document.querySelector('[data-est="' + eta.id + '"]');
+      if (estEl && eta.tiempo_estimado_min) {
+        var estSec   = eta.tiempo_estimado_min * 60;
+        var restante = estSec - activeSec;
         if (restante >= 0) {
-          estEl.textContent = 'Estimado: ' + fmtMin(eta.tiempo_estimado_min) + ' · Quedan ' + fmt(restante);
-          estEl.className   = 'crono-est muted';
+          estEl.textContent = 'Est: ' + fmtMin(eta.tiempo_estimado_min) + ' · Quedan ' + fmt(restante);
+          estEl.className   = 'eta-est';
         } else {
-          estEl.textContent = '⚠ +' + fmt(-restante) + ' sobre el estimado (' + fmtMin(eta.tiempo_estimado_min) + ')';
-          estEl.className   = 'crono-est retraso';
+          estEl.textContent = '⚠ +' + fmt(-restante) + ' sobre estimado';
+          estEl.className   = 'eta-est over';
         }
-      } else {
-        estEl.textContent = '';
       }
     }
+
+    // Calcular total acumulado: etapas finalizadas + etapa activa
+    var totalSec = m.etapas.reduce(function(sum, e) {
+      return sum + (e.estado === 'finalizada' ? (Number(e.tiempo_min) || 0) * 60 : 0);
+    }, activeSec);
+
+    var totalEl = document.querySelector('[data-total="' + m.id + '"]');
+    if (totalEl) totalEl.textContent = fmt(totalSec);
   });
 }
 
 /* ══════════════════════════════════════════════
-   PAUSAR / REANUDAR ETAPA
+   PAUSAR / REANUDAR
 ══════════════════════════════════════════════ */
 function pausarEt(idEtapa) {
   toast('Procesando…', '');
@@ -971,21 +1067,14 @@ function pausarEt(idEtapa) {
    MODAL — Finalizar etapa
 ══════════════════════════════════════════════ */
 function abrirModalFinalizar(idEtapa, nombreEtapa, idManiobra) {
-  _modalEtapaId    = idEtapa;
-  _modalManiobraId = idManiobra;
+  _modalEtapaId = idEtapa; _modalManiobraId = idManiobra;
   $('modal-titulo').textContent = 'Finalizar: ' + nombreEtapa;
-  $('modal-demora').value     = '0';
-  $('modal-obs').value        = '';
-  $('modal-dano').value       = '';
-  $('modal-dano-desc').value  = '';
+  $('modal-demora').value = '0'; $('modal-obs').value = '';
+  $('modal-dano').value = ''; $('modal-dano-desc').value = '';
   $('modal').classList.remove('hidden');
-  $('modal-demora').focus();
 }
 
-function cerrarModal() {
-  $('modal').classList.add('hidden');
-  _modalEtapaId = _modalManiobraId = '';
-}
+function cerrarModal() { $('modal').classList.add('hidden'); _modalEtapaId = _modalManiobraId = ''; }
 
 function confirmarFinalizar() {
   if (!_modalEtapaId) return;
@@ -998,16 +1087,13 @@ function confirmarFinalizar() {
     dano_maniobra_desc: $('modal-dano-desc').value
   };
   cerrarModal();
-  var btn = $('modal-confirm');
-  disableBtn(btn, true);
+  var btn = $('modal-confirm'); disableBtn(btn, true);
   toast('Finalizando etapa…', '');
-
   google.script.run
     .withSuccessHandler(function(r) {
       disableBtn(btn, false);
       if (r.maniobra_finalizada) {
-        toast('✓ Maniobra completa · Total: ' + fmtMin(r.tiempo_total_min) +
-              ' · Efectivo: ' + fmtMin(r.tiempo_efectivo_min), 'ok');
+        toast('✓ Maniobra completa · Total: ' + fmtMin(r.tiempo_total_min) + ' · Efectivo: ' + fmtMin(r.tiempo_efectivo_min), 'ok');
       } else {
         toast('✓ Etapa finalizada · Siguiente: ' + r.siguiente.nombre, 'ok');
       }
@@ -1015,7 +1101,7 @@ function confirmarFinalizar() {
     })
     .withFailureHandler(function(e) {
       disableBtn(btn, false);
-      toast('Error al finalizar: ' + (e.message || e), 'err');
+      toast('Error: ' + (e.message || e), 'err');
     })
     .finalizarEtapa(idEtapa, extras);
 }
@@ -1028,13 +1114,68 @@ function noAplica(idEtapa) {
   toast('Procesando…', '');
   google.script.run
     .withSuccessHandler(function(r) {
-      toast(r.maniobra_finalizada
-        ? '✓ Maniobra finalizada'
-        : '✓ Avanzado a: ' + r.siguiente.nombre, 'ok');
+      toast(r.maniobra_finalizada ? '✓ Maniobra finalizada' : '✓ Siguiente: ' + r.siguiente.nombre, 'ok');
       cargarCurso();
     })
     .withFailureHandler(function(e) { toast('Error: ' + (e.message || e), 'err'); })
     .marcarEtapaNoAplica(idEtapa);
+}
+
+/* ══════════════════════════════════════════════
+   MASTER — Editar maniobra
+══════════════════════════════════════════════ */
+function abrirEdit(id, cliente, noUnidad) {
+  _editManiobraId = id;
+  // Pre-llenar con valores actuales
+  var sel = $('edit-cliente');
+  for (var i = 0; i < sel.options.length; i++) {
+    if (sel.options[i].value === cliente || sel.options[i].text === cliente) { sel.selectedIndex = i; break; }
+  }
+  $('edit-no_unidad').value = noUnidad || '';
+  $('edit-obs').value = '';
+  $('modal-edit').classList.remove('hidden');
+}
+
+function cerrarEdit() { $('modal-edit').classList.add('hidden'); _editManiobraId = ''; }
+
+function confirmarEdit() {
+  if (!_editManiobraId) return;
+  var data = {
+    cliente:       $('edit-cliente').value,
+    no_unidad:     $('edit-no_unidad').value,
+    tipo_equipo:   $('edit-tipo_equipo').value,
+    material:      $('edit-material').value,
+    observaciones: $('edit-obs').value
+  };
+  cerrarEdit();
+  toast('Guardando…', '');
+  google.script.run
+    .withSuccessHandler(function() { toast('✓ Maniobra actualizada', 'ok'); cargarCurso(); })
+    .withFailureHandler(function(e) { toast('Error: ' + (e.message || e), 'err'); })
+    .editarManiobra(_editManiobraId, data);
+}
+
+/* ══════════════════════════════════════════════
+   MASTER — Forzar cierre
+══════════════════════════════════════════════ */
+function forzarCierre(id) {
+  if (!confirm('¿Forzar el cierre de esta maniobra? Se marcarán todas las etapas pendientes como finalizadas.')) return;
+  toast('Cerrando maniobra…', '');
+  google.script.run
+    .withSuccessHandler(function() { toast('✓ Maniobra cerrada', 'ok'); cargarCurso(); })
+    .withFailureHandler(function(e) { toast('Error: ' + (e.message || e), 'err'); })
+    .forzarCierreManiobra(id);
+}
+
+/* ══════════════════════════════════════════════
+   MASTER — Eliminar maniobra
+══════════════════════════════════════════════ */
+function borrar(id) {
+  if (!confirm('¿Eliminar esta maniobra y todas sus etapas? No se puede deshacer.')) return;
+  google.script.run
+    .withSuccessHandler(function() { cargarCurso(); cargarLista(); toast('Maniobra eliminada', 'ok'); })
+    .withFailureHandler(function(e) { toast('Error: ' + (e.message || e), 'err'); })
+    .eliminarManiobra(id);
 }
 
 /* ══════════════════════════════════════════════
@@ -1048,35 +1189,37 @@ function cargarLista() {
                   'Tiempo efectivo (min)','Semáforo'];
       var html = '<tr>' + cols.map(function(c) { return '<th>' + esc(c) + '</th>'; }).join('') + '<th></th></tr>';
       if (!rows.length) {
-        html += '<tr><td colspan="' + (cols.length + 1) + '" style="text-align:center;color:var(--muted);padding:20px">Sin registros</td></tr>';
+        html += '<tr><td colspan="' + (cols.length+1) + '" style="text-align:center;color:var(--muted);padding:20px">Sin registros</td></tr>';
       } else {
         html += rows.map(function(r) {
           return '<tr>' + cols.map(function(c) {
             if (c === 'Semáforo') {
-              var v   = String(r[c] || '');
-              var cls = v === 'ÁMBAR' ? 'AMBAR' : v;
+              var v = String(r[c] || ''), cls = v === 'ÁMBAR' ? 'AMBAR' : v;
               return '<td>' + (v ? '<span class="badge ' + esc(cls) + '">' + esc(v) + '</span>' : '—') + '</td>';
             }
             if (c === 'Estado') {
               var cls2 = r[c] === 'en_curso' ? 'EN_CURSO' : r[c] === 'en_pausa' ? 'EN_PAUSA' : '';
-              return '<td>' + (cls2
-                ? '<span class="badge ' + cls2 + '">' + esc(r[c]) + '</span>'
-                : (r[c] || '—')) + '</td>';
+              return '<td>' + (cls2 ? '<span class="badge ' + cls2 + '">' + esc(r[c]) + '</span>' : (r[c] || '—')) + '</td>';
             }
-            return '<td>' + (r[c] === '' || r[c] === null || r[c] === undefined ? '—' : esc(String(r[c]))) + '</td>';
+            var v2 = r[c];
+            return '<td>' + (v2 === '' || v2 === null || v2 === undefined ? '—' : esc(String(v2))) + '</td>';
           }).join('') +
-          '<td><button class="danger sm" onclick="borrar(\'' + esc(r.ID) + '\')">Eliminar</button></td></tr>';
+          '<td style="white-space:nowrap">' +
+            (isMaster()
+              ? '<button class="danger sm" onclick="borrarLista(\'' + esc(r.ID) + '\')">Eliminar</button>'
+              : '') +
+          '</td></tr>';
         }).join('');
       }
       $('tabla').innerHTML = html;
     })
-    .withFailureHandler(function(e) { toast('Error al cargar listado: ' + (e.message || e), 'err'); })
+    .withFailureHandler(function(e) { toast('Error: ' + (e.message || e), 'err'); })
     .getManiobras({ q: $('f_q').value, estado: $('f_estado').value,
                     cliente: $('f_cliente').value, flujo: $('f_flujo').value, limite: 300 });
 }
 
-function borrar(id) {
-  if (!confirm('¿Eliminar esta maniobra y todas sus etapas? Esta acción no se puede deshacer.')) return;
+function borrarLista(id) {
+  if (!confirm('¿Eliminar esta maniobra? No se puede deshacer.')) return;
   google.script.run
     .withSuccessHandler(function() { cargarLista(); toast('Maniobra eliminada', 'ok'); })
     .withFailureHandler(function(e) { toast('Error: ' + (e.message || e), 'err'); })
@@ -1087,21 +1230,14 @@ function borrar(id) {
    EMPLEADOS
 ══════════════════════════════════════════════ */
 function guardarEmpleado() {
-  var d = {
-    nombre:     ($('e_nombre').value      || '').trim(),
-    posicion:   ($('e_posicion').value    || '').trim(),
-    montacargas:($('e_montacargas').value || '').trim()
-  };
+  var d = { nombre: ($('e_nombre').value||'').trim(), posicion: ($('e_posicion').value||'').trim(), montacargas: ($('e_montacargas').value||'').trim() };
   if (!d.nombre || !d.posicion) { toast('Nombre y posición son obligatorios', 'err'); return; }
   google.script.run
     .withSuccessHandler(function() {
       $('e_nombre').value = $('e_posicion').value = $('e_montacargas').value = '';
       cargarEmpleados();
       google.script.run.withSuccessHandler(function(c) {
-        CAT = c;
-        opts('montacarguistas', c.EMPLEADOS);
-        opts('ayudantes',       c.EMPLEADOS);
-        opts('i_empleado',      c.EMPLEADOS, '—');
+        CAT = c; opts('montacarguistas', c.EMPLEADOS); opts('ayudantes', c.EMPLEADOS); opts('i_empleado', c.EMPLEADOS, '—');
       }).getCatalogos();
       toast('✓ Empleado guardado', 'ok');
     })
@@ -1112,21 +1248,20 @@ function guardarEmpleado() {
 function cargarEmpleados() {
   google.script.run
     .withSuccessHandler(function(rows) {
-      $('tabla_emp').innerHTML =
-        '<tr><th>Nombre</th><th>Posición</th><th>Montacargas</th><th></th></tr>' +
+      $('tabla_emp').innerHTML = '<tr><th>Nombre</th><th>Posición</th><th>Montacargas</th><th></th></tr>' +
         (rows.length
           ? rows.map(function(e) {
               return '<tr><td>' + esc(e.nombre) + '</td><td>' + esc(e.posicion) + '</td>' +
-                '<td>' + esc(e.montacargas || '—') + '</td>' +
+                '<td>' + esc(e.montacargas||'—') + '</td>' +
                 '<td><button class="danger sm" onclick="borrarEmpleado(\'' + esc(e.id) + '\')">Eliminar</button></td></tr>';
             }).join('')
-          : '<tr><td colspan="4" style="text-align:center;color:var(--muted)">Sin empleados registrados</td></tr>');
+          : '<tr><td colspan="4" style="text-align:center;color:var(--muted)">Sin empleados</td></tr>');
     })
     .getEmpleados();
 }
 
 function borrarEmpleado(id) {
-  if (!confirm('¿Eliminar empleado? Esta acción no se puede deshacer.')) return;
+  if (!confirm('¿Eliminar empleado?')) return;
   google.script.run
     .withSuccessHandler(function() { cargarEmpleados(); toast('Empleado eliminado', 'ok'); })
     .withFailureHandler(function(e) { toast('Error: ' + (e.message || e), 'err'); })
@@ -1138,21 +1273,16 @@ function borrarEmpleado(id) {
 ══════════════════════════════════════════════ */
 function guardarIncidencia() {
   var d = {
-    fecha:       $('i_fecha').value,
-    folio:       $('i_folio').value,
-    empleado:    $('i_empleado').value,
-    tipo:        ($('i_tipo').value || '').trim(),
-    severidad:   $('i_severidad').value,
-    descripcion: ($('i_desc').value || '').trim(),
-    estado:      $('i_estado').value,
-    resolucion:  $('i_resolucion').value
+    fecha: $('i_fecha').value, folio: $('i_folio').value, empleado: $('i_empleado').value,
+    tipo: ($('i_tipo').value||'').trim(), severidad: $('i_severidad').value,
+    descripcion: ($('i_desc').value||'').trim(), estado: $('i_estado').value,
+    resolucion: $('i_resolucion').value
   };
   if (!d.tipo || !d.descripcion) { toast('Tipo y descripción son obligatorios', 'err'); return; }
   google.script.run
     .withSuccessHandler(function() {
       $('i_tipo').value = $('i_desc').value = $('i_resolucion').value = $('i_folio').value = '';
-      cargarIncidencias();
-      toast('✓ Incidencia registrada', 'ok');
+      cargarIncidencias(); toast('✓ Incidencia registrada', 'ok');
     })
     .withFailureHandler(function(e) { toast('Error: ' + (e.message || e), 'err'); })
     .guardarIncidencia(d);
@@ -1162,27 +1292,22 @@ function cargarIncidencias() {
   google.script.run
     .withSuccessHandler(function(rows) {
       $('tabla_inc').innerHTML =
-        '<tr><th>Fecha</th><th>Folio</th><th>Empleado</th><th>Tipo</th>' +
-        '<th>Severidad</th><th>Estado</th><th>Descripción</th><th></th></tr>' +
+        '<tr><th>Fecha</th><th>Folio</th><th>Empleado</th><th>Tipo</th><th>Severidad</th><th>Estado</th><th>Descripción</th><th></th></tr>' +
         (rows.length
           ? rows.map(function(i) {
-              return '<tr>' +
-                '<td>' + esc(i.fecha) + '</td>' +
-                '<td>' + esc(i.folio || '—') + '</td>' +
-                '<td>' + esc(i.empleado || '—') + '</td>' +
-                '<td>' + esc(i.tipo) + '</td>' +
-                '<td>' + esc(i.severidad) + '</td>' +
-                '<td>' + esc(i.estado) + '</td>' +
-                '<td style="max-width:220px;white-space:normal">' + esc(i.descripcion) + '</td>' +
+              return '<tr><td>' + esc(i.fecha) + '</td><td>' + esc(i.folio||'—') + '</td>' +
+                '<td>' + esc(i.empleado||'—') + '</td><td>' + esc(i.tipo) + '</td>' +
+                '<td>' + esc(i.severidad) + '</td><td>' + esc(i.estado) + '</td>' +
+                '<td style="max-width:200px;white-space:normal">' + esc(i.descripcion) + '</td>' +
                 '<td><button class="danger sm" onclick="borrarIncidencia(\'' + esc(i.id) + '\')">Eliminar</button></td></tr>';
             }).join('')
-          : '<tr><td colspan="8" style="text-align:center;color:var(--muted)">Sin incidencias registradas</td></tr>');
+          : '<tr><td colspan="8" style="text-align:center;color:var(--muted)">Sin incidencias</td></tr>');
     })
     .getIncidencias();
 }
 
 function borrarIncidencia(id) {
-  if (!confirm('¿Eliminar esta incidencia?')) return;
+  if (!confirm('¿Eliminar incidencia?')) return;
   google.script.run
     .withSuccessHandler(function() { cargarIncidencias(); toast('Incidencia eliminada', 'ok'); })
     .withFailureHandler(function(e) { toast('Error: ' + (e.message || e), 'err'); })
@@ -1192,15 +1317,11 @@ function borrarIncidencia(id) {
 /* ══════════════════════════════════════════════
    ADMINISTRACIÓN (MASTER)
 ══════════════════════════════════════════════ */
-var _admCatalogos = [];
-var _admCatActivo = null;
-var _admCatItems  = [];
-var _admTiempos   = [];
+var _admCatalogos = [], _admCatActivo = null, _admCatItems = [], _admTiempos = [];
 
 function admTab(sub) {
   ['cat','usr','tem'].forEach(function(k) {
-    var el  = $('adm-' + k);
-    var btn = $('adm-btn-' + k);
+    var el = $('adm-' + k), btn = $('adm-btn-' + k);
     if (el)  el.classList.toggle('hidden', k !== sub);
     if (btn) btn.classList.toggle('active', k === sub);
   });
@@ -1209,19 +1330,15 @@ function admTab(sub) {
   if (sub === 'tem') cargarAdmTem();
 }
 
-/* ── Catálogos ─────────────────────────────────────────────── */
 function cargarAdmCat() {
   google.script.run
     .withSuccessHandler(function(lista) {
       _admCatalogos = lista;
       var cont = $('adm-cat-tipos');
-      if (!lista.length) {
-        cont.innerHTML = '<span class="muted">Sin catálogos. Ejecuta setup() en el editor de Apps Script.</span>';
-        return;
-      }
+      if (!lista.length) { cont.innerHTML = '<span class="muted">Sin catálogos. Ejecuta setup().</span>'; return; }
       cont.innerHTML = lista.map(function(c, i) {
-        return '<button class="ghost sm" onclick="admEditarCat(' + i + ')">' +
-          esc(c.tipo) + ' <span style="opacity:.6">(' + c.items.length + ')</span></button>';
+        return '<button class="ghost sm" onclick="admEditarCat(' + i + ')">' + esc(c.tipo) +
+          ' <span style="opacity:.6">(' + c.items.length + ')</span></button>';
       }).join('');
     })
     .withFailureHandler(function(e) { toast('Error: ' + (e.message || e), 'err'); })
@@ -1229,15 +1346,12 @@ function cargarAdmCat() {
 }
 
 function admEditarCat(idx) {
-  var c = _admCatalogos[idx];
-  if (!c) return;
-  _admCatActivo = c;
-  _admCatItems  = c.items.slice();
+  var c = _admCatalogos[idx]; if (!c) return;
+  _admCatActivo = c; _admCatItems = c.items.slice();
   $('adm-cat-titulo').textContent = 'Catálogo: ' + c.tipo;
   renderAdmCatItems();
   $('adm-cat-editor').classList.remove('hidden');
-  $('adm-cat-nuevo-item').value = '';
-  $('adm-cat-nuevo-item').focus();
+  $('adm-cat-nuevo-item').value = ''; $('adm-cat-nuevo-item').focus();
 }
 
 function renderAdmCatItems() {
@@ -1245,24 +1359,20 @@ function renderAdmCatItems() {
     ? _admCatItems.map(function(v, i) {
         return '<div class="row" style="gap:6px;margin-bottom:6px">' +
           '<input value="' + esc(v) + '" oninput="_admCatItems[' + i + ']=this.value" style="flex:1">' +
-          '<button class="danger sm" onclick="_admCatItems.splice(' + i + ',1);renderAdmCatItems()">✕</button>' +
-        '</div>';
+          '<button class="danger sm" onclick="_admCatItems.splice(' + i + ',1);renderAdmCatItems()">✕</button></div>';
       }).join('')
     : '<div class="muted" style="font-size:13px;padding:8px 0">Sin elementos. Agrega el primero abajo.</div>';
 }
 
 function admAgregarItem() {
-  var v = ($('adm-cat-nuevo-item').value || '').trim();
-  if (!v) return;
-  _admCatItems.push(v);
-  renderAdmCatItems();
-  $('adm-cat-nuevo-item').value = '';
-  $('adm-cat-nuevo-item').focus();
+  var v = ($('adm-cat-nuevo-item').value || '').trim(); if (!v) return;
+  _admCatItems.push(v); renderAdmCatItems();
+  $('adm-cat-nuevo-item').value = ''; $('adm-cat-nuevo-item').focus();
 }
 
 function admGuardarCat() {
   if (!_admCatActivo) return;
-  var items = _admCatItems.map(function(v) { return String(v || '').trim(); }).filter(Boolean);
+  var items = _admCatItems.map(function(v) { return String(v||'').trim(); }).filter(Boolean);
   google.script.run
     .withSuccessHandler(function() { toast('✓ Catálogo guardado', 'ok'); cargarAdmCat(); })
     .withFailureHandler(function(e) { toast('Error: ' + (e.message || e), 'err'); })
@@ -1270,33 +1380,26 @@ function admGuardarCat() {
 }
 
 function admEliminarCat() {
-  if (!_admCatActivo) return;
-  if (!confirm('¿Eliminar el catálogo "' + _admCatActivo.tipo + '"? Esta acción no se puede deshacer.')) return;
+  if (!_admCatActivo || !confirm('¿Eliminar catálogo "' + _admCatActivo.tipo + '"?')) return;
   google.script.run
     .withSuccessHandler(function() { toast('Catálogo eliminado', 'ok'); admCerrarCat(); cargarAdmCat(); })
     .withFailureHandler(function(e) { toast('Error: ' + (e.message || e), 'err'); })
     .eliminarCatalogo(_admCatActivo.tipo);
 }
 
-function admCerrarCat() {
-  _admCatActivo = null;
-  _admCatItems  = [];
-  $('adm-cat-editor').classList.add('hidden');
-}
+function admCerrarCat() { _admCatActivo = null; _admCatItems = []; $('adm-cat-editor').classList.add('hidden'); }
 
 function admNuevoCat() {
-  var tipo = prompt('Nombre del nuevo tipo de catálogo\n(ej: ZONAS, TRANSPORTISTAS, RUTAS):');
+  var tipo = prompt('Nombre del nuevo catálogo (ej: ZONAS, TRANSPORTISTAS):');
   if (!tipo || !tipo.trim()) return;
-  _admCatActivo = { tipo: tipo.trim().toUpperCase().replace(/\s+/g, '_'), items: [] };
+  _admCatActivo = { tipo: tipo.trim().toUpperCase().replace(/\s+/g,'_'), items: [] };
   _admCatItems  = [];
-  $('adm-cat-titulo').textContent = 'Nuevo catálogo: ' + _admCatActivo.tipo;
+  $('adm-cat-titulo').textContent = 'Nuevo: ' + _admCatActivo.tipo;
   renderAdmCatItems();
   $('adm-cat-editor').classList.remove('hidden');
-  $('adm-cat-nuevo-item').value = '';
-  $('adm-cat-nuevo-item').focus();
+  $('adm-cat-nuevo-item').value = ''; $('adm-cat-nuevo-item').focus();
 }
 
-/* ── Usuarios ──────────────────────────────────────────────── */
 function cargarAdmUsr() {
   google.script.run
     .withSuccessHandler(function(lista) {
@@ -1305,7 +1408,7 @@ function cargarAdmUsr() {
         (lista.length
           ? lista.map(function(u) {
               var activo = u.activo === true || u.activo === 'TRUE' || u.activo === 1;
-              var uid    = esc(u.id);
+              var uid = esc(u.id);
               return '<tr>' +
                 '<td style="font-size:12px">' + esc(u.email) + '</td>' +
                 '<td><input id="u-nom-' + uid + '" value="' + esc(u.nombre) + '" style="width:100%;min-width:100px"></td>' +
@@ -1315,15 +1418,14 @@ function cargarAdmUsr() {
                   }).join('') +
                 '</select></td>' +
                 '<td><span class="badge ' + (activo ? 'VERDE' : 'ROJO') + '">' + (activo ? 'Activo' : 'Inactivo') + '</span></td>' +
-                '<td style="white-space:nowrap;min-width:280px">' +
+                '<td style="white-space:nowrap;min-width:260px">' +
                   '<button class="ghost sm" onclick="admGuardarUsr(\'' + uid + '\')">Guardar</button> ' +
-                  '<button class="warn sm" onclick="admToggleUsr(\'' + uid + '\',' + (!activo) + ')">' +
-                    (activo ? 'Desactivar' : 'Activar') + '</button> ' +
+                  '<button class="warn sm" onclick="admToggleUsr(\'' + uid + '\',' + (!activo) + ')">' + (activo ? 'Desactivar' : 'Activar') + '</button> ' +
                   '<button class="ghost sm" onclick="admResetPin(\'' + uid + '\')">Reset PIN</button> ' +
                   '<button class="danger sm" onclick="admEliminarUsr(\'' + uid + '\')">Eliminar</button>' +
                 '</td></tr>';
             }).join('')
-          : '<tr><td colspan="5" style="text-align:center;color:var(--muted)">Sin usuarios registrados</td></tr>');
+          : '<tr><td colspan="5" style="text-align:center;color:var(--muted)">Sin usuarios</td></tr>');
     })
     .withFailureHandler(function(e) { toast('Error: ' + (e.message || e), 'err'); })
     .getUsuarios();
@@ -1338,10 +1440,8 @@ function admCancelarUsr() {
 
 function admCrearUsr() {
   var d = {
-    email:  ($('adm-u-email').value  || '').trim(),
-    nombre: ($('adm-u-nombre').value || '').trim(),
-    pin:    ($('adm-u-pin').value    || '').trim(),
-    rol:    $('adm-u-rol').value
+    email:  ($('adm-u-email').value ||'').trim(), nombre: ($('adm-u-nombre').value||'').trim(),
+    pin:    ($('adm-u-pin').value   ||'').trim(), rol: $('adm-u-rol').value
   };
   if (!d.email || !d.nombre || !d.pin) { toast('Email, nombre y PIN son obligatorios', 'err'); return; }
   if (d.pin.length < 4) { toast('PIN mínimo 4 caracteres', 'err'); return; }
@@ -1367,42 +1467,36 @@ function admGuardarUsr(id) {
 
 function admToggleUsr(id, activo) {
   google.script.run
-    .withSuccessHandler(function() {
-      toast(activo ? '✓ Usuario activado' : 'Usuario desactivado', 'ok');
-      cargarAdmUsr();
-    })
+    .withSuccessHandler(function() { toast(activo ? '✓ Usuario activado' : 'Usuario desactivado', 'ok'); cargarAdmUsr(); })
     .withFailureHandler(function(e) { toast('Error: ' + (e.message || e), 'err'); })
     .toggleUsuario(id, activo);
 }
 
 function admResetPin(id) {
-  var pin = prompt('Nuevo PIN para este usuario (mín. 4 caracteres):');
+  var pin = prompt('Nuevo PIN (mín. 4 caracteres):');
   if (pin === null) return;
-  if (!pin.trim() || pin.trim().length < 4) { toast('PIN muy corto (mínimo 4 caracteres)', 'err'); return; }
+  if (!pin.trim() || pin.trim().length < 4) { toast('PIN muy corto', 'err'); return; }
   google.script.run
-    .withSuccessHandler(function(r) {
-      toast(r.ok ? '✓ PIN restablecido' : 'Error: ' + (r.msg || 'No se pudo restablecer'), r.ok ? 'ok' : 'err');
-    })
-    .withFailureHandler(function(e) { toast('Error: ' + (e.message || e), 'err'); })
+    .withSuccessHandler(function(r) { toast(r.ok ? '✓ PIN restablecido' : 'Error: ' + (r.msg||''), r.ok?'ok':'err'); })
+    .withFailureHandler(function(e) { toast('Error: ' + (e.message||e), 'err'); })
     .resetPinAdmin(id, pin.trim());
 }
 
 function admEliminarUsr(id) {
-  if (!confirm('¿Eliminar este usuario? Esta acción no se puede deshacer.')) return;
+  if (!confirm('¿Eliminar este usuario? No se puede deshacer.')) return;
   google.script.run
     .withSuccessHandler(function() { toast('Usuario eliminado', 'ok'); cargarAdmUsr(); })
-    .withFailureHandler(function(e) { toast('Error: ' + (e.message || e), 'err'); })
+    .withFailureHandler(function(e) { toast('Error: ' + (e.message||e), 'err'); })
     .eliminarUsuario(id);
 }
 
-/* ── Tiempos estimados ─────────────────────────────────────── */
 function cargarAdmTem() {
   google.script.run
     .withSuccessHandler(function(mapa) {
       _admTiempos = Object.keys(mapa).map(function(k) { return { etapa: k, minutos: mapa[k] }; });
       renderAdmTiempos();
     })
-    .withFailureHandler(function(e) { toast('Error: ' + (e.message || e), 'err'); })
+    .withFailureHandler(function(e) { toast('Error: ' + (e.message||e), 'err'); })
     .getTimeposEstimados();
 }
 
@@ -1414,28 +1508,24 @@ function renderAdmTiempos() {
           return '<tr>' +
             '<td><input value="' + esc(t.etapa) + '" oninput="_admTiempos[' + i + '].etapa=this.value" style="width:100%;min-width:120px"></td>' +
             '<td><input type="number" value="' + t.minutos + '" min="0" oninput="_admTiempos[' + i + '].minutos=Number(this.value)" style="width:80px"></td>' +
-            '<td><button class="danger sm" onclick="_admTiempos.splice(' + i + ',1);renderAdmTiempos()">✕</button></td>' +
-          '</tr>';
+            '<td><button class="danger sm" onclick="_admTiempos.splice(' + i + ',1);renderAdmTiempos()">✕</button></td></tr>';
         }).join('')
       : '<tr><td colspan="3" style="text-align:center;color:var(--muted)">Sin tiempos configurados</td></tr>');
 }
 
 function admAgregarEtapa() {
-  var etapa = ($('adm-tem-etapa').value || '').trim();
-  var min   = Number($('adm-tem-min').value || 0);
+  var etapa = ($('adm-tem-etapa').value||'').trim();
+  var min   = Number($('adm-tem-min').value||0);
   if (!etapa) { $('adm-tem-etapa').focus(); return; }
-  _admTiempos.push({ etapa: etapa, minutos: min });
-  renderAdmTiempos();
-  $('adm-tem-etapa').value = '';
-  $('adm-tem-min').value   = '';
-  $('adm-tem-etapa').focus();
+  _admTiempos.push({ etapa: etapa, minutos: min }); renderAdmTiempos();
+  $('adm-tem-etapa').value = ''; $('adm-tem-min').value = ''; $('adm-tem-etapa').focus();
 }
 
 function admGuardarTiempos() {
-  var items = _admTiempos.filter(function(t) { return String(t.etapa || '').trim(); });
+  var items = _admTiempos.filter(function(t) { return String(t.etapa||'').trim(); });
   google.script.run
-    .withSuccessHandler(function() { toast('✓ Tiempos estimados guardados', 'ok'); })
-    .withFailureHandler(function(e) { toast('Error: ' + (e.message || e), 'err'); })
+    .withSuccessHandler(function() { toast('✓ Tiempos guardados', 'ok'); })
+    .withFailureHandler(function(e) { toast('Error: ' + (e.message||e), 'err'); })
     .guardarTiemposEst(items);
 }
 
