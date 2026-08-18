@@ -10,7 +10,8 @@
  */
 
 var TIPOS_CATALOGO = ['clientes', 'turnos', 'flujos', 'etapas', 'tiposEquipo',
-  'materiales', 'presentaciones', 'montacargas', 'causasDemora', 'unidadesMedida'];
+  'materiales', 'presentaciones', 'montacargas', 'causasDemora', 'unidadesMedida',
+  'tiposManiobra', 'aditamentos', 'transportistas'];
 
 /* -------------------------------- lecturas --------------------------------- */
 
@@ -148,13 +149,21 @@ function cargarEjemplo() {
     flujos: ['Descarga', 'Carga', 'Traspaleo', 'Acomodo'],
     etapas: ['Arribo', 'Maniobra', 'Verificación', 'Liberación'],
     tiposEquipo: ['Caja seca 53', 'Contenedor 40', 'Contenedor 20', 'Tolva', 'Plataforma'],
-    materiales: ['Costal', 'Caja', 'Tambor', 'Rollo', 'Granel'],
-    presentaciones: ['Estibado', 'Suelto', 'Paletizado', 'Amarrado'],
+    materiales: ['Costal', 'Caja', 'Tambor', 'Rollo', 'Celulosa', 'Granel'],
+    presentaciones: ['Estibado', 'Suelto', 'Paletizado', 'Amarrado', 'Atado'],
     montacargas: ['MC-01', 'MC-02', 'MC-03'],
     causasDemora: ['Falta de personal', 'Documentación', 'Espera de unidad',
       'Falla de montacargas', 'Producto dañado', 'Reacomodo', 'Comida'],
-    unidadesMedida: ['Piezas', 'Cajas', 'Tarimas', 'Toneladas', 'Costales']
+    unidadesMedida: ['Piezas', 'Cajas', 'Tarimas', 'Toneladas', 'Costales'],
+    aditamentos: ['Ninguno', 'Cuchillas', 'Roll Clamp'],
+    transportistas: ['Transportes del Norte', 'Fletes Bajío', 'Autolíneas TL']
   };
+  // Los tipos de maniobra llevan un CÓDIGO en 'extra' para armar el folio.
+  var maniobras = [
+    ['Descarga de furgón', 'DESC'], ['Carga de furgón', 'CARG'],
+    ['Carga plataforma desde piso', 'CPPI'], ['Acomodo en almacén', 'ACOM'],
+    ['Traspaleo', 'TRAS']
+  ];
   var orden = 1;
   Object.keys(ejemplo).forEach(function (tipo) {
     ejemplo[tipo].forEach(function (valor) {
@@ -162,6 +171,12 @@ function cargarEjemplo() {
         id: nuevoId_(), tipo: tipo, valor: valor, extra: '',
         orden: orden++, activo: 'SI'
       });
+    });
+  });
+  maniobras.forEach(function (m) {
+    insertar_('CATALOGOS', {
+      id: nuevoId_(), tipo: 'tiposManiobra', valor: m[0], extra: m[1],
+      orden: orden++, activo: 'SI'
     });
   });
   Logger.log('Catálogos de ejemplo cargados.');

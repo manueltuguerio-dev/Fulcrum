@@ -39,9 +39,11 @@ var TABLAS = {
                     'destinatarios', 'formato', 'activo', 'ultimoEnvio', 'creado'],
 
   REGISTRO: [
-    'id', 'folio', 'fecha', 'turno', 'cliente', 'flujo', 'etapa',
+    'id', 'folio', 'furgonId', 'tipoManiobra', 'codManiobra', 'consecutivo',
+    'fecha', 'turno', 'cliente', 'flujo', 'etapa',
     'tipoEquipo', 'noUnidad', 'cantEquipos', 'material', 'presentacion',
     'cantPiezas', 'unidadMedida', 'tarimas', 'pesoTons',
+    'placaPlataforma', 'transportista', 'pesoCargado',
     'montacarguistas', 'numMontac', 'ayudantes', 'numAyud',
     'tipoMontacargas', 'numMontacargas',
     'horaArribo', 'horaInicio', 'horaFin',
@@ -52,6 +54,17 @@ var TABLAS = {
     'estado', 'arriboMs', 'andenMs', 'inicioMs', 'finMs',
     'pausaAbiertaMs', 'demoraAcumMs', 'pausasJson',
     'staffJson', 'maquinasJson', 'camposJson',
+    'operadorId', 'eliminado', 'creado', 'actualizado'
+  ],
+
+  PRUEBAS: [
+    'id', 'folio', 'furgonId', 'fecha', 'cliente', 'material',
+    'totalTons', 'totalAtados', 'presentacion', 'config',
+    'estado', 'posicionadoMs', 'inicioExtMs', 'finExtMs',
+    'inicioAcoMs', 'finAcoMs', 'liberadoMs',
+    'esperaFL1Min', 'm2', 'nivelesEstiba',
+    'tiempoExtraccionMin', 'tiempoAcomodoMin', 'tiempoTotalMin', 'tonsPorHora',
+    'staffJson', 'maquinasJson', 'observaciones',
     'operadorId', 'eliminado', 'creado', 'actualizado'
   ],
 
@@ -67,7 +80,9 @@ var CONFIG_INICIAL = {
   empresa: 'TLTERMINALS',
   slaVerde: '45',   // objetivo por defecto cuando la matriz no aplica
   slaAmbar: '90',   // umbral ámbar por defecto; por encima, rojo
-  horasSesion: '12'
+  horasSesion: '12',
+  furgonRegex: '^[A-Z]{2,5}[0-9]{4,8}$', // p.ej. TBOX667792
+  maniobraPlataforma: 'Carga plataforma desde piso' // dispara campos condicionales
 };
 
 /* -------------------------------- instalación ------------------------------ */
@@ -174,6 +189,33 @@ function carpetaDeFolio_(folio) {
   var limpio = String(folio || 'SIN_FOLIO').replace(/[^\w\-]+/g, '_');
   var deFolio = fotos.getFoldersByName(limpio);
   return deFolio.hasNext() ? deFolio.next() : fotos.createFolder(limpio);
+}
+
+/**
+ * Protege todas las pestañas de datos para que nadie las edite a mano: la idea
+ * del sistema es que los usuarios NUNCA abran la hoja y toda corrección pase por
+ * el CRUD del Admin (que además queda en la bitácora). Es idempotente y opcional.
+ */
+function protegerHojas() {
+  var libro = libro_();
+  var yo = Session.getEffectiveUser();
+  Object.keys(TABLAS).forEach(function (nombre) {
+    var hoja = libro.getSheetByName(nombre);
+    if (!hoja) { return; }
+    try {
+      // Quita protecciones previas para no acumularlas.
+      (hoja.getProtections(SpreadsheetApp.ProtectionType.SHEET) || []).forEach(function (p) {
+        if (p.canEdit()) { p.remove(); }
+      });
+      var prot = hoja.protect().setDescription('Datos del sistema — editar solo desde la app');
+      prot.addEditor(yo);
+      if (prot.canDomainEdit && prot.canDomainEdit()) { prot.setDomainEdit(false); }
+    } catch (err) {
+      Logger.log('No pude proteger "' + nombre + '": ' + err.message);
+    }
+  });
+  Logger.log('Pestañas de datos protegidas.');
+  return true;
 }
 
 /** Mueve la hoja de cálculo a la carpeta del almacén. @private */

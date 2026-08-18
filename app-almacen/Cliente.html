@@ -173,7 +173,7 @@ function mostrarApp() {
     '<div class="quien"><b>' + esc(u.nombre) + '</b><span class="chip">' + esc(u.rol) + '</span> ' +
     '<button class="btn chico" style="margin-left:6px" onclick="salir()">Salir</button></div>';
 
-  var tabs = [{ id: 'patio', txt: 'Patio' }];
+  var tabs = [{ id: 'patio', txt: 'Patio' }, { id: 'prueba', txt: 'Prueba' }];
   if (esAdmin()) {
     tabs.push({ id: 'dashboard', txt: 'Tablero' });
     tabs.push({ id: 'historial', txt: 'Historial' });
@@ -198,7 +198,7 @@ function mostrarApp() {
 function ir(v) { estado.vista = v; mostrarApp(); }
 function pintar() {
   detenerTic();
-  var f = { patio: pintarPatio, dashboard: pintarDashboard, historial: pintarHistorial,
+  var f = { patio: pintarPatio, prueba: pintarPrueba, dashboard: pintarDashboard, historial: pintarHistorial,
     personal: pintarPersonal, equipos: pintarEquipos, sla: pintarSla, catalogos: pintarCatalogos,
     reportes: pintarReportes, usuarios: pintarUsuarios, campos: pintarCampos,
     auditoria: pintarAuditoria, ajustes: pintarAjustes }[estado.vista];
@@ -244,7 +244,7 @@ function tarjetaViva(r) {
     ' data-estado="' + r.estado + '" data-obj="' + r.slaObjetivoMin + '" data-ambar="' + r.slaAmbarMin + '">' +
     '<div class="encab-maniobra"><span class="folio">' + esc(r.folio) + '</span>' +
     '<span class="cli">' + esc(r.cliente || 'Sin cliente') + '</span>' +
-    (r.flujo ? '<span class="chip">' + esc(r.flujo) + '</span>' : '') +
+    (r.tipoManiobra ? '<span class="chip">' + esc(r.tipoManiobra) + '</span>' : '') +
     '<span class="semaforo" data-sem style="margin-left:auto"></span></div>' +
     '<div style="margin:8px 0 2px"><span class="chip" data-etapatxt>' + esc(ETAPAS_TXT[r.estado] || r.estado) + '</span>' +
     (pausado && r.pausas.length ? ' <span class="en-pausa">· ' + esc(r.pausas[r.pausas.length - 1].causa) + '</span>' : '') + '</div>' +
@@ -262,7 +262,10 @@ function tarjetaViva(r) {
 
 var relojIntervalo = null;
 function arrancarTic() { detenerTic(); ttic(); relojIntervalo = setInterval(ttic, 1000); }
-function detenerTic() { if (relojIntervalo) { clearInterval(relojIntervalo); relojIntervalo = null; } }
+function detenerTic() {
+  if (relojIntervalo) { clearInterval(relojIntervalo); relojIntervalo = null; }
+  if (typeof ticPrueba !== 'undefined' && ticPrueba) { clearInterval(ticPrueba); ticPrueba = null; }
+}
 function ttic() {
   var nodos = document.querySelectorAll('.maniobra-viva');
   var ahora = ahoraServidor();
@@ -381,17 +384,61 @@ function leerCamposCustom(cont) {
   return res;
 }
 
+/* opciones para selects reutilizables */
+function opcionesManiobra(seleccion) {
+  return (estado.catalogos.tiposManiobra || []).map(function (o) {
+    return '<option value="' + esc(o.valor) + '"' + (String(seleccion || '') === o.valor ? ' selected' : '') + '>' + esc(o.valor) + '</option>';
+  }).join('');
+}
+function opcionesOperador(seleccion) {
+  var ops = estado.empleados.filter(function (e) { return e.puesto === 'Montacarguista'; });
+  return '<option value="">Operador…</option>' + ops.map(function (e) {
+    return '<option value="' + e.id + '"' + (String(seleccion || '') === e.id ? ' selected' : '') + '>' + esc(e.nombre) + '</option>';
+  }).join('');
+}
+function opcionesAditamento(seleccion) {
+  return (estado.catalogos.aditamentos || []).map(function (o) {
+    return '<option value="' + esc(o.valor) + '"' + (String(seleccion || '') === o.valor ? ' selected' : '') + '>' + esc(o.valor) + '</option>';
+  }).join('');
+}
+
+/* Selección de montacargas con operador y aditamento por SKU. */
+function maquinasPickerHTML(preseleccion) {
+  preseleccion = preseleccion || [];
+  var porId = {}; preseleccion.forEach(function (m) { porId[m.id] = m; });
+  if (!estado.maquinas.length) { return '<div class="mini">No hay equipos dados de alta.</div>'; }
+  return estado.maquinas.map(function (m) {
+    var sel = porId[m.id];
+    return '<div class="maq-row" data-id="' + m.id + '">' +
+      '<label class="maq-chk-l"><input type="checkbox" class="maq-chk"' + (sel ? ' checked' : '') + ' /> ' + esc(m.sku) + (m.tipo ? ' · ' + esc(m.tipo) : '') + '</label>' +
+      '<select class="maq-op">' + opcionesOperador(sel ? sel.operadorId : '') + '</select>' +
+      '<select class="maq-ad">' + opcionesAditamento(sel ? sel.aditamento : '') + '</select>' +
+      '</div>';
+  }).join('');
+}
+function leerMaquinas(cont) {
+  var res = [];
+  (cont || document).querySelectorAll('.maq-row').forEach(function (row) {
+    var chk = row.querySelector('.maq-chk');
+    if (chk && chk.checked) {
+      res.push({ id: row.getAttribute('data-id'),
+        operadorId: row.querySelector('.maq-op').value,
+        aditamento: row.querySelector('.maq-ad').value });
+    }
+  });
+  return res;
+}
+
 /* -------------------------------- iniciar / clonar ------------------------- */
 
 function abrirIniciar(prefill) {
   prefill = prefill || {};
-  estado.sel = {
-    staff: (prefill.staff || []).map(function (s) { return s.id; }),
-    maquinas: (prefill.maquinas || []).map(function (m) { return m.id; })
-  };
+  estado.sel = { staff: (prefill.staff || []).map(function (s) { return s.id; }) };
   var g = function (k) { return prefill[k] === undefined ? '' : prefill[k]; };
+  var esPlat = g('tipoManiobra') === (estado.config.maniobraPlataforma || '');
   var cuerpo = '<div class="rejilla">' +
-    '<div class="ancho"><label>Folio (opcional, se genera solo)</label><input id="f_folio" placeholder="Automático" /></div>' +
+    '<div><label>ID de furgón *</label><input id="f_furgonId" value="' + esc(g('furgonId')) + '" placeholder="TBOX667792" oninput="this.value=this.value.toUpperCase()" /></div>' +
+    '<div><label>Tipo de maniobra *</label><select id="f_tipoManiobra" onchange="togglePlataforma()"><option value="">Elige…</option>' + opcionesManiobra(g('tipoManiobra')) + '</select></div>' +
     '<div><label>Cliente</label><select id="f_cliente">' + opcionesDe('clientes', g('cliente'), true) + '</select></div>' +
     '<div><label>Turno</label><select id="f_turno">' + opcionesDe('turnos', g('turno'), true) + '</select></div>' +
     '<div><label>Flujo</label><select id="f_flujo">' + opcionesDe('flujos', g('flujo'), true) + '</select></div>' +
@@ -404,37 +451,55 @@ function abrirIniciar(prefill) {
     '<div><label>Tarimas</label><input id="f_tarimas" type="number" value="' + esc(g('tarimas')) + '" /></div>' +
     '<div><label>Peso (tons)</label><input id="f_pesoTons" type="number" step="0.01" value="' + esc(g('pesoTons')) + '" /></div>' +
     '<div><label>Daño al llegar</label><select id="f_danoLlegada"><option value="NO">No</option><option value="SI">Sí</option></select></div>' +
-    '<div class="ancho"><label>Cuadrilla (montacarguistas / ayudantes / inspector...)</label>' + chipsHTML('staff') + '</div>' +
-    '<div class="ancho"><label>Equipos (montacargas por SKU)</label>' + chipsHTML('maquinas') + '</div>' +
-    camposCustomHTML(prefill.campos) +
-    '<div class="ancho"><label>Observaciones</label><textarea id="f_observaciones">' + esc(g('observaciones')) + '</textarea></div>' +
+    '</div>' +
+    '<div id="bloquePlataforma" class="rejilla' + (esPlat ? '' : ' oculto') + '" style="margin-top:6px">' +
+      '<div class="ancho mini">Datos de carga a plataforma:</div>' +
+      '<div><label>Placa / plataforma</label><input id="f_placaPlataforma" value="' + esc(g('placaPlataforma')) + '" /></div>' +
+      '<div><label>Transportista</label><select id="f_transportista">' + opcionesDe('transportistas', g('transportista'), true) + '</select></div>' +
+      '<div><label>Peso cargado</label><input id="f_pesoCargado" type="number" step="0.01" value="' + esc(g('pesoCargado')) + '" /></div>' +
+    '</div>' +
+    '<div class="rejilla">' +
+      '<div class="ancho"><label>Cuadrilla (ayudantes / inspector / supervisor)</label>' + chipsHTML('staff') + '</div>' +
+      '<div class="ancho"><label>Montacargas · operador · aditamento</label>' + maquinasPickerHTML(prefill.maquinas) + '</div>' +
+      camposCustomHTML(prefill.campos) +
+      '<div class="ancho"><label>Observaciones</label><textarea id="f_observaciones">' + esc(g('observaciones')) + '</textarea></div>' +
     '</div>' +
     '<label style="margin-top:10px"><input type="checkbox" id="f_directo" style="width:auto;margin-right:6px" />Empezar directo en “maniobra” (sin cronometrar recepción/espera)</label>' +
     '<div class="fila-botones"><button class="btn verde bloque" onclick="iniciar()">▶ Iniciar cronómetro</button></div>';
-  abrirModal(prefill.id ? 'Clonar maniobra' : 'Nueva maniobra', cuerpo, 640);
+  abrirModal(prefill.furgonId ? 'Agregar evento al furgón ' + esc(prefill.furgonId) : 'Nuevo evento de maniobra', cuerpo, 640);
+}
+function togglePlataforma() {
+  var esPlat = val('f_tipoManiobra') === (estado.config.maniobraPlataforma || '');
+  $('bloquePlataforma').classList[esPlat ? 'remove' : 'add']('oculto');
 }
 function iniciar() {
+  if (!val('f_furgonId').trim()) { avisar('Escribe el ID de furgón.', true); return; }
+  if (!val('f_tipoManiobra')) { avisar('Elige el tipo de maniobra.', true); return; }
   var datos = {
-    folio: val('f_folio'), cliente: val('f_cliente'), turno: val('f_turno'), flujo: val('f_flujo'),
+    furgonId: val('f_furgonId'), tipoManiobra: val('f_tipoManiobra'),
+    cliente: val('f_cliente'), turno: val('f_turno'), flujo: val('f_flujo'),
     etapa: val('f_etapa'), tipoEquipo: val('f_tipoEquipo'), noUnidad: val('f_noUnidad'),
     material: val('f_material'), presentacion: val('f_presentacion'), cantPiezas: val('f_cantPiezas'),
     tarimas: val('f_tarimas'), pesoTons: val('f_pesoTons'), danoLlegada: val('f_danoLlegada'),
+    placaPlataforma: val('f_placaPlataforma'), transportista: val('f_transportista'), pesoCargado: val('f_pesoCargado'),
     observaciones: val('f_observaciones'),
-    staffIds: estado.sel.staff, maquinaIds: estado.sel.maquinas,
+    staffIds: estado.sel.staff, maquinas: leerMaquinas($('modal')),
     arrancarEjecucion: $('f_directo').checked,
     campos: leerCamposCustom($('modal'))
   };
   llamar('apiIniciar', [datos]).then(function (r) {
-    estado.vivas.unshift(r); cerrarModal(); avisar('Maniobra ' + r.folio + ' iniciada.');
+    estado.vivas.unshift(r); cerrarModal(); avisar('Evento ' + r.folio + ' iniciado.');
     estado.vista = 'patio'; mostrarApp();
   }).catch(fallo);
 }
 function clonar(id) {
   var r = estado.vivas.concat(estado.historial).filter(function (x) { return x.id === id; })[0];
   if (!r) { return; }
-  abrirIniciar({ cliente: r.cliente, turno: r.turno, flujo: r.flujo, etapa: r.etapa, tipoEquipo: r.tipoEquipo,
-    noUnidad: r.noUnidad, material: r.material, presentacion: r.presentacion, cantPiezas: r.cantPiezas,
-    tarimas: r.tarimas, pesoTons: r.pesoTons, staff: r.staff, maquinas: r.maquinas, campos: r.campos, id: 'clon' });
+  abrirIniciar({ furgonId: r.furgonId, tipoManiobra: r.tipoManiobra, cliente: r.cliente, turno: r.turno,
+    flujo: r.flujo, etapa: r.etapa, tipoEquipo: r.tipoEquipo, noUnidad: r.noUnidad, material: r.material,
+    presentacion: r.presentacion, cantPiezas: r.cantPiezas, tarimas: r.tarimas, pesoTons: r.pesoTons,
+    placaPlataforma: r.placaPlataforma, transportista: r.transportista, pesoCargado: r.pesoCargado,
+    staff: r.staff, maquinas: r.maquinas, campos: r.campos });
 }
 
 /* -------------------------------- demora ----------------------------------- */
@@ -443,9 +508,8 @@ function abrirPausar(id) {
   var ops = (estado.catalogos.causasDemora || []).map(function (o) {
     return '<button class="btn bloque" style="margin-bottom:8px;text-align:left" onclick="pausar(\'' + id + '\',\'' + esc(o.valor) + '\')">' + esc(o.valor) + '</button>';
   }).join('');
-  var cuerpo = '<div class="sub">Elige la causa de la demora (obligatoria).</div>' + (ops || '') +
-    '<label>Otra causa</label><input id="causaLibre" placeholder="Escríbela y confirma" />' +
-    '<div class="fila-botones"><button class="btn ambar bloque" onclick="pausar(\'' + id + '\', $(\'causaLibre\').value)">⏸ Registrar demora</button></div>';
+  var cuerpo = '<div class="sub">Elige la causa de la demora (lista cerrada, obligatoria).</div>' +
+    (ops || '<div class="mini">No hay causas de demora en el catálogo. Pídele a un administrador que las agregue.</div>');
   abrirModal('Demora', cuerpo);
 }
 function pausar(id, causa) {
@@ -477,9 +541,16 @@ function finalizar(id) {
   llamar('apiFinalizar', [id, datos]).then(function (r) {
     estado.vivas = estado.vivas.filter(function (x) { return x.id !== id; });
     if (esAdmin()) { estado.historial.unshift(r); }
-    cerrarModal(); avisar('Maniobra ' + r.folio + ' cerrada · ' + r.tiempoTotalMin + ' min.'); pintar();
+    cerrarModal(); pintar();
+    // UX de flujo secuencial: seguir con otro evento del mismo furgón.
+    var cuerpo = '<div class="sub">Evento <b>' + esc(r.folio) + '</b> cerrado · ' + esc(r.tiempoTotalMin) + ' min ' +
+      '<span class="etiq ' + esc(r.sla) + '">' + esc(r.sla) + '</span></div>' +
+      '<div class="fila-botones"><button class="btn primario bloque" onclick="agregarEventoMismoFurgon(\'' + esc(r.furgonId) + '\')">＋ Agregar evento a este mismo furgón</button>' +
+      '<button class="btn bloque" onclick="cerrarModal()">Listo</button></div>';
+    abrirModal('Maniobra cerrada', cuerpo);
   }).catch(fallo);
 }
+function agregarEventoMismoFurgon(furgonId) { cerrarModal(); abrirIniciar({ furgonId: furgonId }); }
 
 /* --------------------------------- fotos ----------------------------------- */
 
@@ -606,15 +677,21 @@ function verManiobra(id) {
   var r = estado.historial.filter(function (x) { return x.id === id; })[0];
   if (!r) { return; }
   var adm = esAdmin();
-  estado.sel = { staff: (r.staff || []).map(function (s) { return s.id; }), maquinas: (r.maquinas || []).map(function (m) { return m.id; }) };
+  estado.sel = { staff: (r.staff || []).map(function (s) { return s.id; }) };
   var campo = function (et, v, id2, tipo) {
     return '<div><label>' + et + '</label>' + (adm ? '<input id="' + id2 + '" ' + (tipo === 'num' ? 'type="number" step="0.01"' : '') + ' value="' + esc(v) + '" />' : '<b>' + esc(v || '—') + '</b>') + '</div>';
   };
+  var esPlat = r.tipoManiobra === (estado.config.maniobraPlataforma || '');
   var cuerpo = '<div class="rejilla">' +
-    campo('Folio', r.folio, 'e_folio') + campo('Cliente', r.cliente, 'e_cliente') +
+    campo('Folio', r.folio, 'e_folio') + campo('ID furgón', r.furgonId, 'e_furgonId') +
+    '<div><label>Tipo de maniobra</label>' + (adm ? '<select id="e_tipoManiobra"><option value="">—</option>' + opcionesManiobra(r.tipoManiobra) + '</select>' : '<b>' + esc(r.tipoManiobra || '—') + '</b>') + '</div>' +
+    campo('Cliente', r.cliente, 'e_cliente') +
     campo('Flujo', r.flujo, 'e_flujo') + campo('Etapa', r.etapa, 'e_etapa') +
     campo('Material', r.material, 'e_material') + campo('Piezas', r.cantPiezas, 'e_cantPiezas', 'num') +
     campo('Tarimas', r.tarimas, 'e_tarimas', 'num') + campo('Peso (tons)', r.pesoTons, 'e_pesoTons', 'num') +
+    (esPlat ? campo('Placa/plataforma', r.placaPlataforma, 'e_placaPlataforma') +
+      campo('Transportista', r.transportista, 'e_transportista') +
+      campo('Peso cargado', r.pesoCargado, 'e_pesoCargado', 'num') : '') +
     campo('Recepción (min)', r.tiempoRecepcionMin, 'e_tiempoRecepcionMin', 'num') +
     campo('Espera (min)', r.tiempoEsperaMin, 'e_tiempoEsperaMin', 'num') +
     campo('Ejecución (min)', r.tiempoEjecucionMin, 'e_tiempoEjecucionMin', 'num') +
@@ -622,8 +699,8 @@ function verManiobra(id) {
     campo('Demora (min)', r.demoraMin, 'e_demoraMin', 'num') +
     campo('Efectivo (min)', r.tiempoEfectivoMin, 'e_tiempoEfectivoMin', 'num') +
     '<div class="ancho"><label>Causa de demora</label>' + (adm ? '<input id="e_causaDemora" value="' + esc(r.causaDemora) + '" />' : '<b>' + esc(r.causaDemora || '—') + '</b>') + '</div>' +
-    (adm ? '<div class="ancho"><label>Cuadrilla</label>' + chipsHTML('staff') + '</div><div class="ancho"><label>Equipos (SKU)</label>' + chipsHTML('maquinas') + '</div>'
-         : '<div class="ancho mini">👷 ' + esc((r.staff || []).map(function (s) { return s.nombre; }).join(', ')) + '<br>🚜 ' + esc((r.maquinas || []).map(function (m) { return m.sku; }).join(', ')) + '</div>') +
+    (adm ? '<div class="ancho"><label>Cuadrilla</label>' + chipsHTML('staff') + '</div><div class="ancho"><label>Montacargas · operador · aditamento</label>' + maquinasPickerHTML(r.maquinas) + '</div>'
+         : '<div class="ancho mini">👷 ' + esc((r.staff || []).map(function (s) { return s.nombre; }).join(', ')) + '<br>🚜 ' + esc((r.maquinas || []).map(function (m) { return m.sku + (m.operador ? ' (' + m.operador + ')' : ''); }).join(', ')) + '</div>') +
     '<div class="ancho"><label>Observaciones</label>' + (adm ? '<textarea id="e_observaciones">' + esc(r.observaciones) + '</textarea>' : '<b>' + esc(r.observaciones || '—') + '</b>') + '</div>' +
     '<div class="ancho"><label>Detalle del daño / fotos</label>' + (adm ? '<textarea id="e_detalleDano">' + esc(r.detalleDano) + '</textarea>' : '<div class="mini" style="white-space:pre-wrap">' + esc(r.detalleDano || '—') + '</div>') + '</div>' +
     '</div>' +
@@ -635,12 +712,14 @@ function verManiobra(id) {
   abrirModal('Maniobra ' + r.folio, cuerpo, 680);
 }
 function guardarEdicion(id) {
-  var cambios = { folio: val('e_folio'), cliente: val('e_cliente'), flujo: val('e_flujo'), etapa: val('e_etapa'),
+  var cambios = { furgonId: val('e_furgonId'), tipoManiobra: val('e_tipoManiobra'),
+    cliente: val('e_cliente'), flujo: val('e_flujo'), etapa: val('e_etapa'),
     material: val('e_material'), cantPiezas: val('e_cantPiezas'), tarimas: val('e_tarimas'), pesoTons: val('e_pesoTons'),
+    placaPlataforma: val('e_placaPlataforma'), transportista: val('e_transportista'), pesoCargado: val('e_pesoCargado'),
     tiempoRecepcionMin: val('e_tiempoRecepcionMin'), tiempoEsperaMin: val('e_tiempoEsperaMin'), tiempoEjecucionMin: val('e_tiempoEjecucionMin'),
     tiempoTotalMin: val('e_tiempoTotalMin'), demoraMin: val('e_demoraMin'), tiempoEfectivoMin: val('e_tiempoEfectivoMin'),
     causaDemora: val('e_causaDemora'), observaciones: val('e_observaciones'), detalleDano: val('e_detalleDano'),
-    staffIds: estado.sel.staff, maquinaIds: estado.sel.maquinas };
+    staffIds: estado.sel.staff, maquinas: leerMaquinas($('modal')) };
   llamar('apiEditarRegistro', [id, cambios]).then(function (r) {
     estado.historial = estado.historial.map(function (x) { return x.id === id ? r : x; });
     cerrarModal(); avisar('Cambios guardados.'); if (estado.vista === 'historial') { $('tabla-hist').innerHTML = tablaHistorial(estado.historial); }
@@ -965,4 +1044,111 @@ function guardarAjustes() {
 
 /* --------------------------------- arranque -------------------------------- */
 window.addEventListener('load', arrancar);
+</script>
+<script>
+/* Quinta parte: módulo de PRUEBA CONTROLADA (estudio de tiempos). */
+
+var ETAPAS_PRUEBA = { posicionado: 'Furgón posicionado', extraccion: 'Extrayendo', extraido: 'Extracción terminada',
+  acomodo: 'Acomodando', acomodado: 'Acomodo terminado', finalizado: 'Liberado' };
+var SIG_PRUEBA = { posicionado: { marca: 'inicioExt', txt: '▶ Inicio extracción' },
+  extraccion: { marca: 'finExt', txt: '■ Fin extracción' },
+  extraido: { marca: 'inicioAco', txt: '▶ Inicio acomodo' },
+  acomodo: { marca: 'finAco', txt: '■ Fin acomodo' } };
+var pruebaDesfase = 0;
+
+function pintarPrueba() {
+  detenerTic();
+  llamar('apiPruebas').then(function (r) {
+    pruebaDesfase = (r.serverNowMs || Date.now()) - Date.now();
+    estado._pruebasVivas = r.vivas; estado._pruebasHist = r.historial;
+    var html = '<div class="fila-botones" style="margin-bottom:14px">' +
+      '<button class="btn primario" onclick="abrirNuevaPrueba()">＋ Nueva prueba controlada</button>' +
+      '<button class="btn chico" onclick="pintarPrueba()">↻ Actualizar</button></div>';
+    html += r.vivas.length ? '<div id="lista-pruebas">' + r.vivas.map(tarjetaPrueba).join('') + '</div>'
+      : '<div class="tarjeta vacio">No hay pruebas en curso.</div>';
+    if (esAdmin() && r.historial.length) {
+      html += '<div class="tarjeta tabla-scroll"><h3>Pruebas finalizadas</h3><table><thead><tr>' +
+        '<th>Folio</th><th>Config</th><th>Tons</th><th>Extr.</th><th>Acomodo</th><th>Total</th><th>Tons/h</th></tr></thead><tbody>' +
+        r.historial.map(function (p) {
+          return '<tr><td>' + esc(p.folio) + '</td><td>' + esc(p.config) + '</td><td>' + esc(p.totalTons) + '</td>' +
+            '<td>' + esc(p.tiempoExtraccionMin) + '</td><td>' + esc(p.tiempoAcomodoMin) + '</td>' +
+            '<td>' + esc(p.tiempoTotalMin) + '</td><td>' + esc(p.tonsPorHora) + '</td></tr>';
+        }).join('') + '</tbody></table></div>';
+    }
+    $('vista').innerHTML = html;
+    arrancarTicPrueba();
+  }).catch(fallo);
+}
+function tarjetaPrueba(p) {
+  var sig = SIG_PRUEBA[p.estado];
+  var acciones = sig ? '<button class="btn primario" onclick="marcaPrueba(\'' + p.id + '\',\'' + sig.marca + '\')">' + sig.txt + '</button>' : '';
+  acciones += '<button class="btn rojo" onclick="abrirFinalizarPrueba(\'' + p.id + '\')">✔ Finalizar</button>';
+  return '<div class="tarjeta prueba-viva borde-verde" data-id="' + p.id + '" data-pos="' + p.posicionadoMs + '">' +
+    '<div class="encab-maniobra"><span class="folio">' + esc(p.folio) + '</span>' +
+    '<span class="chip">Config ' + esc(p.config) + '</span>' +
+    '<span class="cli">' + esc(p.totalTons) + ' t · ' + esc(p.totalAtados) + ' atados</span>' +
+    '<span class="crono" data-cronop style="margin-left:auto">00:00</span></div>' +
+    '<div style="margin:8px 0"><span class="chip" data-etp>' + esc(ETAPAS_PRUEBA[p.estado] || p.estado) + '</span></div>' +
+    '<div class="fila-botones">' + acciones + '</div></div>';
+}
+var ticPrueba = null;
+function arrancarTicPrueba() { if (ticPrueba) { clearInterval(ticPrueba); } tticP(); ticPrueba = setInterval(tticP, 1000); }
+function tticP() {
+  var nodos = document.querySelectorAll('.prueba-viva');
+  var ahora = Date.now() + pruebaDesfase;
+  for (var i = 0; i < nodos.length; i++) {
+    var n = nodos[i], pos = Number(n.getAttribute('data-pos')) || ahora;
+    var c = n.querySelector('[data-cronop]'); if (c) { c.textContent = relojDesde(ahora - pos); }
+  }
+}
+function abrirNuevaPrueba() {
+  estado.sel = { staff: [] };
+  var cuerpo = '<div class="rejilla">' +
+    '<div><label>ID de furgón *</label><input id="p_furgonId" placeholder="TCAR112233" oninput="this.value=this.value.toUpperCase()" /></div>' +
+    '<div><label>Configuración *</label><select id="p_config"><option value="">Elige…</option>' +
+      '<option value="A">A · 1 montacargas (extrae + acomoda)</option>' +
+      '<option value="B">B · 2 montacargas en paralelo</option>' +
+      '<option value="C">C · 2 divididos (1 extrae, 1 acomoda)</option></select></div>' +
+    '<div><label>Cliente</label><select id="p_cliente">' + opcionesDe('clientes', '', true) + '</select></div>' +
+    '<div><label>Material</label><select id="p_material">' + opcionesDe('materiales', 'Celulosa', true) + '</select></div>' +
+    '<div><label>Total toneladas</label><input id="p_tons" type="number" step="0.01" /></div>' +
+    '<div><label>Total atados</label><input id="p_atados" type="number" /></div>' +
+    '<div><label>Presentación</label><select id="p_present">' + opcionesDe('presentaciones', '', true) + '</select></div>' +
+    '<div class="ancho"><label>Montacargas · operador · aditamento</label>' + maquinasPickerHTML([]) + '</div>' +
+    '</div>' +
+    '<div class="mini">Al iniciar se registra “Furgón posicionado y listo”. Luego marca cada fase desde la tarjeta.</div>' +
+    '<div class="fila-botones"><button class="btn verde bloque" onclick="iniciarPrueba()">▶ Iniciar prueba</button></div>';
+  abrirModal('Nueva prueba controlada', cuerpo, 620);
+}
+function iniciarPrueba() {
+  if (!val('p_furgonId').trim()) { avisar('Escribe el ID de furgón.', true); return; }
+  if (!val('p_config')) { avisar('Elige la configuración A/B/C.', true); return; }
+  var datos = { furgonId: val('p_furgonId'), config: val('p_config'), cliente: val('p_cliente'),
+    material: val('p_material'), totalTons: val('p_tons'), totalAtados: val('p_atados'),
+    presentacion: val('p_present'), staffIds: [], maquinas: leerMaquinas($('modal')) };
+  llamar('apiIniciarPrueba', [datos]).then(function () { cerrarModal(); avisar('Prueba iniciada.'); pintarPrueba(); }).catch(fallo);
+}
+function marcaPrueba(id, marca) {
+  llamar('apiMarcaPrueba', [id, marca]).then(function () { pintarPrueba(); }).catch(fallo);
+}
+function abrirFinalizarPrueba(id) {
+  var p = (estado._pruebasVivas || []).filter(function (x) { return x.id === id; })[0] || {};
+  var esC = p.config === 'C';
+  var cuerpo = '<div class="rejilla">' +
+    (esC ? '<div><label>Espera FL1 por FL2 (min)</label><input id="pf_espera" type="number" step="0.1" value="' + esc(p.esperaFL1Min) + '" /></div>' : '') +
+    '<div><label>Huella m²</label><input id="pf_m2" type="number" step="0.01" value="' + esc(p.m2) + '" /></div>' +
+    '<div><label>Niveles de estiba</label><input id="pf_niv" type="number" value="' + esc(p.nivelesEstiba) + '" /></div>' +
+    '<div><label>Total toneladas</label><input id="pf_tons" type="number" step="0.01" value="' + esc(p.totalTons) + '" /></div>' +
+    '<div class="ancho"><label>Observaciones</label><textarea id="pf_obs">' + esc(p.observaciones) + '</textarea></div>' +
+    '</div><div class="mini">Se registra “Furgón liberado” y se calculan extracción, acomodo, total y toneladas/hora.</div>' +
+    '<div class="fila-botones"><button class="btn rojo bloque" onclick="finalizarPrueba(\'' + id + '\')">✔ Liberar y calcular</button></div>';
+  abrirModal('Finalizar prueba ' + (p.folio || ''), cuerpo);
+}
+function finalizarPrueba(id) {
+  var datos = { esperaFL1Min: val('pf_espera'), m2: val('pf_m2'), nivelesEstiba: val('pf_niv'),
+    totalTons: val('pf_tons'), observaciones: val('pf_obs') };
+  llamar('apiFinalizarPrueba', [id, datos]).then(function (r) {
+    cerrarModal(); avisar('Prueba cerrada · ' + r.tiempoTotalMin + ' min · ' + r.tonsPorHora + ' t/h.'); pintarPrueba();
+  }).catch(fallo);
+}
 </script>

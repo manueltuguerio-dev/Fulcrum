@@ -185,6 +185,13 @@
               background: var(--panel2); color: var(--tenue); font-size: .82rem; cursor: pointer; }
   .chip-sel.on { background: #10344a; border-color: var(--acento); color: var(--texto); font-weight: 700; }
 
+  /* Montacargas: operador + aditamento por SKU */
+  .maq-row { display: grid; grid-template-columns: 1.2fr 1fr 1fr; gap: 8px; align-items: center; margin-bottom: 6px; }
+  .maq-row .maq-chk-l { display: flex; align-items: center; gap: 6px; margin: 0; color: var(--texto); font-size: .85rem; }
+  .maq-row .maq-chk { width: auto; }
+  .maq-row select { padding: 7px 8px; font-size: .85rem; }
+  @media (max-width: 560px) { .maq-row { grid-template-columns: 1fr; } }
+
   /* KPIs del tablero */
   .kpis { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 12px; margin-bottom: 14px; }
   .kpi { background: var(--panel); border: 1px solid var(--linea); border-radius: 14px; padding: 14px; box-shadow: var(--sombra); }

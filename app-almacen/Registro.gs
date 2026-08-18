@@ -36,6 +36,10 @@ function registroParaCliente_(r) {
   return {
     id: String(r.id),
     folio: String(r.folio || ''),
+    furgonId: String(r.furgonId || ''),
+    tipoManiobra: String(r.tipoManiobra || ''),
+    codManiobra: String(r.codManiobra || ''),
+    consecutivo: numeroODefault_(r.consecutivo, ''),
     fecha: textoFecha_(r.fecha),
     turno: String(r.turno || ''),
     cliente: String(r.cliente || ''),
@@ -50,6 +54,9 @@ function registroParaCliente_(r) {
     unidadMedida: String(r.unidadMedida || ''),
     tarimas: numeroODefault_(r.tarimas, ''),
     pesoTons: numeroODefault_(r.pesoTons, ''),
+    placaPlataforma: String(r.placaPlataforma || ''),
+    transportista: String(r.transportista || ''),
+    pesoCargado: numeroODefault_(r.pesoCargado, ''),
     montacarguistas: String(r.montacarguistas || ''),
     numMontac: numeroODefault_(r.numMontac, ''),
     ayudantes: String(r.ayudantes || ''),
@@ -151,9 +158,15 @@ function apiVivas() {
 /**
  * Traduce IDs de empleados y equipos a los campos de texto y conteos que van
  * en la hoja, para que el acta se lea sin resolver referencias.
+ *
+ * @param {Array<string>} staffIds Ayudantes / inspectores / supervisores.
+ * @param {Array} maquinas Montacargas del evento. Cada elemento puede ser un id
+ *   suelto o un objeto {id, aditamento, operadorId} para ligar operador y
+ *   aditamento a ese montacargas en específico. Los operadores de montacargas
+ *   son los montacarguistas del evento.
  * @private
  */
-function resolverCuadrilla_(staffIds, maquinaIds) {
+function resolverCuadrilla_(staffIds, maquinas) {
   var emp = {};
   leerTodo_('EMPLEADOS').forEach(function (e) { emp[String(e.id)] = e; });
   var maq = {};
@@ -164,52 +177,81 @@ function resolverCuadrilla_(staffIds, maquinaIds) {
     var e = emp[String(id)];
     if (e) { staff.push({ id: String(e.id), nombre: String(e.nombreCompleto), puesto: String(e.puesto) }); }
   });
-  var montac = staff.filter(function (s) { return s.puesto === 'Montacarguista'; });
   var ayud = staff.filter(function (s) { return s.puesto === 'Ayudante de Patio'; });
 
-  var maquinas = [];
-  (maquinaIds || []).forEach(function (id) {
+  var listaMaq = [];
+  var operadores = []; // nombres de montacarguistas, en orden y sin repetir
+  (maquinas || []).forEach(function (item) {
+    var id = (item && typeof item === 'object') ? item.id : item;
     var m = maq[String(id)];
-    if (m) { maquinas.push({ id: String(m.id), sku: String(m.skuEquipo), tipo: String(m.tipo || '') }); }
+    if (!m) { return; }
+    var operador = '';
+    if (item && item.operadorId && emp[String(item.operadorId)]) {
+      operador = String(emp[String(item.operadorId)].nombreCompleto);
+      if (operadores.indexOf(operador) === -1) { operadores.push(operador); }
+    }
+    listaMaq.push({
+      id: String(m.id), sku: String(m.skuEquipo), tipo: String(m.tipo || ''),
+      aditamento: (item && item.aditamento) ? String(item.aditamento) : '',
+      operadorId: (item && item.operadorId) ? String(item.operadorId) : '',
+      operador: operador
+    });
   });
-  var tipos = maquinas.map(function (m) { return m.tipo; })
+  // Montacarguistas del staff que no estén ya ligados a una máquina.
+  staff.filter(function (s) { return s.puesto === 'Montacarguista'; })
+    .forEach(function (s) { if (operadores.indexOf(s.nombre) === -1) { operadores.push(s.nombre); } });
+
+  var tipos = listaMaq.map(function (m) { return m.tipo; })
     .filter(function (t, i, a) { return t && a.indexOf(t) === i; });
 
   return {
-    staff: staff, maquinas: maquinas,
-    montacarguistas: montac.map(function (s) { return s.nombre; }).join(', '),
-    numMontac: montac.length,
+    staff: staff, maquinas: listaMaq,
+    montacarguistas: operadores.join(', '),
+    numMontac: operadores.length,
     ayudantes: ayud.map(function (s) { return s.nombre; }).join(', '),
     numAyud: ayud.length,
     tipoMontacargas: tipos.join(', '),
-    numMontacargas: maquinas.map(function (m) { return m.sku; }).join(', ')
+    numMontacargas: listaMaq.map(function (m) { return m.sku; }).join(', ')
   };
 }
 
 /* ------------------------------- cronómetro -------------------------------- */
 
 /**
- * Arranca una maniobra. Por defecto empieza en 'arribo'; con
- * datos.arrancarEjecucion = true se salta directo a ejecución (cuando no se
- * cronometra la recepción/espera).
+ * Arranca un EVENTO de maniobra sobre un furgón. Requiere el ID de furgón (con
+ * formato válido) y el tipo de maniobra (lista cerrada). El folio se arma solo:
+ *   [ID_FURGON]-[AAMMDD]-[CÓDIGO]-[CONSECUTIVO]
+ * y el consecutivo se calcula por furgón + fecha + tipo de maniobra.
+ *
+ * Por defecto empieza en 'arribo'; con datos.arrancarEjecucion = true se salta
+ * directo a ejecución (cuando no se cronometra la recepción/espera).
  */
 function apiIniciar(datos) {
   var u = exigirSesion_();
   datos = datos || {};
 
-  var folio = String(datos.folio || '').trim() || folioNuevo_();
+  var furgonId = validarFurgonId_(datos.furgonId);
+  var maniobra = maniobraDeCatalogo_(datos.tipoManiobra);
+  var fecha = hoyTexto_();
+  var consecutivo = consecutivoFurgon_(furgonId, fecha, maniobra.codigo);
+  var folio = folioEvento_(furgonId, fecha, maniobra.codigo, consecutivo);
   if (buscar_('REGISTRO', function (r) { return String(r.folio) === folio && !esSi_(r.eliminado); })) {
-    throw new Error('Ya existe una maniobra con el folio ' + folio + '.');
+    throw new Error('Ya existe un evento con el folio ' + folio + '.');
   }
 
   var ahoraMs = Date.now();
-  var cuadrilla = resolverCuadrilla_(datos.staffIds, datos.maquinaIds);
+  var cuadrilla = resolverCuadrilla_(datos.staffIds, datos.maquinas || datos.maquinaIds);
   var directo = !!datos.arrancarEjecucion;
+  var esPlataforma = maniobra.valor === (leerConfig('maniobraPlataforma') || '');
 
   var registro = {
     id: nuevoId_(),
     folio: folio,
-    fecha: hoyTexto_(),
+    furgonId: furgonId,
+    tipoManiobra: maniobra.valor,
+    codManiobra: maniobra.codigo,
+    consecutivo: consecutivo,
+    fecha: fecha,
     turno: String(datos.turno || ''),
     cliente: String(datos.cliente || ''),
     flujo: String(datos.flujo || ''),
@@ -223,6 +265,9 @@ function apiIniciar(datos) {
     unidadMedida: String(datos.unidadMedida || ''),
     tarimas: datos.tarimas || '',
     pesoTons: datos.pesoTons || '',
+    placaPlataforma: esPlataforma ? String(datos.placaPlataforma || '') : '',
+    transportista: esPlataforma ? String(datos.transportista || '') : '',
+    pesoCargado: esPlataforma ? (datos.pesoCargado || '') : '',
     montacarguistas: cuadrilla.montacarguistas,
     numMontac: cuadrilla.numMontac,
     ayudantes: cuadrilla.ayudantes,
@@ -418,9 +463,10 @@ function apiEditarRegistro(id, cambios) {
   cambios = cambios || {};
 
   var editables = [
-    'folio', 'fecha', 'turno', 'cliente', 'flujo', 'etapa', 'tipoEquipo',
+    'furgonId', 'tipoManiobra', 'fecha', 'turno', 'cliente', 'flujo', 'etapa', 'tipoEquipo',
     'noUnidad', 'cantEquipos', 'material', 'presentacion', 'cantPiezas',
     'unidadMedida', 'tarimas', 'pesoTons',
+    'placaPlataforma', 'transportista', 'pesoCargado',
     'tiempoRecepcionMin', 'tiempoEsperaMin', 'tiempoEjecucionMin',
     'tiempoTotalMin', 'demoraMin', 'causaDemora', 'tiempoEfectivoMin',
     'observaciones', 'danoLlegada', 'danoManiobra', 'detalleDano'
@@ -439,13 +485,14 @@ function apiEditarRegistro(id, cambios) {
     }
   });
 
-  // Cambio de cuadrilla / equipos por IDs.
-  if (cambios.staffIds !== undefined || cambios.maquinaIds !== undefined) {
+  // Cambio de cuadrilla / equipos.
+  if (cambios.staffIds !== undefined || cambios.maquinas !== undefined || cambios.maquinaIds !== undefined) {
     var staffIds = cambios.staffIds !== undefined
       ? cambios.staffIds : parseJson_(r.staffJson, []).map(function (s) { return s.id; });
-    var maquinaIds = cambios.maquinaIds !== undefined
-      ? cambios.maquinaIds : parseJson_(r.maquinasJson, []).map(function (m) { return m.id; });
-    var cuad = resolverCuadrilla_(staffIds, maquinaIds);
+    var maquinas = (cambios.maquinas !== undefined) ? cambios.maquinas
+      : (cambios.maquinaIds !== undefined ? cambios.maquinaIds
+        : parseJson_(r.maquinasJson, []));
+    var cuad = resolverCuadrilla_(staffIds, maquinas);
     aplicar.staffJson = JSON.stringify(cuad.staff);
     aplicar.maquinasJson = JSON.stringify(cuad.maquinas);
     aplicar.montacarguistas = cuad.montacarguistas; aplicar.numMontac = cuad.numMontac;
@@ -537,11 +584,62 @@ function hhmmss_(ms) {
   return Utilities.formatDate(new Date(ms), zona_(), 'HH:mm:ss');
 }
 
-/** Folio automático: M-AAAAMMDD-### según cuántas maniobras van en el día. */
-function folioNuevo_() {
-  var hoy = hoyTexto_();
-  var delDia = leerTodo_('REGISTRO').filter(function (r) {
-    return textoFecha_(r.fecha) === hoy;
+/**
+ * Valida y normaliza el ID de furgón. Lo pasa a mayúsculas, quita espacios y lo
+ * confronta contra la expresión regular configurable (por defecto, 2–5 letras
+ * seguidas de 4–8 dígitos, p.ej. TBOX667792). Garantiza el cruce con sistemas
+ * administrativos.
+ * @private
+ */
+function validarFurgonId_(valor) {
+  var id = String(valor || '').toUpperCase().replace(/\s+/g, '');
+  if (!id) {
+    throw new Error('Falta el ID de furgón.');
+  }
+  var patron = leerConfig('furgonRegex') || '^[A-Z]{2,5}[0-9]{4,8}$';
+  var re;
+  try { re = new RegExp(patron); } catch (err) { re = /^[A-Z0-9]{6,}$/; }
+  if (!re.test(id)) {
+    throw new Error('El ID de furgón "' + id + '" no cumple el formato requerido.');
+  }
+  return id;
+}
+
+/**
+ * Busca el tipo de maniobra en el catálogo (lista cerrada) y devuelve su valor
+ * y su código para el folio. Rechaza cualquier valor fuera del catálogo.
+ * @private
+ */
+function maniobraDeCatalogo_(valor) {
+  var buscado = String(valor || '').trim();
+  if (!buscado) {
+    throw new Error('Elige el tipo de maniobra.');
+  }
+  var fila = buscar_('CATALOGOS', function (c) {
+    return String(c.tipo) === 'tiposManiobra' && esSi_(c.activo)
+      && String(c.valor).trim() === buscado;
+  });
+  if (!fila) {
+    throw new Error('Tipo de maniobra no válido: ' + buscado + '.');
+  }
+  var codigo = String(fila.extra || '').toUpperCase().trim()
+    || buscado.substring(0, 4).toUpperCase();
+  return { valor: String(fila.valor), codigo: codigo };
+}
+
+/** Consecutivo del evento dentro del furgón + fecha + tipo de maniobra. @private */
+function consecutivoFurgon_(furgonId, fecha, codManiobra) {
+  var previos = leerTodo_('REGISTRO').filter(function (r) {
+    return !esSi_(r.eliminado)
+      && String(r.furgonId).toUpperCase() === String(furgonId).toUpperCase()
+      && textoFecha_(r.fecha) === fecha
+      && String(r.codManiobra).toUpperCase() === String(codManiobra).toUpperCase();
   }).length;
-  return 'M-' + hoy.replace(/-/g, '') + '-' + ('000' + (delDia + 1)).slice(-3);
+  return previos + 1;
+}
+
+/** Folio: [ID_FURGON]-[AAMMDD]-[CÓDIGO]-[NN]. @private */
+function folioEvento_(furgonId, fecha, codManiobra, consecutivo) {
+  var yymmdd = String(fecha).replace(/-/g, '').substring(2); // yyyy-MM-dd -> AAMMDD
+  return furgonId + '-' + yymmdd + '-' + codManiobra + '-' + ('0' + consecutivo).slice(-2);
 }

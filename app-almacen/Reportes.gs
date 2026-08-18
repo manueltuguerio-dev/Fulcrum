@@ -54,12 +54,19 @@ function apiDashboard(desde, hasta) {
       c = c.trim(); if (c) { causas[c] = (causas[c] || 0) + 1; }
     });
     porDia[r.fecha] = (porDia[r.fecha] || 0) + 1;
+    // Los montacarguistas del evento son los operadores ligados a cada máquina
+    // (y, si los hubiera, los del staff con ese puesto).
+    var operadoresR = [];
+    (r.maquinas || []).forEach(function (m) {
+      if (m.operador && operadoresR.indexOf(m.operador) === -1) { operadoresR.push(m.operador); }
+    });
     (r.staff || []).forEach(function (s) {
-      if (s.puesto === 'Montacarguista') {
-        if (!porOperador[s.nombre]) { porOperador[s.nombre] = { maniobras: 0, sumaMinPieza: 0, conPieza: 0 }; }
-        porOperador[s.nombre].maniobras++;
-        if (Number(r.minPorPieza) > 0) { porOperador[s.nombre].sumaMinPieza += Number(r.minPorPieza); porOperador[s.nombre].conPieza++; }
-      }
+      if (s.puesto === 'Montacarguista' && operadoresR.indexOf(s.nombre) === -1) { operadoresR.push(s.nombre); }
+    });
+    operadoresR.forEach(function (nombre) {
+      if (!porOperador[nombre]) { porOperador[nombre] = { maniobras: 0, sumaMinPieza: 0, conPieza: 0 }; }
+      porOperador[nombre].maniobras++;
+      if (Number(r.minPorPieza) > 0) { porOperador[nombre].sumaMinPieza += Number(r.minPorPieza); porOperador[nombre].conPieza++; }
     });
     (r.maquinas || []).forEach(function (m) { porSku[m.sku] = (porSku[m.sku] || 0) + 1; });
   });

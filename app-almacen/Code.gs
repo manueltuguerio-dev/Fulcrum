@@ -4,7 +4,8 @@
  * Aplicación web sobre Google Apps Script. La lógica está repartida así:
  *   Db.gs         hoja de cálculo como base de datos y utilidades
  *   Auth.gs       acceso por PIN / contraseña, sesiones y bitácora
- *   Registro.gs   maniobras y cronómetro por sub-etapas (el corazón)
+ *   Registro.gs   eventos de maniobra y cronómetro por sub-etapas (el corazón)
+ *   Prueba.gs     módulo de prueba controlada (estudio de tiempos)
  *   Empleados.gs  padrón de personal (cuadrillas) y equipos (montacargas/SKU)
  *   Sla.gs        matriz de SLA configurable por cliente/material/etapa
  *   Catalogos.gs  listas desplegables y campos dinámicos (lectura)
@@ -48,6 +49,8 @@ var FUNCIONES_PUBLICAS = [
   'apiEstadoApp', 'apiVivas',
   // cronómetro y sub-etapas
   'apiIniciar', 'apiAvanzarEtapa', 'apiPausar', 'apiReanudar', 'apiFinalizar',
+  // prueba controlada (estudio de tiempos)
+  'apiPruebas', 'apiIniciarPrueba', 'apiMarcaPrueba', 'apiFinalizarPrueba', 'apiEliminarPrueba',
   // maniobras (admin)
   'apiEditarRegistro', 'apiEliminarRegistro', 'apiHistorial',
   // fotos
