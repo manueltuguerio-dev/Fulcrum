@@ -113,6 +113,12 @@ const ev2 = apiIniciar({ furgonId: 'TBOX667792', tipoManiobra: 'Descarga de furg
 ok('mismo furgón + tipo incrementa el consecutivo', ev2.folio === 'TBOX667792-' + yymmdd + '-DESC-02', ev2.folio);
 const ev3 = apiIniciar({ furgonId: 'TBOX667792', tipoManiobra: 'Carga de furgón' });
 ok('otro tipo reinicia su propio consecutivo', ev3.folio === 'TBOX667792-' + yymmdd + '-CARG-01', ev3.folio);
+// Borrado suave no debe dejar hueco que provoque folios repetidos.
+login(apiEntrarClave('ana@tlterminals.com', 'ana123'));
+apiEliminarRegistro(ev2.id, false, 'prueba de hueco');
+login(apiEntrarPin(betoId, '4321'));
+const ev4 = apiIniciar({ furgonId: 'TBOX667792', tipoManiobra: 'Descarga de furgón' });
+ok('el borrado suave no reutiliza el consecutivo', ev4.folio === 'TBOX667792-' + yymmdd + '-DESC-03', ev4.folio);
 
 console.log('\n9. Campos condicionales (Carga plataforma desde piso)');
 const evP = apiIniciar({

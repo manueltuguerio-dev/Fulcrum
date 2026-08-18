@@ -78,7 +78,8 @@ function apiIniciarPrueba(datos) {
     throw new Error('Elige una configuración de montaje (A, B o C).');
   }
   var fecha = hoyTexto_();
-  var consecutivo = pruebasVigentes_().filter(function (p) {
+  // Cuenta todas (incluidas ocultas) para no reutilizar un folio ya emitido.
+  var consecutivo = leerTodo_('PRUEBAS').filter(function (p) {
     return String(p.furgonId).toUpperCase() === furgonId && textoFecha_(p.fecha) === fecha;
   }).length + 1;
   var folio = folioEvento_(furgonId, fecha, 'PC', consecutivo);

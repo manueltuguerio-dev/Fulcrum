@@ -627,11 +627,15 @@ function maniobraDeCatalogo_(valor) {
   return { valor: String(fila.valor), codigo: codigo };
 }
 
-/** Consecutivo del evento dentro del furgón + fecha + tipo de maniobra. @private */
+/**
+ * Consecutivo del evento dentro del furgón + fecha + tipo de maniobra. Cuenta
+ * TODOS los registros que casen, incluidos los ocultos (borrado suave): así un
+ * borrado no deja hueco ni provoca que un folio nuevo choque con uno existente.
+ * @private
+ */
 function consecutivoFurgon_(furgonId, fecha, codManiobra) {
   var previos = leerTodo_('REGISTRO').filter(function (r) {
-    return !esSi_(r.eliminado)
-      && String(r.furgonId).toUpperCase() === String(furgonId).toUpperCase()
+    return String(r.furgonId).toUpperCase() === String(furgonId).toUpperCase()
       && textoFecha_(r.fecha) === fecha
       && String(r.codManiobra).toUpperCase() === String(codManiobra).toUpperCase();
   }).length;
@@ -641,5 +645,6 @@ function consecutivoFurgon_(furgonId, fecha, codManiobra) {
 /** Folio: [ID_FURGON]-[AAMMDD]-[CÓDIGO]-[NN]. @private */
 function folioEvento_(furgonId, fecha, codManiobra, consecutivo) {
   var yymmdd = String(fecha).replace(/-/g, '').substring(2); // yyyy-MM-dd -> AAMMDD
-  return furgonId + '-' + yymmdd + '-' + codManiobra + '-' + ('0' + consecutivo).slice(-2);
+  var nn = Number(consecutivo) < 10 ? '0' + consecutivo : String(consecutivo);
+  return furgonId + '-' + yymmdd + '-' + codManiobra + '-' + nn;
 }
