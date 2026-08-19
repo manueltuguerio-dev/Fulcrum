@@ -7,86 +7,62 @@
   <title>LogiTime — Indicadores</title>
   <?!= include('Estilos') ?>
   <style>
-    /* ── Dashboard-specific styles ──────────────────────────── */
-    .kpi-grid      { display:grid;gap:12px;grid-template-columns:repeat(auto-fill,minmax(170px,1fr));margin-bottom:16px; }
-    .kpi-val       { font-size:26px;font-weight:700;color:var(--txt);margin:6px 0 2px;line-height:1; }
-    .kpi-lbl       { font-size:11px;color:var(--muted);text-transform:uppercase;letter-spacing:.06em; }
-    .kpi-sub       { font-size:12px;color:var(--muted);margin-top:3px; }
+    .kpi-grid   { display:grid;gap:12px;grid-template-columns:repeat(auto-fill,minmax(170px,1fr));margin-bottom:16px; }
+    .kpi-val    { font-size:26px;font-weight:700;color:var(--txt);margin:6px 0 2px;line-height:1; }
+    .kpi-lbl    { font-size:11px;color:var(--muted);text-transform:uppercase;letter-spacing:.06em; }
+    .kpi-sub    { font-size:12px;color:var(--muted);margin-top:3px; }
 
-    .sem-row       { display:flex;gap:8px;align-items:center;flex-wrap:wrap; }
-    .sem-item      { display:flex;align-items:center;gap:5px;font-size:13px; }
-    .dot           { width:9px;height:9px;border-radius:50%;flex-shrink:0; }
-    .dot-verde     { background:var(--green); }
-    .dot-ambar     { background:var(--amber); }
-    .dot-rojo      { background:var(--red); }
+    .sem-row    { display:flex;gap:8px;align-items:center;flex-wrap:wrap; }
+    .sem-item   { display:flex;align-items:center;gap:5px;font-size:13px; }
+    .dot        { width:9px;height:9px;border-radius:50%;flex-shrink:0; }
+    .dot-verde  { background:var(--green); }
+    .dot-ambar  { background:var(--amber); }
+    .dot-rojo   { background:var(--red); }
 
-    .bar-wrap      { display:flex;flex-direction:column;gap:6px; }
-    .bar-row       { display:flex;align-items:center;gap:8px;font-size:12px; }
-    .bar-label     { width:140px;flex-shrink:0;color:var(--muted);overflow:hidden;text-overflow:ellipsis;white-space:nowrap; }
-    .bar-track     { flex:1;height:7px;background:var(--line);border-radius:4px;overflow:hidden; }
-    .bar-fill      { height:100%;background:var(--brand);border-radius:4px;transition:width .4s ease; }
-    .bar-val       { width:52px;text-align:right;flex-shrink:0;color:var(--txt);font-size:11px; }
+    .bar-wrap   { display:flex;flex-direction:column;gap:6px; }
+    .bar-row    { display:flex;align-items:center;gap:8px;font-size:12px; }
+    .bar-label  { width:150px;flex-shrink:0;color:var(--muted);overflow:hidden;text-overflow:ellipsis;white-space:nowrap; }
+    .bar-track  { flex:1;height:7px;background:var(--line);border-radius:4px;overflow:hidden;min-width:60px; }
+    .bar-fill   { height:100%;background:var(--brand);border-radius:4px;transition:width .4s ease; }
+    .bar-val    { width:56px;text-align:right;flex-shrink:0;color:var(--txt);font-size:11px;font-variant-numeric:tabular-nums; }
 
     .filters       { display:flex;gap:10px;flex-wrap:wrap;align-items:flex-end; }
-    .filters > div { display:flex;flex-direction:column;gap:4px;min-width:140px; }
+    .filters > div { display:flex;flex-direction:column;gap:4px;min-width:150px; }
 
-    .tab-panel     { display:none; }
+    .tab-panel        { display:none; }
     .tab-panel.active { display:block; }
-
-    .loading-row   { color:var(--muted);font-size:13px;padding:24px;text-align:center; }
-
-    table          { width:100%;border-collapse:collapse; }
-    th             { text-align:left;font-size:11px;color:var(--muted);padding:6px 8px;
-                     border-bottom:1px solid var(--line);white-space:nowrap;text-transform:uppercase;letter-spacing:.04em; }
-    td             { padding:7px 8px;border-bottom:1px solid var(--line);font-size:13px; }
-    tr:last-child td { border-bottom:none; }
-
-    .auto-refresh-bar { display:flex;align-items:center;gap:8px;font-size:12px;color:var(--muted); }
-    .refresh-circle   { width:8px;height:8px;border-radius:50%;border:2px solid var(--brand);border-top-color:transparent;
-                        animation:spin 1.2s linear infinite;flex-shrink:0; }
-    @keyframes spin { to { transform:rotate(360deg); } }
-    .refresh-circle.idle { animation:none;background:var(--green);border:none; }
-
-    .empty-state   { text-align:center;padding:30px 20px;color:var(--muted);font-size:13px; }
+    .loading-row      { color:var(--muted);font-size:13px;padding:24px;text-align:center; }
   </style>
 </head>
 <body>
 
-<!-- ══════════════════════════════════════════════
-     LOGIN OVERLAY
-══════════════════════════════════════════════ -->
-<div id="login-overlay" style="
-  position:fixed;inset:0;z-index:999;
-  display:flex;align-items:center;justify-content:center;
-  background:var(--bg);
-">
+<!-- ══════════ LOGIN ══════════ -->
+<div id="login-overlay" style="position:fixed;inset:0;z-index:999;display:flex;
+     align-items:center;justify-content:center;background:var(--bg);">
   <div style="background:var(--card);border:1px solid var(--line);border-radius:16px;
               padding:36px 32px;width:92%;max-width:380px;box-shadow:var(--shadow);">
     <div style="text-align:center;margin-bottom:28px">
       <div style="width:52px;height:52px;border-radius:14px;background:var(--brand);
                   display:inline-flex;align-items:center;justify-content:center;margin-bottom:12px;">
         <svg width="26" height="26" viewBox="0 0 24 24" fill="#fff">
-          <path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm0 18c-4.41 0-8-3.59-8-8s3.59-8 8-8 8 3.59 8 8-3.59 8-8 8zm.5-13H11v6l5.25 3.15.75-1.23-4.5-2.67V7z"/>
+          <path d="M19 3H5c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h14c1.1 0 2-.9 2-2V5c0-1.1-.9-2-2-2zm-5 14H7v-2h7v2zm3-4H7v-2h10v2zm0-4H7V7h10v2z"/>
         </svg>
       </div>
       <div style="font-size:22px;font-weight:700;margin-bottom:4px">LogiTime</div>
       <div style="font-size:13px;color:var(--muted)">Indicadores de operación</div>
     </div>
     <div style="display:flex;flex-direction:column;gap:14px">
-      <div>
-        <label>Correo electrónico</label>
+      <div><label>Correo electrónico</label>
         <input id="l-email" type="email" placeholder="usuario@empresa.com" autocomplete="username">
       </div>
-      <div>
-        <label>PIN de acceso</label>
-        <input id="l-pin" type="password" placeholder="••••" maxlength="10" autocomplete="current-password"
-               onkeydown="if(event.key==='Enter')doLogin()">
+      <div><label>PIN de acceso</label>
+        <input id="l-pin" type="password" placeholder="••••" maxlength="10"
+               autocomplete="current-password" onkeydown="if(event.key==='Enter')Auth.login()">
       </div>
-      <div id="l-err" style="display:none;color:var(--red);font-size:13px;text-align:center;
-                              background:rgba(229,72,77,.1);border-radius:8px;padding:8px 12px"></div>
-      <button id="l-btn" onclick="doLogin()" style="margin-top:4px">Iniciar sesión</button>
+      <div id="l-err" class="aviso err" style="display:none"></div>
+      <button id="l-btn" onclick="Auth.login()" style="margin-top:4px">Iniciar sesión</button>
     </div>
-    <p style="font-size:12px;color:var(--muted);text-align:center;margin-top:18px;margin-bottom:0">
+    <p style="font-size:12px;color:var(--muted);text-align:center;margin:18px 0 0">
       ¿Olvidaste tu PIN? Solicita al administrador que lo restablezca.
     </p>
   </div>
@@ -94,7 +70,6 @@
 
 <div class="wrap">
 
-  <!-- ── Encabezado ──────────────────────────────────────────── -->
   <header>
     <div style="display:flex;align-items:center;gap:12px">
       <div style="width:34px;height:34px;border-radius:9px;background:var(--brand);
@@ -110,521 +85,594 @@
     </div>
     <div class="row" style="gap:6px">
       <span id="usr-badge" style="font-size:12px;color:var(--muted);display:none"></span>
-      <a href="?page=Index" style="text-decoration:none">
-        <button class="ghost sm">← Operaciones</button>
-      </a>
-      <button id="theme-btn" class="ghost" onclick="toggleTheme()" title="Cambiar tema">☀️</button>
-      <button class="ghost sm" id="logout-btn" style="display:none" onclick="logout()">Salir</button>
+      <a href="?page=Index" style="text-decoration:none"><button class="ghost sm">← Operaciones</button></a>
+      <button id="theme-btn" class="ghost" onclick="UI.toggleTheme()" title="Cambiar tema">☀️</button>
+      <button class="ghost sm" id="logout-btn" style="display:none" onclick="Auth.logout()">Salir</button>
     </div>
   </header>
 
-  <!-- ── Filtros ─────────────────────────────────────────────── -->
-  <div class="card" style="margin-bottom:16px">
+  <div class="card">
     <div class="filters">
       <div>
         <label>Período</label>
-        <select id="sel-dias" onchange="cargar()">
+        <select id="sel-dias" onchange="Dash.cargar()">
           <option value="7">Últimos 7 días</option>
           <option value="30" selected>Últimos 30 días</option>
           <option value="90">Últimos 90 días</option>
           <option value="365">Último año</option>
+          <option value="3650">Todo el histórico</option>
         </select>
       </div>
       <div>
-        <label>Agrupación (tendencia)</label>
-        <select id="sel-periodo" onchange="cargarSerie()">
+        <label>Agrupación de la tendencia</label>
+        <select id="sel-periodo" onchange="Dash.cargarSerie()">
           <option value="dia">Por día</option>
           <option value="semana">Por semana</option>
           <option value="mes" selected>Por mes</option>
         </select>
       </div>
-      <div style="align-self:flex-end">
-        <button onclick="cargar()" class="ghost sm">↺ Actualizar</button>
+      <div style="min-width:auto">
+        <label>&nbsp;</label>
+        <button class="ghost sm" onclick="Dash.cargar()">↺ Actualizar</button>
       </div>
-      <div style="align-self:flex-end;margin-left:auto">
-        <div class="auto-refresh-bar" id="refresh-status">
-          <span id="refresh-spinner" class="refresh-circle idle"></span>
-          <span id="refresh-label">Listo</span>
-        </div>
+      <div style="min-width:auto;margin-left:auto">
+        <label>&nbsp;</label>
+        <label class="campo-sw" style="margin:0">
+          <input type="checkbox" id="chk-auto" onchange="Dash.toggleAuto()">
+          <span>Auto-actualizar cada 5 min</span>
+        </label>
+      </div>
+      <div style="min-width:auto">
+        <label>&nbsp;</label>
+        <div class="live-bar"><span id="estado-icono" class="live-dot"></span><span id="estado-txt">Listo</span></div>
       </div>
     </div>
   </div>
 
-  <!-- ── KPI cards ───────────────────────────────────────────── -->
+  <div id="dash-aviso"></div>
+
   <div class="kpi-grid" id="kpi-grid">
-    <div class="card" style="margin:0">
-      <div class="loading-row">Inicia sesión para ver los indicadores</div>
-    </div>
+    <div class="card" style="margin:0"><div class="loading-row">Inicia sesión para ver los indicadores</div></div>
   </div>
 
-  <!-- ── Semáforo ────────────────────────────────────────────── -->
-  <div class="card" id="card-semaforo" style="margin-bottom:16px;display:none">
+  <div class="card" id="card-semaforo" style="display:none">
     <h2>Semáforo de tiempos</h2>
     <div class="sem-row" id="sem-row"></div>
   </div>
 
-  <!-- ── Tabs de análisis ────────────────────────────────────── -->
   <div class="tabs" id="dash-tabs">
-    <button class="active" onclick="showTab('tendencia',this)">Tendencia</button>
-    <button onclick="showTab('cliente',this)">Por cliente</button>
-    <button onclick="showTab('flujo',this)">Por flujo</button>
-    <button onclick="showTab('etapa',this)">Por etapa</button>
-    <button onclick="showTab('empleado',this)">Por empleado</button>
-    <button onclick="showTab('detalle-eta',this)">Detalle de tiempos</button>
+    <button class="active" onclick="Dash.tab('tendencia',this)">Tendencia</button>
+    <button onclick="Dash.tab('cliente',this)">Por cliente</button>
+    <button onclick="Dash.tab('flujo',this)">Por flujo</button>
+    <button onclick="Dash.tab('etapa',this)">Por etapa</button>
+    <button onclick="Dash.tab('empleado',this)">Por empleado</button>
+    <button onclick="Dash.tab('tiempos',this)">Tiempos vs estimado</button>
+    <button onclick="Dash.tab('movimientos',this)">Movimientos</button>
   </div>
 
-  <!-- Tendencia -->
   <div id="tab-tendencia" class="tab-panel active">
-    <div class="card">
-      <h2>Tendencia de maniobras</h2>
-      <div class="scroll"><table id="t-serie"></table></div>
-      <div class="row" style="margin-top:10px">
-        <button class="ghost sm" onclick="descargarCSV('t-serie','tendencia')">Descargar CSV</button>
-      </div>
-    </div>
+    <div class="card"><h2>Tendencia de maniobras finalizadas</h2><div id="mt-serie"></div></div>
   </div>
 
-  <!-- Por cliente -->
   <div id="tab-cliente" class="tab-panel">
     <div class="card">
       <h2>Maniobras por cliente</h2>
-      <div id="bars-cliente" class="bar-wrap" style="margin-bottom:12px"></div>
-      <div class="scroll"><table id="t-cliente"></table></div>
-      <div class="row" style="margin-top:10px">
-        <button class="ghost sm" onclick="descargarCSV('t-cliente','por_cliente')">Descargar CSV</button>
-      </div>
+      <div id="bars-cliente" class="bar-wrap" style="margin-bottom:14px"></div>
+      <div id="mt-cliente"></div>
     </div>
   </div>
 
-  <!-- Por flujo -->
   <div id="tab-flujo" class="tab-panel">
     <div class="card">
       <h2>Maniobras por tipo de flujo</h2>
-      <div id="bars-flujo" class="bar-wrap" style="margin-bottom:12px"></div>
-      <div class="scroll"><table id="t-flujo"></table></div>
-      <div class="row" style="margin-top:10px">
-        <button class="ghost sm" onclick="descargarCSV('t-flujo','por_flujo')">Descargar CSV</button>
-      </div>
+      <div id="bars-flujo" class="bar-wrap" style="margin-bottom:14px"></div>
+      <div id="mt-flujo"></div>
     </div>
   </div>
 
-  <!-- Por etapa -->
   <div id="tab-etapa" class="tab-panel">
     <div class="card">
-      <h2>Maniobras por etapa</h2>
-      <div id="bars-etapa" class="bar-wrap" style="margin-bottom:12px"></div>
-      <div class="scroll"><table id="t-etapa"></table></div>
-      <div class="row" style="margin-top:10px">
-        <button class="ghost sm" onclick="descargarCSV('t-etapa','por_etapa')">Descargar CSV</button>
-      </div>
+      <h2>Maniobras por etapa de cierre</h2>
+      <div id="bars-etapa" class="bar-wrap" style="margin-bottom:14px"></div>
+      <div id="mt-etapa"></div>
     </div>
   </div>
 
-  <!-- Por empleado -->
   <div id="tab-empleado" class="tab-panel">
     <div class="card">
       <h2>Participación por empleado</h2>
-      <div id="bars-empleado" class="bar-wrap" style="margin-bottom:12px"></div>
-      <div class="scroll"><table id="t-empleado"></table></div>
-      <div class="row" style="margin-top:10px">
-        <button class="ghost sm" onclick="descargarCSV('t-empleado','por_empleado')">Descargar CSV</button>
-      </div>
+      <div id="bars-empleado" class="bar-wrap" style="margin-bottom:14px"></div>
+      <div id="mt-empleado"></div>
     </div>
   </div>
 
-  <!-- Detalle por etapa -->
-  <div id="tab-detalle-eta" class="tab-panel">
+  <div id="tab-tiempos" class="tab-panel">
     <div class="card">
-      <h2>Tiempos reales vs estimados por etapa</h2>
-      <p style="font-size:13px;color:var(--muted);margin:0 0 12px">
-        Promedios de todas las etapas finalizadas en el período seleccionado.
-      </p>
-      <div class="scroll"><table id="t-det-eta"></table></div>
-      <div class="row" style="margin-top:10px">
-        <button class="ghost sm" onclick="descargarCSV('t-det-eta','detalle_etapas')">Descargar CSV</button>
-      </div>
-    </div>
-    <div class="card">
-      <h2>Movimientos recientes</h2>
-      <div class="scroll"><table id="t-det-man"></table></div>
-      <div class="row" style="margin-top:10px">
-        <button class="ghost sm" onclick="descargarCSV('t-det-man','movimientos')">Descargar CSV</button>
-      </div>
+      <h2>Tiempo real contra tiempo estimado</h2>
+      <p class="muted" style="margin:0 0 12px">Promedios de todas las etapas finalizadas en el período.</p>
+      <div id="mt-tiempos"></div>
     </div>
   </div>
 
-</div><!-- /.wrap -->
+  <div id="tab-movimientos" class="tab-panel">
+    <div class="card"><h2>Movimientos de etapa</h2><div id="mt-mov"></div></div>
+  </div>
+
+</div>
+
+<!-- MODAL CSV -->
+<div id="modal-csv" class="modal-overlay hidden">
+  <div class="modal-box ancho">
+    <h2 style="margin:0 0 10px;font-size:16px;font-weight:700;text-transform:none;letter-spacing:0;color:var(--txt)">Exportar</h2>
+    <p class="muted" style="margin:0 0 10px">Si la descarga no inicia, copia el contenido y pégalo en Excel o Sheets.</p>
+    <textarea id="csv-area" style="min-height:260px;font-family:ui-monospace,Menlo,Consolas,monospace;font-size:12px"></textarea>
+    <div class="row" style="margin-top:12px;justify-content:flex-end;gap:8px">
+      <button class="ghost" onclick="UI.hide('modal-csv')">Cerrar</button>
+      <button onclick="MT.copiar()">Copiar al portapapeles</button>
+    </div>
+  </div>
+</div>
 
 <div id="toast" class="toast"></div>
 
 <script>
-/* ══════════════════════════════════════════════
-   ESTADO GLOBAL
-══════════════════════════════════════════════ */
-var USR = null;
-var _autoRefreshInterval = null;
-var AUTO_REFRESH_SEC = 120; // 2 minutos
+'use strict';
 
-/* ══════════════════════════════════════════════
-   UTILIDADES
-══════════════════════════════════════════════ */
-function $(id) { return document.getElementById(id); }
+var STATE = { usr: null, autoId: null, kpis: null };
 
-function toast(msg, tipo) {
-  var el = $('toast');
-  el.textContent = msg;
-  el.className   = 'toast show ' + (tipo || '');
-  clearTimeout(el._t);
-  el._t = setTimeout(function() { el.className = 'toast'; }, 3800);
-}
-
-function esc(s) {
-  return String(s === null || s === undefined ? '' : s)
-    .replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;')
-    .replace(/"/g,'&quot;').replace(/'/g,'&#39;');
-}
-
-function fmtMin(min) {
-  if (min === undefined || min === null || min === '') return '—';
-  var m = Math.round(Number(min));
-  if (isNaN(m)) return '—';
-  if (m === 0)  return '0 min';
-  var h = Math.floor(m / 60), mm = m % 60;
-  return h > 0 ? h + 'h ' + (mm ? mm + 'min' : '') : mm + ' min';
-}
-
-function fmtNum(n) {
-  if (n === undefined || n === null) return '—';
-  return String(n);
-}
-
-function setRefreshStatus(loading) {
-  var spinner = $('refresh-spinner');
-  var label   = $('refresh-label');
-  if (!spinner || !label) return;
-  if (loading) {
-    spinner.className = 'refresh-circle';
-    label.textContent = 'Cargando…';
-  } else {
-    spinner.className = 'refresh-circle idle';
-    var ts = new Date().toLocaleTimeString('es-MX', { hour:'2-digit', minute:'2-digit' });
-    label.textContent = 'Actualizado ' + ts;
+/* ══════════════════════════════════════════════════════════════
+   UI
+══════════════════════════════════════════════════════════════ */
+var UI = {
+  $: function(id) { return document.getElementById(id); },
+  esc: function(s) {
+    return String(s === null || s === undefined ? '' : s)
+      .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+      .replace(/"/g, '&quot;').replace(/'/g, '&#39;');
+  },
+  show: function(id) { var e = UI.$(id); if (e) e.classList.remove('hidden'); },
+  hide: function(id) { var e = UI.$(id); if (e) e.classList.add('hidden'); },
+  toast: function(msg, tipo) {
+    var el = UI.$('toast');
+    el.textContent = msg;
+    el.className = 'toast show ' + (tipo || '');
+    clearTimeout(el._t);
+    el._t = setTimeout(function() { el.className = 'toast'; }, 4000);
+  },
+  fmtMin: function(min) {
+    if (min === '' || min === null || min === undefined) return '—';
+    var m = Math.round(Number(min));
+    if (isNaN(m)) return '—';
+    if (m === 0) return '0 min';
+    var h = Math.floor(m / 60), mm = m % 60;
+    return h > 0 ? h + 'h ' + (mm ? mm + 'min' : '') : mm + ' min';
+  },
+  fmtNum: function(n) { return (n === undefined || n === null) ? '—' : String(n); },
+  initTheme: function() {
+    var s = localStorage.getItem('lt_theme');
+    UI.applyTheme(s || (window.matchMedia('(prefers-color-scheme: light)').matches ? 'light' : 'dark'));
+  },
+  applyTheme: function(t) {
+    document.documentElement.setAttribute('data-theme', t);
+    var b = UI.$('theme-btn');
+    if (b) b.textContent = t === 'light' ? '🌙' : '☀️';
+    localStorage.setItem('lt_theme', t);
+  },
+  toggleTheme: function() {
+    var c = document.documentElement.getAttribute('data-theme') || 'dark';
+    UI.applyTheme(c === 'dark' ? 'light' : 'dark');
   }
-}
+};
+var $ = UI.$;
 
-/* ══════════════════════════════════════════════
-   TEMA CLARO / OSCURO
-══════════════════════════════════════════════ */
-function initTheme() {
-  var saved = localStorage.getItem('lt_theme');
-  var theme = saved || (window.matchMedia('(prefers-color-scheme: light)').matches ? 'light' : 'dark');
-  applyTheme(theme);
-}
-
-function applyTheme(t) {
-  document.documentElement.setAttribute('data-theme', t);
-  var btn = $('theme-btn');
-  if (btn) btn.textContent = t === 'light' ? '🌙' : '☀️';
-  localStorage.setItem('lt_theme', t);
-}
-
-function toggleTheme() {
-  var curr = document.documentElement.getAttribute('data-theme') || 'dark';
-  applyTheme(curr === 'dark' ? 'light' : 'dark');
-}
-
-/* ══════════════════════════════════════════════
-   LOGIN
-══════════════════════════════════════════════ */
-function doLogin() {
-  var email = ($('l-email').value || '').trim();
-  var pin   = ($('l-pin').value   || '').trim();
-  var err   = $('l-err');
-  var btn   = $('l-btn');
-  if (!email || !pin) {
-    err.textContent   = 'Ingresa tu correo electrónico y PIN';
-    err.style.display = '';
-    return;
+/* ══════════════════════════════════════════════════════════════
+   API — mismo contrato que en Operaciones
+══════════════════════════════════════════════════════════════ */
+var API = {
+  call: function(fn, args, ok, err) {
+    var manejar = function(msg) {
+      if (err) err(msg); else UI.toast('Error en ' + fn + ': ' + msg, 'err');
+    };
+    var runner = google.script.run
+      .withSuccessHandler(function(res) {
+        // Sólo es fallo cuando el servidor manda un `error`.
+        // login() responde con `msg` y lo resuelve quien llama.
+        if (res && res.ok === false && res.error) { manejar(res.error); return; }
+        if (ok) ok(res);
+      })
+      .withFailureHandler(function(e) { manejar((e && e.message) || String(e)); });
+    try { runner[fn].apply(runner, args || []); }
+    catch (e) { manejar('No existe la función "' + fn + '" en el servidor. Vuelve a pegar Code.gs.'); }
   }
-  btn.disabled    = true;
-  btn.textContent = 'Verificando…';
-  err.style.display = 'none';
+};
 
-  google.script.run
-    .withSuccessHandler(function(r) {
-      btn.disabled    = false;
-      btn.textContent = 'Iniciar sesión';
-      if (r.ok) {
-        USR = r;
-        try { sessionStorage.setItem('lt_usr', JSON.stringify(r)); } catch(e) {}
-        aplicarSesion();
-      } else {
-        err.textContent   = r.msg || 'Credenciales incorrectas';
-        err.style.display = '';
-        $('l-pin').value  = '';
-        $('l-pin').focus();
+/* ══════════════════════════════════════════════════════════════
+   MT — tabla dinámica: búsqueda, orden, selección y exportación
+══════════════════════════════════════════════════════════════ */
+var MT = {
+  _n: 0, _reg: {},
+
+  crear: function(cfg) {
+    var id = 'mt' + (++MT._n);
+    var t = {
+      id: id, mount: cfg.mount, cols: cfg.cols, idKey: cfg.idKey || '_i',
+      nombre: cfg.nombre || 'datos', vacio: cfg.vacio || 'Sin datos para el período seleccionado',
+      datos: [], sel: {}, buscar: '', orden: null, dir: 1, ultimo: -1
+    };
+    MT._reg[id] = t;
+    $(t.mount).innerHTML =
+      '<div class="dt-toolbar">' +
+        '<div class="dt-search"><label>Buscar</label>' +
+          '<input placeholder="Filtrar…" oninput="MT.buscar(\'' + id + '\',this.value)"></div>' +
+        '<div style="min-width:auto"><label>&nbsp;</label>' +
+          '<button class="ghost sm" onclick="MT.exportar(\'' + id + '\',false)">Exportar CSV</button></div>' +
+      '</div>' +
+      '<div id="' + id + '-selbar"></div>' +
+      '<div class="dt-wrap scroll-y"><table class="dt-table">' +
+        '<thead id="' + id + '-head"></thead><tbody id="' + id + '-body"></tbody></table></div>' +
+      '<div class="dt-foot" id="' + id + '-foot"></div>';
+    return t;
+  },
+
+  set: function(t, datos) {
+    t.datos = (datos || []).map(function(r, i) { r._i = String(i); return r; });
+    t.sel = {};
+    MT.render(t);
+  },
+
+  buscar: function(id, v) { var t = MT._reg[id]; t.buscar = v; MT.render(t); },
+  ordenar: function(id, k) {
+    var t = MT._reg[id];
+    if (t.orden === k) t.dir = -t.dir; else { t.orden = k; t.dir = 1; }
+    MT.render(t);
+  },
+
+  filtrar: function(t) {
+    var q = t.buscar.trim().toLowerCase();
+    var out = t.datos.filter(function(r) {
+      if (!q) return true;
+      for (var i = 0; i < t.cols.length; i++) {
+        var v = r[t.cols[i].key];
+        if (v !== undefined && v !== null && String(v).toLowerCase().indexOf(q) >= 0) return true;
       }
-    })
-    .withFailureHandler(function(e) {
-      btn.disabled    = false;
-      btn.textContent = 'Iniciar sesión';
-      err.textContent   = 'Error de conexión: ' + (e.message || e);
+      return false;
+    });
+    if (t.orden) {
+      var d = t.dir;
+      out = out.slice().sort(function(a, b) {
+        var x = a[t.orden], y = b[t.orden];
+        var nx = Number(x), ny = Number(y);
+        if (x !== '' && y !== '' && !isNaN(nx) && !isNaN(ny)) return (nx - ny) * d;
+        return String(x || '').localeCompare(String(y || ''), 'es') * d;
+      });
+    }
+    return out;
+  },
+
+  render: function(t) {
+    if (typeof t === 'string') t = MT._reg[t];
+    var filas = MT.filtrar(t);
+    var todos = filas.length > 0 && filas.every(function(r) { return t.sel[r._i]; });
+
+    $(t.id + '-head').innerHTML = '<tr>' +
+      '<th class="dt-check nosort"><input type="checkbox" ' + (todos ? 'checked' : '') +
+        ' onchange="MT.selTodos(\'' + t.id + '\',this.checked)"></th>' +
+      t.cols.map(function(c) {
+        var act = t.orden === c.key;
+        return '<th class="' + (c.tipo === 'num' || c.tipo === 'min' ? 'num ' : '') + (act ? 'sorted' : '') +
+          '" onclick="MT.ordenar(\'' + t.id + '\',\'' + c.key + '\')">' + UI.esc(c.label) +
+          '<span class="sort-ind">' + (act ? (t.dir > 0 ? '▲' : '▼') : '⇅') + '</span></th>';
+      }).join('') + '</tr>';
+
+    $(t.id + '-body').innerHTML = filas.length
+      ? filas.map(function(r, i) {
+          var sel = !!t.sel[r._i];
+          return '<tr class="' + (sel ? 'sel' : '') + '">' +
+            '<td class="dt-check"><input type="checkbox" ' + (sel ? 'checked' : '') +
+              ' onclick="MT.sel(\'' + t.id + '\',\'' + r._i + '\',' + i + ',event)"></td>' +
+            t.cols.map(function(c) {
+              var v = r[c.key];
+              var txt = c.tipo === 'min' ? UI.fmtMin(v)
+                      : (v === '' || v === null || v === undefined) ? '—' : UI.esc(String(v));
+              return '<td class="' + (c.tipo === 'num' || c.tipo === 'min' ? 'num' : '') + '">' + txt + '</td>';
+            }).join('') + '</tr>';
+        }).join('')
+      : '<tr><td colspan="' + (t.cols.length + 1) + '" class="dt-empty">' +
+        (t.datos.length ? 'Ningún registro coincide con la búsqueda.' : UI.esc(t.vacio)) + '</td></tr>';
+
+    var n = Object.keys(t.sel).length;
+    $(t.id + '-selbar').innerHTML = n
+      ? '<div class="dt-selbar"><b>' + n + '</b> línea' + (n === 1 ? '' : 's') + ' seleccionada' + (n === 1 ? '' : 's') +
+        '<button class="ghost xs" onclick="MT.limpiarSel(\'' + t.id + '\')">Quitar selección</button>' +
+        '<span class="spacer"></span>' +
+        '<button class="ghost xs" onclick="MT.exportar(\'' + t.id + '\',true)">Exportar selección</button></div>'
+      : '';
+
+    $(t.id + '-foot').innerHTML = '<span><b>' + filas.length + '</b> fila' + (filas.length === 1 ? '' : 's') +
+      (filas.length !== t.datos.length ? ' (filtradas de ' + t.datos.length + ')' : '') + '</span>';
+  },
+
+  sel: function(id, key, idx, ev) {
+    var t = MT._reg[id];
+    if (ev && ev.shiftKey && t.ultimo >= 0) {
+      var filas = MT.filtrar(t);
+      var a = Math.min(t.ultimo, idx), b = Math.max(t.ultimo, idx);
+      var on = !t.sel[key];
+      for (var i = a; i <= b; i++) {
+        if (!filas[i]) continue;
+        if (on) t.sel[filas[i]._i] = true; else delete t.sel[filas[i]._i];
+      }
+    } else {
+      if (t.sel[key]) delete t.sel[key]; else t.sel[key] = true;
+    }
+    t.ultimo = idx;
+    MT.render(t);
+  },
+
+  selTodos: function(id, on) {
+    var t = MT._reg[id];
+    MT.filtrar(t).forEach(function(r) { if (on) t.sel[r._i] = true; else delete t.sel[r._i]; });
+    MT.render(t);
+  },
+
+  limpiarSel: function(id) { var t = MT._reg[id]; t.sel = {}; MT.render(t); },
+
+  exportar: function(id, soloSel) {
+    var t = MT._reg[id];
+    var filas = soloSel ? t.datos.filter(function(r) { return t.sel[r._i]; }) : MT.filtrar(t);
+    if (!filas.length) { UI.toast('No hay filas que exportar', 'err'); return; }
+    function c(v) { return '"' + String(v === null || v === undefined ? '' : v).replace(/"/g, '""') + '"'; }
+    var csv = t.cols.map(function(x) { return c(x.label); }).join(',') + '\n' +
+      filas.map(function(r) { return t.cols.map(function(x) { return c(r[x.key]); }).join(','); }).join('\n');
+    try {
+      var blob = new Blob(['﻿' + csv], { type: 'text/csv;charset=utf-8;' });
+      var a = document.createElement('a');
+      a.href = URL.createObjectURL(blob);
+      a.download = t.nombre + '_' + new Date().toISOString().slice(0, 10) + '.csv';
+      document.body.appendChild(a); a.click();
+      setTimeout(function() { URL.revokeObjectURL(a.href); document.body.removeChild(a); }, 1500);
+      UI.toast('✓ Exportando ' + filas.length + ' filas', 'ok');
+    } catch (e) {
+      $('csv-area').value = csv;
+      UI.show('modal-csv');
+    }
+  },
+
+  copiar: function() {
+    var ta = $('csv-area');
+    ta.select();
+    try { document.execCommand('copy'); UI.toast('✓ Copiado', 'ok'); }
+    catch (e) { UI.toast('Selecciona el texto y cópialo manualmente', 'err'); }
+  }
+};
+
+/* ══════════════════════════════════════════════════════════════
+   AUTH
+══════════════════════════════════════════════════════════════ */
+var Auth = {
+  login: function() {
+    var email = ($('l-email').value || '').trim();
+    var pin   = ($('l-pin').value || '').trim();
+    var err = $('l-err'), btn = $('l-btn');
+    if (!email || !pin) { err.textContent = 'Ingresa correo y PIN'; err.style.display = ''; return; }
+    btn.disabled = true; btn.textContent = 'Verificando…';
+    err.style.display = 'none';
+
+    API.call('login', [email, pin], function(r) {
+      btn.disabled = false; btn.textContent = 'Iniciar sesión';
+      if (r && r.ok) {
+        STATE.usr = r;
+        try { sessionStorage.setItem('lt_usr', JSON.stringify(r)); } catch (e) {}
+        Auth.aplicar();
+      } else {
+        err.textContent = (r && r.msg) || 'Credenciales incorrectas';
+        err.style.display = '';
+        $('l-pin').value = ''; $('l-pin').focus();
+      }
+    }, function(msg) {
+      btn.disabled = false; btn.textContent = 'Iniciar sesión';
+      err.textContent = 'Error de conexión: ' + msg;
       err.style.display = '';
-    })
-    .login(email, pin);
-}
+    });
+  },
 
-function logout() {
-  try { sessionStorage.removeItem('lt_usr'); } catch(e) {}
-  USR = null;
-  if (_autoRefreshInterval) { clearInterval(_autoRefreshInterval); _autoRefreshInterval = null; }
-  $('login-overlay').style.display = 'flex';
-  $('usr-badge').style.display     = 'none';
-  $('logout-btn').style.display    = 'none';
-  $('l-pin').value = '';
-}
+  logout: function() {
+    try { sessionStorage.removeItem('lt_usr'); } catch (e) {}
+    STATE.usr = null;
+    if (STATE.autoId) { clearInterval(STATE.autoId); STATE.autoId = null; }
+    $('login-overlay').style.display = 'flex';
+    $('usr-badge').style.display = 'none';
+    $('logout-btn').style.display = 'none';
+    $('l-pin').value = '';
+  },
 
-function aplicarSesion() {
-  $('login-overlay').style.display = 'none';
-  var badge = $('usr-badge');
-  badge.textContent   = (USR.nombre || USR.email) + ' · ' + USR.rol;
-  badge.style.display = '';
-  $('logout-btn').style.display = '';
-
-  // Cargar datos SOLO después de autenticarse correctamente
-  cargar();
-
-  // Auto-refresh cada 2 minutos
-  if (_autoRefreshInterval) clearInterval(_autoRefreshInterval);
-  _autoRefreshInterval = setInterval(cargar, AUTO_REFRESH_SEC * 1000);
-}
-
-/* ══════════════════════════════════════════════
-   TABS
-══════════════════════════════════════════════ */
-function showTab(name, btn) {
-  document.querySelectorAll('.tab-panel').forEach(function(p) { p.classList.remove('active'); });
-  document.querySelectorAll('#dash-tabs button').forEach(function(b) { b.classList.remove('active'); });
-  var panel = $('tab-' + name);
-  if (panel) panel.classList.add('active');
-  if (btn) btn.classList.add('active');
-}
-
-/* ══════════════════════════════════════════════
-   RENDER — TABLA GENÉRICA
-══════════════════════════════════════════════ */
-function renderTabla(tableId, rows, cols) {
-  var t = $(tableId);
-  if (!t) return;
-  if (!rows || !rows.length) {
-    t.innerHTML = '<tr><td colspan="' + cols.length + '" class="empty-state">Sin datos para el período seleccionado</td></tr>';
-    return;
+  /** El dashboard SÓLO consulta datos después de una sesión válida */
+  aplicar: function() {
+    $('login-overlay').style.display = 'none';
+    var b = $('usr-badge');
+    b.textContent = (STATE.usr.nombre || STATE.usr.email) + ' · ' + STATE.usr.rol;
+    b.style.display = '';
+    $('logout-btn').style.display = '';
+    Dash.init();
+    Dash.cargar();
   }
-  var html = '<tr>' + cols.map(function(c) { return '<th>' + esc(c[0]) + '</th>'; }).join('') + '</tr>';
-  html += rows.map(function(r) {
-    return '<tr>' + cols.map(function(c) {
-      var v = r[c[1]];
-      if      (c[2] === 'min')   v = fmtMin(v);
-      else if (c[2] === 'badge') v = v ? '<span class="badge ' + esc(v) + '">' + esc(v) + '</span>' : '—';
-      else v = (v === undefined || v === null || v === '') ? '—' : esc(String(v));
-      return '<td>' + v + '</td>';
-    }).join('') + '</tr>';
-  }).join('');
-  t.innerHTML = html;
-}
+};
 
-/* ══════════════════════════════════════════════
-   RENDER — BARRAS
-══════════════════════════════════════════════ */
-function renderBars(containerId, rows, labelKey, valueKey) {
-  var el = $(containerId);
-  if (!el) return;
-  if (!rows || !rows.length) { el.innerHTML = ''; return; }
-  var max = rows.reduce(function(m, r) { return Math.max(m, Number(r[valueKey]) || 0); }, 0);
-  el.innerHTML = rows.slice(0, 12).map(function(r) {
-    var pct = max > 0 ? Math.round((Number(r[valueKey]) || 0) / max * 100) : 0;
-    return '<div class="bar-row">' +
-      '<span class="bar-label" title="' + esc(r[labelKey] || '') + '">' + esc(r[labelKey] || '—') + '</span>' +
-      '<div class="bar-track"><div class="bar-fill" style="width:' + pct + '%"></div></div>' +
-      '<span class="bar-val">' + fmtNum(r[valueKey]) + '</span>' +
-    '</div>';
-  }).join('');
-}
+/* ══════════════════════════════════════════════════════════════
+   DASH
+══════════════════════════════════════════════════════════════ */
+var Dash = {
+  t: {},
+  listo: false,
 
-/* ══════════════════════════════════════════════
-   RENDER — KPIs
-══════════════════════════════════════════════ */
-function renderKPIs(k) {
-  var g = $('kpi-grid');
-  if (!k) {
-    g.innerHTML =
-      '<div class="card" style="margin:0"><div class="empty-state">' +
-        'Sin maniobras finalizadas en el período seleccionado.<br>' +
-        '<span style="font-size:12px">Los indicadores aparecerán cuando se completen maniobras.</span>' +
-      '</div></div>';
-    return;
+  init: function() {
+    if (Dash.listo) return;
+    Dash.listo = true;
+    var colsRes = [
+      { key: 'nombre',       label: 'Nombre' },
+      { key: 'maniobras',    label: 'Maniobras', tipo: 'num' },
+      { key: 'promedio_min', label: 'Tiempo promedio', tipo: 'min' }
+    ];
+    Dash.t.serie = MT.crear({ mount: 'mt-serie', nombre: 'tendencia', cols: [
+      { key: 'periodo',      label: 'Período' },
+      { key: 'maniobras',    label: 'Maniobras', tipo: 'num' },
+      { key: 'promedio_min', label: 'Promedio', tipo: 'min' },
+      { key: 'demora_min',   label: 'Demora total', tipo: 'min' }
+    ]});
+    Dash.t.cliente  = MT.crear({ mount: 'mt-cliente',  nombre: 'por_cliente',  cols: colsRes });
+    Dash.t.flujo    = MT.crear({ mount: 'mt-flujo',    nombre: 'por_flujo',    cols: colsRes });
+    Dash.t.etapa    = MT.crear({ mount: 'mt-etapa',    nombre: 'por_etapa',    cols: colsRes });
+    Dash.t.empleado = MT.crear({ mount: 'mt-empleado', nombre: 'por_empleado', cols: colsRes });
+    Dash.t.tiempos  = MT.crear({ mount: 'mt-tiempos',  nombre: 'tiempos_etapa', cols: [
+      { key: 'nombre',               label: 'Etapa' },
+      { key: 'count',                label: 'Registros', tipo: 'num' },
+      { key: 'promedio_min',         label: 'Promedio real', tipo: 'min' },
+      { key: 'promedio_est_min',     label: 'Estimado', tipo: 'min' },
+      { key: 'promedio_retraso_min', label: 'Retraso promedio', tipo: 'min' }
+    ]});
+    Dash.t.mov = MT.crear({ mount: 'mt-mov', nombre: 'movimientos', cols: [
+      { key: 'folio',          label: 'Folio' },
+      { key: 'fecha',          label: 'Fecha' },
+      { key: 'etapa',          label: 'Etapa' },
+      { key: 'tiempo_min',     label: 'Tiempo real', tipo: 'min' },
+      { key: 'tiempo_est_min', label: 'Estimado', tipo: 'min' },
+      { key: 'retraso_min',    label: 'Retraso', tipo: 'min' }
+    ]});
+  },
+
+  estado: function(cargando) {
+    $('estado-icono').className = cargando ? 'spinner' : 'live-dot';
+    $('estado-txt').textContent = cargando
+      ? 'Cargando…'
+      : 'Actualizado ' + new Date().toLocaleTimeString('es-MX', { hour: '2-digit', minute: '2-digit' });
+  },
+
+  aviso: function(msg, tipo) {
+    $('dash-aviso').innerHTML = msg ? '<div class="aviso ' + (tipo || 'warn') + '">' + UI.esc(msg) + '</div>' : '';
+  },
+
+  tab: function(n, btn) {
+    document.querySelectorAll('.tab-panel').forEach(function(p) { p.classList.remove('active'); });
+    document.querySelectorAll('#dash-tabs button').forEach(function(b) { b.classList.remove('active'); });
+    var p = $('tab-' + n);
+    if (p) p.classList.add('active');
+    if (btn) btn.classList.add('active');
+  },
+
+  toggleAuto: function() {
+    if (STATE.autoId) { clearInterval(STATE.autoId); STATE.autoId = null; }
+    if ($('chk-auto').checked) {
+      STATE.autoId = setInterval(Dash.cargar, 300000);
+      UI.toast('Auto-actualización cada 5 minutos', 'ok');
+    }
+  },
+
+  cargar: function() {
+    if (!STATE.usr) return;
+    var dias = $('sel-dias').value;
+    Dash.estado(true);
+    Dash.aviso('');
+
+    API.call('indicadores', [dias], function(k) {
+      STATE.kpis = k;
+      Dash.renderKPIs(k);
+      Dash.estado(false);
+
+      if (!k.total_registros) {
+        Dash.aviso('Todavía no hay ninguna maniobra registrada. Captura la primera desde la pestaña Operaciones.', 'warn');
+      } else if (!k.maniobras) {
+        Dash.aviso('Hay ' + k.total_registros + ' maniobra(s) registradas, pero ninguna finalizada en este período. ' +
+                   'Amplía el rango de fechas o cierra las maniobras en curso para ver promedios.', 'warn');
+      }
+    }, function(msg) {
+      Dash.estado(false);
+      Dash.aviso('No se pudieron cargar los indicadores: ' + msg, 'err');
+      $('kpi-grid').innerHTML = '<div class="card" style="margin:0;border-color:var(--red)">' +
+        '<div style="color:var(--red);padding:16px">' + UI.esc(msg) + '</div></div>';
+    });
+
+    Dash.cargarSerie();
+    Dash.cargarDetalle(dias);
+  },
+
+  cargarSerie: function() {
+    if (!STATE.usr) return;
+    API.call('serie', [$('sel-periodo').value, $('sel-dias').value], function(res) {
+      MT.set(Dash.t.serie, (res && res.filas) || []);
+    }, function(msg) { UI.toast('Tendencia: ' + msg, 'err'); });
+  },
+
+  cargarDetalle: function(dias) {
+    API.call('getDetalleEtapas', [Number(dias)], function(res) {
+      MT.set(Dash.t.tiempos, (res && res.porEtapa) || []);
+      MT.set(Dash.t.mov,     (res && res.movimientos) || []);
+    }, function(msg) { UI.toast('Detalle de etapas: ' + msg, 'err'); });
+  },
+
+  renderKPIs: function(k) {
+    function card(lbl, val, sub) {
+      return '<div class="card" style="margin:0">' +
+        '<div class="kpi-lbl">' + UI.esc(lbl) + '</div>' +
+        '<div class="kpi-val">' + val + '</div>' +
+        (sub ? '<div class="kpi-sub">' + UI.esc(sub) + '</div>' : '') + '</div>';
+    }
+    $('kpi-grid').innerHTML =
+      card('Maniobras finalizadas', UI.fmtNum(k.maniobras),             'en el período') +
+      card('En curso ahora',        UI.fmtNum(k.en_curso),              'maniobras activas') +
+      card('Tiempo promedio total', UI.fmtMin(k.promedio_min),          'por maniobra') +
+      card('Tiempo efectivo prom.', UI.fmtMin(k.promedio_efectivo_min), 'sin demoras') +
+      card('Demora acumulada',      UI.fmtMin(k.demora_total_min),      'total del período') +
+      card('Con daños reportados',  UI.fmtNum(k.danos),                 'maniobras');
+
+    var sem = k.semaforo || {};
+    var amb = sem['ÁMBAR'] !== undefined ? sem['ÁMBAR'] : (sem.AMBAR || 0);
+    var total = (sem.VERDE || 0) + amb + (sem.ROJO || 0);
+    $('sem-row').innerHTML = [
+      ['dot-verde', 'Verde', sem.VERDE || 0],
+      ['dot-ambar', 'Ámbar', amb],
+      ['dot-rojo',  'Rojo',  sem.ROJO || 0]
+    ].map(function(s) {
+      var pct = total > 0 ? ' (' + Math.round(s[2] / total * 100) + '%)' : '';
+      return '<div class="sem-item"><span class="dot ' + s[0] + '"></span>' +
+        '<span>' + s[1] + ': <strong>' + s[2] + '</strong>' + pct + '</span></div>';
+    }).join('<span style="color:var(--line);margin:0 6px">|</span>');
+    $('card-semaforo').style.display = total ? '' : 'none';
+
+    MT.set(Dash.t.cliente,  k.por_cliente  || []);
+    MT.set(Dash.t.flujo,    k.por_flujo    || []);
+    MT.set(Dash.t.etapa,    k.por_etapa    || []);
+    MT.set(Dash.t.empleado, k.por_empleado || []);
+
+    Dash.bars('bars-cliente',  k.por_cliente);
+    Dash.bars('bars-flujo',    k.por_flujo);
+    Dash.bars('bars-etapa',    k.por_etapa);
+    Dash.bars('bars-empleado', k.por_empleado);
+  },
+
+  bars: function(id, rows) {
+    var el = $(id);
+    if (!el) return;
+    if (!rows || !rows.length) { el.innerHTML = '<span class="muted">Sin datos para graficar.</span>'; return; }
+    var max = rows.reduce(function(m, r) { return Math.max(m, Number(r.maniobras) || 0); }, 0);
+    el.innerHTML = rows.slice(0, 12).map(function(r) {
+      var pct = max > 0 ? Math.round((Number(r.maniobras) || 0) / max * 100) : 0;
+      return '<div class="bar-row">' +
+        '<span class="bar-label" title="' + UI.esc(r.nombre || '') + '">' + UI.esc(r.nombre || '—') + '</span>' +
+        '<div class="bar-track"><div class="bar-fill" style="width:' + pct + '%"></div></div>' +
+        '<span class="bar-val">' + UI.fmtNum(r.maniobras) + '</span></div>';
+    }).join('');
   }
+};
 
-  function kpiCard(lbl, val, sub) {
-    return '<div class="card" style="margin:0">' +
-      '<div class="kpi-lbl">' + esc(lbl) + '</div>' +
-      '<div class="kpi-val">' + val + '</div>' +
-      (sub ? '<div class="kpi-sub">' + esc(sub) + '</div>' : '') +
-    '</div>';
-  }
-
-  g.innerHTML =
-    kpiCard('Maniobras finalizadas',  fmtNum(k.maniobras),                 'en el período') +
-    kpiCard('En curso ahora',         fmtNum(k.en_curso),                   'maniobras activas') +
-    kpiCard('Tiempo promedio total',  fmtMin(k.promedio_min),              'por maniobra') +
-    kpiCard('Tiempo efectivo prom.',  fmtMin(k.promedio_efectivo_min),     'sin demoras') +
-    kpiCard('Demora acumulada',       fmtMin(k.demora_total_min),          'total período') +
-    kpiCard('Con daños reportados',   fmtNum(k.danos),                      'maniobras');
-
-  var sem   = k.semaforo || {};
-  var total = (sem.VERDE || 0) + (sem['ÁMBAR'] || sem.AMBAR || 0) + (sem.ROJO || 0);
-  $('sem-row').innerHTML = [
-    ['dot-verde', 'Verde',  sem.VERDE  || 0],
-    ['dot-ambar', 'Ámbar',  sem['ÁMBAR'] || sem.AMBAR || 0],
-    ['dot-rojo',  'Rojo',   sem.ROJO   || 0]
-  ].map(function(s) {
-    var pct = total > 0 ? ' (' + Math.round(s[2] / total * 100) + '%)' : '';
-    return '<div class="sem-item">' +
-      '<span class="dot ' + s[0] + '"></span>' +
-      '<span>' + s[1] + ': <strong>' + s[2] + '</strong>' + pct + '</span>' +
-    '</div>';
-  }).join('<span style="color:var(--line);margin:0 6px">|</span>');
-  $('card-semaforo').style.display = '';
-
-  var cols = [['Nombre','nombre'],['Maniobras','maniobras'],['Promedio','promedio_min','min']];
-  renderTabla('t-cliente',  k.por_cliente,  cols);
-  renderTabla('t-flujo',    k.por_flujo,    cols);
-  renderTabla('t-etapa',    k.por_etapa,    cols);
-  renderTabla('t-empleado', k.por_empleado, cols);
-  renderBars('bars-cliente',  k.por_cliente,  'nombre', 'maniobras');
-  renderBars('bars-flujo',    k.por_flujo,    'nombre', 'maniobras');
-  renderBars('bars-etapa',    k.por_etapa,    'nombre', 'maniobras');
-  renderBars('bars-empleado', k.por_empleado, 'nombre', 'maniobras');
-}
-
-/* ══════════════════════════════════════════════
-   SERIE (TENDENCIA)
-══════════════════════════════════════════════ */
-function cargarSerie() {
-  var dias    = $('sel-dias').value;
-  var periodo = $('sel-periodo').value;
-  $('t-serie').innerHTML = '<tr><td class="loading-row">Cargando tendencia…</td></tr>';
-
-  google.script.run
-    .withSuccessHandler(function(rows) {
-      renderTabla('t-serie', rows, [
-        ['Período',      'periodo'],
-        ['Maniobras',    'maniobras'],
-        ['Promedio',     'promedio_min', 'min'],
-        ['Demora total', 'demora_min',   'min']
-      ]);
-    })
-    .withFailureHandler(function(e) {
-      $('t-serie').innerHTML = '<tr><td style="color:var(--red);padding:16px">Error: ' + esc(e.message || e) + '</td></tr>';
-    })
-    .serie(periodo, dias);
-}
-
-/* ══════════════════════════════════════════════
-   DETALLE DE TIEMPOS POR ETAPA
-══════════════════════════════════════════════ */
-function cargarDetalleEtapas(dias) {
-  $('t-det-eta').innerHTML = '<tr><td colspan="5" class="loading-row">Cargando estadísticas de etapas…</td></tr>';
-  $('t-det-man').innerHTML = '<tr><td colspan="6" class="loading-row">Cargando movimientos…</td></tr>';
-
-  google.script.run
-    .withSuccessHandler(function(res) {
-      renderTabla('t-det-eta', res.porEtapa, [
-        ['Etapa',            'nombre'],
-        ['Registros',        'count'],
-        ['Promedio real',    'promedio_min',         'min'],
-        ['Estimado',         'promedio_est_min',      'min'],
-        ['Retraso promedio', 'promedio_retraso_min',  'min']
-      ]);
-      renderTabla('t-det-man', res.movimientos, [
-        ['Folio',       'folio'],
-        ['Fecha',       'fecha'],
-        ['Etapa',       'etapa'],
-        ['Tiempo real', 'tiempo_min',     'min'],
-        ['Estimado',    'tiempo_est_min', 'min'],
-        ['Retraso',     'retraso_min',    'min']
-      ]);
-    })
-    .withFailureHandler(function(e) {
-      $('t-det-eta').innerHTML = '<tr><td colspan="5" style="color:var(--red);padding:16px">Error: ' + esc(e.message || e) + '</td></tr>';
-      $('t-det-man').innerHTML = '';
-    })
-    .getDetalleEtapas(Number(dias));
-}
-
-/* ══════════════════════════════════════════════
-   CARGA PRINCIPAL
-   IMPORTANTE: Solo se llama desde aplicarSesion()
-   después de que el usuario se autenticó.
-══════════════════════════════════════════════ */
-function cargar() {
-  var dias = $('sel-dias').value;
-  setRefreshStatus(true);
-
-  $('kpi-grid').innerHTML =
-    '<div class="card" style="margin:0"><div class="loading-row">Cargando indicadores…</div></div>';
-  $('card-semaforo').style.display = 'none';
-
-  google.script.run
-    .withSuccessHandler(function(k) {
-      renderKPIs(k);
-      setRefreshStatus(false);
-    })
-    .withFailureHandler(function(e) {
-      $('kpi-grid').innerHTML =
-        '<div class="card" style="margin:0;border-color:var(--red)">' +
-          '<div style="color:var(--red);padding:16px">Error: ' + esc(e.message || e) + '</div>' +
-        '</div>';
-      toast('Error al cargar indicadores', 'err');
-      setRefreshStatus(false);
-    })
-    .indicadores(dias);
-
-  cargarSerie();
-  cargarDetalleEtapas(dias);
-}
-
-/* ══════════════════════════════════════════════
-   CSV EXPORT
-══════════════════════════════════════════════ */
-function descargarCSV(tableId, nombre) {
-  var rows = document.querySelectorAll('#' + tableId + ' tr');
-  if (!rows.length) { toast('Sin datos para exportar', 'err'); return; }
-  var csv = Array.prototype.slice.call(rows).map(function(tr) {
-    return Array.prototype.slice.call(tr.children).map(function(td) {
-      return '"' + td.textContent.replace(/"/g, '""') + '"';
-    }).join(',');
-  }).join('\n');
-  var a     = document.createElement('a');
-  a.href    = 'data:text/csv;charset=utf-8,' + encodeURIComponent('﻿' + csv);
-  a.download = nombre + '_' + new Date().toISOString().slice(0,10) + '.csv';
-  a.click();
-}
-
-/* ══════════════════════════════════════════════
+/* ══════════════════════════════════════════════════════════════
    ARRANQUE
-══════════════════════════════════════════════ */
-initTheme();
-
+══════════════════════════════════════════════════════════════ */
+UI.initTheme();
 (function() {
   try {
-    var guardada = sessionStorage.getItem('lt_usr');
-    if (guardada) {
-      USR = JSON.parse(guardada);
-      aplicarSesion();
-    }
-    // Si no hay sesión en storage, el login overlay ya está visible
-  } catch(e) {}
+    var g = sessionStorage.getItem('lt_usr');
+    if (g) { STATE.usr = JSON.parse(g); Auth.aplicar(); }
+  } catch (e) {}
 })();
 </script>
 </body>

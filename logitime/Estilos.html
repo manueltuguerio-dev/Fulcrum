@@ -21,6 +21,8 @@
   --step-done-bg:   rgba(31,169,113,.15); --step-done-txt:   #27c982; --step-done-brd: rgba(31,169,113,.3);
   --step-skip-bg:   rgba(100,100,100,.1);
   --input-bg: #0d1a2d;
+  --row-hover: rgba(47,109,246,.07);
+  --row-sel:   rgba(47,109,246,.14);
 }
 
 :root[data-theme="light"] {
@@ -44,6 +46,8 @@
   --step-done-bg:  rgba(20,133,90,.1);  --step-done-txt:  #0d6b48; --step-done-brd: rgba(20,133,90,.25);
   --step-skip-bg:  rgba(100,100,100,.08);
   --input-bg: #f8fafb;
+  --row-hover: rgba(29,92,232,.05);
+  --row-sel:   rgba(29,92,232,.11);
 }
 
 /* ── Reset base ──────────────────────────────────────────────── */
@@ -58,7 +62,7 @@ body {
 }
 
 /* ── Estructura ──────────────────────────────────────────────── */
-.wrap    { max-width: 1100px; margin: 0 auto; padding: 20px; }
+.wrap    { max-width: 1240px; margin: 0 auto; padding: 20px; }
 header   { display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap; margin-bottom: 18px; }
 h1       { font-size: 20px; margin: 0; }
 h2       { font-size: 12px; margin: 0 0 10px; color: var(--muted); text-transform: uppercase; letter-spacing: .08em; }
@@ -68,6 +72,7 @@ h2       { font-size: 12px; margin: 0 0 10px; color: var(--muted); text-transfor
 .scroll  { overflow-x: auto; }
 .hidden  { display: none !important; }
 a        { color: var(--brand); }
+.spacer  { flex: 1; }
 
 /* ── Formularios ─────────────────────────────────────────────── */
 label  { display: block; font-size: 12px; color: var(--muted); margin-bottom: 4px; }
@@ -79,6 +84,9 @@ input, select, textarea {
 input:focus, select:focus, textarea:focus { outline: none; border-color: var(--brand); }
 select[multiple] { height: 110px; }
 textarea         { min-height: 70px; resize: vertical; }
+input[type=checkbox] { width: auto; }
+.req-star { color: var(--red); font-weight: 700; }
+.campo-invalido input, .campo-invalido select, .campo-invalido textarea { border-color: var(--red); }
 
 /* ── Botones ─────────────────────────────────────────────────── */
 button {
@@ -94,6 +102,7 @@ button.warn    { background: var(--amber); color: #fff; }
 button.danger  { background: var(--red); color: #fff; }
 button.success { background: var(--green); color: #fff; }
 button.sm      { padding: 6px 10px; font-size: 12px; }
+button.xs      { padding: 3px 8px; font-size: 11px; }
 button:disabled{ opacity: .42; cursor: not-allowed; }
 
 /* ── Tabs ────────────────────────────────────────────────────── */
@@ -107,6 +116,38 @@ th, td { text-align: left; padding: 8px; border-bottom: 1px solid var(--line); w
 th     { color: var(--muted); font-weight: 600; font-size: 11px; text-transform: uppercase; letter-spacing: .04em; }
 tr:last-child td { border-bottom: none; }
 
+/* ── Tabla dinámica (DataTable) ──────────────────────────────── */
+.dt-toolbar    { display: flex; gap: 8px; flex-wrap: wrap; align-items: flex-end; margin-bottom: 12px; }
+.dt-toolbar > div { display: flex; flex-direction: column; gap: 4px; min-width: 130px; }
+.dt-search     { min-width: 200px; flex: 1; }
+.dt-chips      { display: flex; gap: 6px; flex-wrap: wrap; margin-bottom: 10px; }
+.dt-chip       { display: inline-flex; align-items: center; gap: 6px; font-size: 11px; font-weight: 600;
+                 background: var(--row-sel); color: var(--brand); border-radius: 999px; padding: 3px 6px 3px 10px; }
+.dt-chip button{ background: none; border: 0; color: inherit; padding: 0 4px; font-size: 13px; line-height: 1; cursor: pointer; }
+.dt-wrap       { overflow-x: auto; border: 1px solid var(--line); border-radius: 10px; }
+.dt-table      { width: 100%; border-collapse: collapse; font-size: 13px; }
+.dt-table th   { position: sticky; top: 0; z-index: 2; background: var(--card);
+                 border-bottom: 1px solid var(--line); cursor: pointer; user-select: none; }
+.dt-table th.nosort { cursor: default; }
+.dt-table th .sort-ind { opacity: .45; font-size: 9px; margin-left: 3px; }
+.dt-table th.sorted    { color: var(--brand); }
+.dt-table th.sorted .sort-ind { opacity: 1; }
+.dt-table tbody tr             { transition: background .1s; }
+.dt-table tbody tr:hover       { background: var(--row-hover); }
+.dt-table tbody tr.sel         { background: var(--row-sel); }
+.dt-table tbody tr.sel:hover   { background: var(--row-sel); }
+.dt-table td.num, .dt-table th.num { text-align: right; font-variant-numeric: tabular-nums; }
+.dt-check      { width: 34px; text-align: center; padding-left: 10px; padding-right: 4px; }
+.dt-check input{ cursor: pointer; }
+.dt-empty      { text-align: center; color: var(--muted); padding: 28px 16px; font-size: 13px; }
+.dt-foot       { display: flex; gap: 10px; align-items: center; flex-wrap: wrap;
+                 margin-top: 10px; font-size: 12px; color: var(--muted); }
+.dt-selbar     { display: flex; gap: 8px; align-items: center; flex-wrap: wrap;
+                 background: var(--row-sel); border: 1px solid var(--brand); border-radius: 10px;
+                 padding: 9px 12px; margin-bottom: 10px; }
+.dt-selbar b   { color: var(--brand); }
+.dt-wrap.scroll-y { max-height: 62vh; overflow-y: auto; }
+
 /* ── Badges ──────────────────────────────────────────────────── */
 .badge         { display: inline-block; padding: 2px 9px; border-radius: 999px; font-size: 11px; font-weight: 700; }
 .VERDE         { background: var(--badge-verde-bg); color: var(--badge-verde-txt); }
@@ -114,6 +155,8 @@ tr:last-child td { border-bottom: none; }
 .ROJO          { background: var(--badge-rojo-bg);  color: var(--badge-rojo-txt);  }
 .EN_CURSO      { background: var(--badge-curso-bg); color: var(--badge-curso-txt); }
 .EN_PAUSA      { background: var(--badge-pausa-bg); color: var(--badge-pausa-txt); }
+.FINALIZADA    { background: var(--step-done-bg);   color: var(--step-done-txt);   }
+.NEUTRO        { background: var(--step-skip-bg);   color: var(--muted);           }
 
 /* ── KPI / cronómetro ────────────────────────────────────────── */
 .kpi           { font-size: 28px; font-weight: 700; margin-top: 6px; }
@@ -121,6 +164,7 @@ tr:last-child td { border-bottom: none; }
 .crono-est     { font-size: 12px; margin-top: 4px; color: var(--muted); }
 .crono-est.retraso { color: var(--red); font-weight: 700; }
 .muted         { color: var(--muted); font-size: 12px; }
+.mono          { font-variant-numeric: tabular-nums; }
 
 /* ── Progreso de etapas ──────────────────────────────────────── */
 .progress-steps { display: flex; gap: 4px; flex-wrap: wrap; align-items: center; }
@@ -138,22 +182,39 @@ tr:last-child td { border-bottom: none; }
 }
 .modal-box {
   background: var(--card); border: 1px solid var(--line); border-radius: 14px;
-  padding: 22px; max-width: 520px; width: 92%; max-height: 90vh;
+  padding: 22px; max-width: 560px; width: 92%; max-height: 90vh;
   overflow-y: auto; box-shadow: var(--shadow);
 }
+.modal-box.ancho { max-width: 860px; }
 
 /* ── Toast ───────────────────────────────────────────────────── */
 .toast {
   position: fixed; bottom: 24px; left: 50%; transform: translateX(-50%);
   background: var(--card); border: 1px solid var(--line); border-radius: 10px;
   padding: 11px 20px; box-shadow: var(--shadow); font-size: 14px; z-index: 200;
-  opacity: 0; transition: opacity .25s; pointer-events: none; max-width: 420px;
-  text-align: center; white-space: nowrap;
+  opacity: 0; transition: opacity .25s; pointer-events: none; max-width: 90vw;
+  text-align: center;
 }
 .toast.show  { opacity: 1; }
 .toast.ok    { border-color: var(--green); color: var(--green); }
 .toast.err   { border-color: var(--red);   color: var(--red);   }
 
+/* ── Avisos ──────────────────────────────────────────────────── */
+.aviso        { border-radius: 10px; padding: 11px 14px; font-size: 13px; margin-bottom: 12px;
+                border: 1px solid var(--line); background: var(--input-bg); }
+.aviso.err    { border-color: var(--red);   color: var(--red);   background: var(--badge-rojo-bg); }
+.aviso.warn   { border-color: var(--amber); color: var(--badge-ambar-txt); background: var(--badge-ambar-bg); }
+.aviso.ok     { border-color: var(--green); color: var(--badge-verde-txt); background: var(--badge-verde-bg); }
+
 /* ── Tema toggle ─────────────────────────────────────────────── */
 #theme-btn { font-size: 18px; padding: 6px 10px; line-height: 1; }
+
+/* ── Indicador de estado en vivo ─────────────────────────────── */
+.live-dot   { width: 7px; height: 7px; border-radius: 50%; background: var(--green);
+              animation: livePulse 1.6s ease-in-out infinite; flex-shrink: 0; display: inline-block; }
+@keyframes livePulse { 0%,100% { opacity: 1; } 50% { opacity: .25; } }
+.spinner    { width: 9px; height: 9px; border-radius: 50%; border: 2px solid var(--brand);
+              border-top-color: transparent; animation: spin 1.1s linear infinite;
+              flex-shrink: 0; display: inline-block; }
+@keyframes spin { to { transform: rotate(360deg); } }
 </style>
