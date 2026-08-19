@@ -13,9 +13,9 @@ var CHUNK = 40000;              // caracteres por celda (el límite real es 50 0
 var CARPETA_DRIVE = 'Fulcrum ERP';
 var REMITENTE = 'ADMINISTRACION@COMERCIALIZADORAFULCRUM.COM.MX';
 var NOMBRE_REMITENTE = 'Comercializadora Fulcrum';
-var VERSION = 'v11-2026-08-08';   // debe coincidir con el que muestra la app
+var VERSION = 'v12-2026-08-08';   // debe coincidir con el que muestra la app
 
-var COLECCIONES = ['clientes', 'cotizaciones', 'ventas', 'ordenes', 'facturas',
+var COLECCIONES = ['integrantes', 'clientes', 'cotizaciones', 'ventas', 'ordenes', 'facturas',
                    'pagos', 'proveedores', 'gastos', 'proyectos'];
 
 /* ------------------------------------------------------------------ */

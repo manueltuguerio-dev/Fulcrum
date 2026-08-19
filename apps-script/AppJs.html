@@ -150,6 +150,10 @@
           conceptos:[{desc:"Tablero de control",unidad:"PZ",cantidad:1,costo:26000,importe:26000},{desc:"Variador de frecuencia 40 HP",unidad:"PZ",cantidad:1,costo:15000,importe:15000}]},
       ],
       config:{iva:16},
+      integrantes:[
+        {id:uid(),nombre:"Juan Manuel Rodríguez",email:"jm@comercializadorafulcrum.com.mx"},
+        {id:uid(),nombre:"Socio operativo",email:""},
+      ],
       clientes:[
         {id:uid(),nombre:"Transportes del Bajío S.A.",rfc:"TBA150420AB1",margen:30,ivaPct:16,emails:"compras@transportesbajio.com",retenciones:[{concepto:"Retención ISR",tasa:1.25},{concepto:"Retención IVA",tasa:10.6667}]},
         {id:uid(),nombre:"Combustibles del Norte",rfc:"CNO051130QT4",margen:25,ivaPct:16,emails:"pagos@combustiblesnorte.mx",retenciones:[{concepto:"Retención ISR",tasa:1.25}]},
@@ -173,9 +177,12 @@
     ];
     return s;
   }
-  const COLL={cotizacion:"cotizaciones",orden:"ordenes",factura:"facturas",pago:"pagos",proyecto:"proyectos",proveedor:"proveedores",venta:"ventas",gasto:"gastos",cliente:"clientes"};
+  const COLL={cotizacion:"cotizaciones",orden:"ordenes",factura:"facturas",pago:"pagos",proyecto:"proyectos",proveedor:"proveedores",venta:"ventas",gasto:"gastos",cliente:"clientes",integrante:"integrantes"};
+  const EMPRESA="empresa";   // pagador por defecto de los gastos
+  const nombreIntegrante=id=>{if(!id||id===EMPRESA)return "Empresa";
+    const i=state.integrantes.find(x=>x.id===id);return i?i.nombre:"—";};
   let state;
-  const KEYS=["cotizaciones","ventas","facturas","pagos","ordenes","proveedores","gastos","proyectos","clientes"];
+  const KEYS=["cotizaciones","ventas","facturas","pagos","ordenes","proveedores","gastos","proyectos","clientes","integrantes"];
   function normalize(s){if(!s||typeof s!=="object")s={};KEYS.forEach(k=>{if(!Array.isArray(s[k]))s[k]=[];});
     if(!s.config||typeof s.config!=="object")s.config={iva:16};
     if(s.config.iva==null)s.config.iva=16;
@@ -197,7 +204,8 @@
     const v=map[st]||map.saved;el.className="pill "+v[1];el.textContent=v[0];
   }
   state=normalize(null);
-  const ui={cotFilter:"all",ocFilter:"all",facFilter:"all",ovFilter:"all",proyMonth:"all",contaMonth:null,provSel:[]};
+  const ui={cotFilter:"all",ocFilter:"all",facFilter:"all",ovFilter:"all",proyMonth:"all",contaMonth:null,provSel:[],
+    q:{},sort:{}};   // q: texto de búsqueda por módulo · sort: {col,dir} por módulo
   (function(){const pm=state.pagos.map(p=>monthKey(p.fecha)).filter(Boolean).sort();ui.contaMonth=pm.length?pm[pm.length-1]:monthKey(todayStr());})();
   const SNAPS="fulcrum_erp_snaps_v1";
   let snaps=[];
@@ -205,6 +213,62 @@
     google.script.run.withFailureHandler(e=>toast("No se pudieron guardar los cierres")).saveSnaps(JSON.stringify(snaps));
   }
   function fmtDateTime(iso){const d=new Date(iso);return d.toLocaleDateString("es-MX",{day:"2-digit",month:"short",year:"numeric"})+" · "+d.toLocaleTimeString("es-MX",{hour:"2-digit",minute:"2-digit"});}
+
+  /* ---------- búsqueda y ordenamiento por módulo ---------- */
+  // Aplana un registro a texto para poder buscar en todos sus campos.
+  function textoDe(o){
+    const partes=[];
+    const recorrer=v=>{
+      if(v==null)return;
+      if(Array.isArray(v)){v.forEach(recorrer);return;}
+      if(typeof v==="object"){Object.keys(v).forEach(k=>{if(k!=="id")recorrer(v[k]);});return;}
+      partes.push(String(v));
+    };
+    Object.keys(o).forEach(k=>{if(k!=="id")recorrer(o[k]);});
+    return partes.join(" ").toLowerCase();
+  }
+  const sinAcentos=s=>String(s||"").toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g,"");
+  function buscarEn(arr,scope,extra){
+    const q=sinAcentos((ui.q[scope]||"").trim());
+    if(!q)return arr;
+    const terminos=q.split(/\s+/);
+    return arr.filter(r=>{
+      const t=sinAcentos(textoDe(r)+" "+(extra?extra(r):""));
+      return terminos.every(x=>t.indexOf(x)>=0);
+    });
+  }
+  // Orden por defecto: descendente por folio (del más reciente al más antiguo).
+  function ordenarPor(arr,scope,cols){
+    const s=ui.sort[scope]||{col:"folio",dir:"desc"};
+    const def=cols&&cols[s.col];
+    const valor=r=>def?def(r):r[s.col];
+    const copia=arr.slice();
+    copia.sort((a,b)=>{
+      let x=valor(a),y=valor(b);
+      if(typeof x==="number"||typeof y==="number"){x=+x||0;y=+y||0;return s.dir==="asc"?x-y:y-x;}
+      x=String(x==null?"":x);y=String(y==null?"":y);
+      const c=x.localeCompare(y,"es",{numeric:true,sensitivity:"base"});
+      return s.dir==="asc"?c:-c;
+    });
+    return copia;
+  }
+  const listaDe=(arr,scope,cols,extra)=>ordenarPor(buscarEn(arr,scope,extra),scope,cols);
+
+  function barraBusqueda(scope,texto,total,mostrados){
+    const q=ui.q[scope]||"";
+    return `<div class="searchbar">
+      <span class="s-ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" width="15" height="15"><circle cx="11" cy="11" r="7" stroke-width="1.8"/><path d="M20 20l-3.5-3.5" stroke-width="1.8"/></svg></span>
+      <input id="buscador" data-scope="${scope}" value="${escAttr(q)}" placeholder="${texto||"Buscar…"}" autocomplete="off">
+      ${q?`<button class="s-x" data-action="buscar-limpiar" data-scope="${scope}" aria-label="Limpiar">&times;</button>`:""}
+      ${q?`<span class="s-n">${mostrados} de ${total}</span>`:""}
+    </div>`;
+  }
+  // Encabezado que ordena al hacer clic.
+  function th(scope,col,etiqueta,clase){
+    const s=ui.sort[scope]||{col:"folio",dir:"desc"};
+    const act=s.col===col;
+    return `<th class="${clase||""} thsort ${act?"on":""}" data-action="ordenar" data-scope="${scope}" data-col="${col}">${etiqueta}<span class="flecha">${act?(s.dir==="asc"?"▲":"▼"):""}</span></th>`;
+  }
 
   /* ---------- derivados globales ---------- */
   function totals(){
@@ -239,8 +303,14 @@
     const venta=ventaFac>0?ventaFac:(ventaOV>0?ventaOV:cots.reduce((a,c)=>a+cotSubtotal(c),0));
     const costoOrd=ordenes.reduce((a,o)=>a+ocSubtotal(o),0);
     const costo=costoOrd>0?costoOrd:(facturas.reduce((a,f)=>a+facCosto(f),0)||ventas.reduce((a,v)=>a+ovCosto(v),0)||cots.reduce((a,c)=>a+cotCosto(c),0));
-    const margen=venta>0?(venta-costo)/venta*100:0;
-    return {facturas,ventas,ordenes,cots,venta,costo,margen};
+    const costosXml=state.proveedores.filter(x=>x.proyectoId===p.id);
+    const gastosP=state.gastos.filter(g=>g.proyectoId===p.id);
+    const costoXml=costosXml.reduce((a,x)=>a+(+x.subtotal||0),0);
+    const gastoOp=gastosP.reduce((a,g)=>a+(+g.importe||0),0);
+    // Margen neto = ingresos − costos XML − gastos operativos
+    const neto=venta-costoXml-gastoOp;
+    const margen=venta>0?neto/venta*100:0;
+    return {facturas,ventas,ordenes,cots,venta,costo,costosXml,gastosP,costoXml,gastoOp,neto,margen};
   }
   function tasaResico(x){if(x<=25000)return 0.01;if(x<=50000)return 0.011;if(x<=83333.33)return 0.015;if(x<=208333.33)return 0.02;return 0.025;}
   const RESICO_TBL=[["Hasta $25,000","1.00%",0,25000,.01],["$25,000 – $50,000","1.10%",25000,50000,.011],
@@ -258,6 +328,7 @@
     {id:"ordenes",label:"Órdenes de compra",icon:'<path d="M4 5h16M4 12h16M4 19h10" stroke-width="1.7"/><circle cx="19" cy="19" r="2" stroke-width="1.7"/>'},
     {id:"proveedores",label:"Costos (XML)",icon:'<path d="M14 3H6a1 1 0 0 0-1 1v16a1 1 0 0 0 1 1h12a1 1 0 0 0 1-1V8z" stroke-width="1.7"/><path d="M8 13l2 2-2 2M16 13l-2 2 2 2" stroke-width="1.7"/>'},
     {id:"gastos",label:"Gastos",icon:'<circle cx="12" cy="12" r="9" stroke-width="1.7"/><path d="M8 12h8" stroke-width="1.7"/>'},
+    {id:"integrantes",label:"Integrantes",icon:'<circle cx="9" cy="8" r="3" stroke-width="1.7"/><path d="M3 20a6 6 0 0 1 12 0" stroke-width="1.7"/><path d="M16 11a3 3 0 1 0 0-6M18 20a6 6 0 0 0-2-4.5" stroke-width="1.7"/>'},
     {id:"clientes",label:"Clientes",icon:'<circle cx="12" cy="8" r="3.4" stroke-width="1.7"/><path d="M5 20a7 7 0 0 1 14 0" stroke-width="1.7"/>'},
     {id:"proyecciones",label:"Proyecciones",icon:'<path d="M3 3v18h18" stroke-width="1.7"/><path d="M7 14l3-4 3 3 5-7" stroke-width="1.7"/>'},
     {id:"contabilidad",label:"Contabilidad",icon:'<path d="M4 3h16v18H4z" stroke-width="1.7"/><path d="M8 7h8M8 11h8M8 15h5" stroke-width="1.7"/>'},
@@ -266,7 +337,7 @@
   let current="dashboard";
   function renderNav(){
     const c={proyectos:state.proyectos.length,cotizaciones:state.cotizaciones.length,ventas:state.ventas.length,ordenes:state.ordenes.length,
-      facturas:state.facturas.length,pagos:state.pagos.length,proveedores:state.proveedores.length,gastos:state.gastos.length,clientes:state.clientes.length,cierres:snaps.length};
+      facturas:state.facturas.length,pagos:state.pagos.length,proveedores:state.proveedores.length,gastos:state.gastos.length,clientes:state.clientes.length,integrantes:state.integrantes.length,cierres:snaps.length};
     $("#nav").innerHTML=views.map(v=>`<button class="navbtn ${v.id===current?"active":""}" data-action="nav" data-view="${v.id}">
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor">${v.icon}</svg><span>${v.label}</span>
       ${c[v.id]!=null?`<span class="badge num">${c[v.id]}</span>`:""}</button>`).join("");
@@ -351,34 +422,56 @@
 
   function vProyectos(){
     const months=[{v:"all",label:"Todos"}].concat(allMonths().map(m=>({v:m,label:monthLabel(m)})));
-    const list=state.proyectos.filter(p=>ui.proyMonth==="all"||p.mes===ui.proyMonth);
-    let tc=0,tv=0;
-    const body=list.length?list.map(p=>{const d=proyDerived(p);tc+=d.costo;tv+=d.venta;
-      const parts=[];if(d.cots.length)parts.push(d.cots.length+" cot");if(d.ventas.length)parts.push(d.ventas.length+" OV");if(d.ordenes.length)parts.push(d.ordenes.length+" OC");if(d.facturas.length)parts.push(d.facturas.length+" fac");
-      const folios=[...d.cots,...d.ventas,...d.ordenes,...d.facturas].map(x=>x.folio).join(", ");
+    const base=state.proyectos.filter(p=>ui.proyMonth==="all"||p.mes===ui.proyMonth);
+    if(!ui.sort.proy)ui.sort.proy={col:"nombre",dir:"asc"};
+    const list=listaDe(base,"proy",{venta:p=>proyDerived(p).venta,costo:p=>proyDerived(p).costoXml+proyDerived(p).gastoOp,
+      neto:p=>proyDerived(p).neto,margen:p=>proyDerived(p).margen},
+      p=>{const c=state.clientes.find(x=>x.id===p.clienteId);return (c?c.nombre:"")+" "+(p.estado==="cierre"?"cerrado cierre":"abierto");});
+    let tv=0,tc=0,tg=0,tn=0;
+    const cuerpo=list.length?list.map(p=>{
+      const d=proyDerived(p);tv+=d.venta;tc+=d.costoXml;tg+=d.gastoOp;tn+=d.neto;
       const pcli=state.clientes.find(x=>x.id===p.clienteId);
-      return `<tr><td class="strong">${p.nombre}</td><td>${pcli?pcli.nombre:(p.cliente||"—")}</td><td style="text-transform:capitalize">${monthLabel(p.mes)}</td>
-      <td><div>${parts.join(" · ")||"—"}</div><div class="mono" style="color:var(--text-faint);font-size:10.5px">${folios}</div></td>
-      <td class="r num">${money(d.venta)}</td><td class="r num">${money(d.costo)}</td>
-      <td class="r num strong" style="color:${(d.venta-d.costo)>=0?"var(--good)":"var(--bad)"}">${money(d.venta-d.costo)}</td>
-      <td class="r num" style="color:${d.margen>=0?"var(--good)":"var(--bad)"}">${d.margen.toFixed(1)}%</td>
-      <td><div class="rowact"><button class="act" data-action="edit" data-type="proyecto" data-id="${p.id}">Editar</button>
-        <button class="act warnact" data-action="del" data-type="proyectos" data-id="${p.id}">Eliminar</button></div></td></tr>`;}).join(""):emptyRow(9,"Sin proyectos en este periodo");
-    const mg=tv>0?(tv-tc)/tv*100:0;
-    return `${headBar("Proyectos","Agrupa varias órdenes de venta, órdenes de compra y facturas · margen neto por proyecto","proyecto","Nuevo proyecto","rep-proyectos")}
+      const cerrado=p.estado==="cierre";
+      const docs=[];if(d.cots.length)docs.push(d.cots.length+" cot");if(d.ventas.length)docs.push(d.ventas.length+" OV");
+      if(d.ordenes.length)docs.push(d.ordenes.length+" OC");if(d.facturas.length)docs.push(d.facturas.length+" fac");
+      if(d.costosXml.length)docs.push(d.costosXml.length+" XML");if(d.gastosP.length)docs.push(d.gastosP.length+" gastos");
+      return `<tr><td class="strong">${p.nombre}${cerrado&&p.dividendos?`<div style="font-size:10.5px;color:var(--text-faint)">${p.dividendos.length} dividendo(s) · ${fmtDate(p.fechaCierre)}</div>`:""}</td>
+      <td>${pcli?pcli.nombre:(p.cliente||"—")}</td>
+      <td style="text-transform:capitalize">${monthLabel(p.mes)}</td>
+      <td><span class="pill ${cerrado?"p-good":"p-warn"}">${cerrado?"Cierre de proyecto":"Abierto"}</span></td>
+      <td style="font-size:12px;color:var(--text-dim)">${docs.join(" · ")||"—"}</td>
+      <td class="r num">${money(d.venta)}</td>
+      <td class="r num">${money(d.costoXml)}</td>
+      <td class="r num">${money(d.gastoOp)}</td>
+      <td class="r num strong" style="color:${d.neto>=0?"var(--good)":"var(--bad)"}">${money(d.neto)}</td>
+      <td class="r num">${d.margen.toFixed(1)}%</td>
+      <td><div class="rowact">
+        <button class="act ${cerrado?"":"good"}" data-action="proy-cierre" data-id="${p.id}">${cerrado?"Ver dividendos":"Cerrar proyecto"}</button>
+        ${cerrado?`<button class="act" data-action="proy-reabrir" data-id="${p.id}">Reabrir</button>`
+                 :`<button class="act" data-action="edit" data-type="proyecto" data-id="${p.id}">Editar</button>`}
+        <button class="act warnact" data-action="del" data-type="proyectos" data-id="${p.id}">Eliminar</button>
+      </div></td></tr>`;}).join(""):emptyRow(11,"Sin proyectos en este periodo");
+    const mgT=tv>0?tn/tv*100:0;
+    return `${headBar("Proyectos","Ingresos menos costos XML y gastos · cierre con repartición de dividendos","proyecto","Nuevo proyecto","rep-proyectos")}
     <div class="filterbar"><span class="flabel">Mes:</span>${months.map(o=>`<button class="fbtn ${o.v===ui.proyMonth?"on":""}" data-action="filter" data-scope="proyMonth" data-val="${o.v}" style="text-transform:capitalize">${o.label}</button>`).join("")}</div>
+    ${barraBusqueda("proy","Buscar por proyecto, cliente o estado…",base.length,list.length)}
     <div class="panel"><div class="tablewrap"><table>
-      <thead><tr><th>Proyecto</th><th>Cliente</th><th>Mes</th><th>Documentos</th><th class="r">Venta</th><th class="r">Costo</th><th class="r">Ganancia</th><th class="r">Margen neto</th><th></th></tr></thead>
-      <tbody>${body}</tbody>${list.length?`<tfoot><tr><td colspan="4" class="r">Totales</td><td class="r num">${money(tv)}</td><td class="r num">${money(tc)}</td><td class="r num">${money(tv-tc)}</td><td class="r num">${mg.toFixed(1)}%</td><td></td></tr></tfoot>`:""}</table></div></div>`;
+      <thead><tr>${th("proy","nombre","Proyecto")}<th>Cliente</th>${th("proy","mes","Mes")}<th>Estado</th><th>Documentos</th>
+        ${th("proy","venta","Ingresos","r")}<th class="r">Costos XML</th><th class="r">Gastos</th>${th("proy","neto","Margen neto","r")}${th("proy","margen","%","r")}<th></th></tr></thead>
+      <tbody>${cuerpo}</tbody>
+      ${list.length?`<tfoot><tr><td colspan="5" class="r">Totales</td><td class="r num">${money(tv)}</td><td class="r num">${money(tc)}</td>
+        <td class="r num">${money(tg)}</td><td class="r num">${money(tn)}</td><td class="r num">${mgT.toFixed(1)}%</td><td></td></tr></tfoot>`:""}</table></div></div>`;
   }
 
   function vCotizaciones(){
     const opts=[{v:"all",label:"Todos"},{v:"borrador",label:"Borrador"},{v:"enviada",label:"Enviada"},{v:"aceptada",label:"Aceptada"},{v:"rechazada",label:"Rechazada"}];
-    const list=state.cotizaciones.filter(c=>ui.cotFilter==="all"||c.estatus===ui.cotFilter);
+    const base=state.cotizaciones.filter(c=>ui.cotFilter==="all"||c.estatus===ui.cotFilter);
+    const list=listaDe(base,"cot",{total:c=>cotTotal(c),margen:c=>cotMargenPct(c),lineas:c=>(c.lineas||[]).length});
     return `${headBar("Cotizaciones","Propuestas a clientes · margen por línea · convierte las aceptadas en factura","cotizacion","Nueva cotización","rep-cot","cot-masiva")}
     ${filterBar("cotFilter",ui.cotFilter,opts)}
+    ${barraBusqueda("cot","Buscar por folio, cliente o concepto…",base.length,list.length)}
     <div class="panel"><div class="tablewrap"><table>
-    <thead><tr><th>Folio</th><th>Cliente</th><th>Fecha</th><th>Origen (costo)</th><th class="r">Líneas</th><th class="r">Margen</th><th class="r">Total</th><th>Estatus</th><th></th></tr></thead>
+    <thead><tr>${th("cot","folio","Folio")}${th("cot","cliente","Cliente")}${th("cot","fecha","Fecha")}<th>Origen (costo)</th>${th("cot","lineas","Líneas","r")}${th("cot","margen","Margen","r")}${th("cot","total","Total","r")}${th("cot","estatus","Estatus")}<th></th></tr></thead>
     <tbody>${list.length?list.map(c=>`<tr>
       <td class="mono">${c.folio}</td><td>${c.cliente}</td><td>${fmtDate(c.fecha)}</td>
       <td>${(c.origenProveedorIds||[]).length?(c.origenProveedorIds.map(pid=>{const p=state.proveedores.find(x=>x.id===pid);
@@ -396,11 +489,13 @@
 
   function vVentas(){
     const opts=[{v:"all",label:"Todas"},{v:"abierta",label:"Abierta"},{v:"facturada",label:"Facturada"}];
-    const list=state.ventas.filter(o=>ui.ovFilter==="all"||o.estatus===ui.ovFilter);
+    const base=state.ventas.filter(o=>ui.ovFilter==="all"||o.estatus===ui.ovFilter);
+    const list=listaDe(base,"ov",{total:o=>ovTotal(o)});
     return `${headBar("Órdenes de venta","Flujo: cotización → OC del cliente → orden de venta → factura","venta","Nueva orden de venta","rep-ventas")}
     ${filterBar("ovFilter",ui.ovFilter,opts)}
+    ${barraBusqueda("ov","Buscar por folio, cliente u OC del cliente…",base.length,list.length)}
     <div class="panel"><div class="tablewrap"><table>
-    <thead><tr><th>Folio</th><th>Cliente</th><th>OC cliente</th><th>Cotización</th><th>Fecha</th><th class="r">Total</th><th>Estatus</th><th></th></tr></thead>
+    <thead><tr>${th("ov","folio","Folio")}${th("ov","cliente","Cliente")}${th("ov","ocCliente","OC cliente")}<th>Cotización</th>${th("ov","fecha","Fecha")}${th("ov","total","Total","r")}${th("ov","estatus","Estatus")}<th></th></tr></thead>
     <tbody>${list.length?list.map(o=>{const c=state.cotizaciones.find(x=>x.id===o.cotizacionId),fac=state.facturas.find(x=>x.id===o.facturaId);
       return `<tr><td class="mono">${o.folio}</td><td>${o.cliente}</td><td class="mono">${o.ocCliente||"—"}</td>
       <td class="mono">${c?c.folio:"—"}</td><td>${fmtDate(o.fecha)}</td><td class="r num strong">${money(ovTotal(o))}</td>
@@ -415,23 +510,30 @@
 
   function vGastos(){
     const total=state.gastos.reduce((a,g)=>a+g.importe,0);
-    const list=[...state.gastos].sort((a,b)=>a.fecha.localeCompare(b.fecha));
-    return `${headBar("Gastos","Gastos operativos que afectan el resultado del mes en Contabilidad","gasto","Nuevo gasto","rep-gastos")}
+    if(!ui.sort.gas)ui.sort.gas={col:"fecha",dir:"desc"};
+    const list=listaDe(state.gastos,"gas",{importe:g=>g.importe},g=>nombreIntegrante(g.pagador));
+    return `${headBar("Gastos","Gastos operativos · pagador y proyecto · afectan el resultado del mes","gasto","Nuevo gasto","rep-gastos")}
+    ${barraBusqueda("gas","Buscar por concepto, pagador o proyecto…",state.gastos.length,list.length)}
     <div class="panel"><div class="tablewrap"><table>
-    <thead><tr><th>Fecha</th><th>Concepto</th><th class="r">Importe</th><th></th></tr></thead>
-    <tbody>${list.length?list.map(g=>`<tr><td>${fmtDate(g.fecha)}</td><td>${g.concepto}</td><td class="r num strong">${money(g.importe)}</td>
+    <thead><tr>${th("gas","fecha","Fecha")}${th("gas","concepto","Concepto")}<th>Pagador</th><th>Proyecto</th>${th("gas","importe","Importe","r")}<th></th></tr></thead>
+    <tbody>${list.length?list.map(g=>`<tr><td>${fmtDate(g.fecha)}</td><td>${g.concepto}</td>
+      <td><span class="pill ${g.pagador&&g.pagador!==EMPRESA?"p-info":"p-mut"}">${nombreIntegrante(g.pagador)}</span></td>
+      <td>${(()=>{const pr=state.proyectos.find(x=>x.id===g.proyectoId);return pr?pr.nombre:'<span style="color:var(--text-faint)">—</span>';})()}</td>
+      <td class="r num strong">${money(g.importe)}</td>
       <td><div class="rowact"><button class="act" data-action="edit" data-type="gasto" data-id="${g.id}">Editar</button>
-        <button class="act warnact" data-action="del" data-type="gastos" data-id="${g.id}">Eliminar</button></div></td></tr>`).join(""):emptyRow(4,"Sin gastos registrados")}</tbody>
-      ${list.length?`<tfoot><tr><td colspan="2" class="r">Total</td><td class="r num">${money(total)}</td><td></td></tr></tfoot>`:""}</table></div></div>`;
+        <button class="act warnact" data-action="del" data-type="gastos" data-id="${g.id}">Eliminar</button></div></td></tr>`).join(""):emptyRow(6,"Sin gastos registrados")}</tbody>
+      ${list.length?`<tfoot><tr><td colspan="4" class="r">Total</td><td class="r num">${money(total)}</td><td></td></tr></tfoot>`:""}</table></div></div>`;
   }
 
   function vOrdenes(){
     const opts=[{v:"all",label:"Todos"},{v:"abierta",label:"Abierta"},{v:"recibida",label:"Recibida"},{v:"pagada",label:"Pagada"}];
-    const list=state.ordenes.filter(o=>ui.ocFilter==="all"||o.estatus===ui.ocFilter);
+    const base=state.ordenes.filter(o=>ui.ocFilter==="all"||o.estatus===ui.ocFilter);
+    const list=listaDe(base,"oc",{total:o=>ocTotal(o)});
     return `${headBar("Órdenes de compra","Compromisos con proveedores","orden","Nueva orden","rep-oc")}
     ${filterBar("ocFilter",ui.ocFilter,opts)}
+    ${barraBusqueda("oc","Buscar por folio, proveedor o concepto…",base.length,list.length)}
     <div class="panel"><div class="tablewrap"><table>
-    <thead><tr><th>Folio</th><th>Proveedor</th><th>Fecha</th><th>Pago prog.</th><th class="r">Total</th><th>Estatus</th><th></th></tr></thead>
+    <thead><tr>${th("oc","folio","Folio")}${th("oc","proveedor","Proveedor")}${th("oc","fecha","Fecha")}${th("oc","fechaPago","Pago prog.")}${th("oc","total","Total","r")}${th("oc","estatus","Estatus")}<th></th></tr></thead>
     <tbody>${list.length?list.map(o=>`<tr>
       <td class="mono">${o.folio}</td><td>${o.proveedor}</td><td>${fmtDate(o.fecha)}</td><td>${fmtDate(o.fechaPago)}</td>
       <td class="r num strong">${money(ocTotal(o))}</td><td><span class="pill ${ocCls[o.estatus]}">${o.estatus}</span></td>
@@ -446,7 +548,8 @@
 
   function vFacturas(){
     const opts=[{v:"all",label:"Todas"}].concat(FLUJO.map(f=>({v:f.v,label:f.label})));
-    const list=state.facturas.filter(f=>ui.facFilter==="all"||f.flujo===ui.facFilter);
+    const base=state.facturas.filter(f=>ui.facFilter==="all"||f.flujo===ui.facFilter);
+    const list=listaDe(base,"fac",{total:f=>facTotal(f),saldo:f=>facSaldo(f)});
     return `${headBar("Facturas","Flujo: solicitada → creada → cargada al portal → pagada","factura","Nueva factura","rep-fac")}
     ${filterBar("facFilter",ui.facFilter,opts)}
     <div class="panel" style="padding:16px"><label class="drop" id="dropventa">
@@ -454,8 +557,9 @@
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor"><path d="M12 16V4M7 9l5-5 5 5M4 20h16" stroke-width="1.6"/></svg>
       <b>Arrastra o haz clic para cargar el XML (CFDI) de tus facturas</b>
       <div class="hint">Se llenan cliente, folio, fecha, conceptos, IVA y retenciones</div></label></div>
+    ${barraBusqueda("fac","Buscar por folio, cliente o concepto…",base.length,list.length)}
     <div class="panel"><div class="tablewrap"><table>
-    <thead><tr><th>Folio</th><th>Cliente</th><th>Emisión</th><th>Vence</th><th class="r">Total</th><th class="r">Saldo</th><th>Estatus</th><th></th></tr></thead>
+    <thead><tr>${th("fac","folio","Folio")}${th("fac","cliente","Cliente")}${th("fac","fecha","Emisión")}${th("fac","vencimiento","Vence")}${th("fac","total","Total","r")}${th("fac","saldo","Saldo","r")}${th("fac","flujo","Estatus")}<th></th></tr></thead>
     <tbody>${list.length?list.map(f=>{const e=facEstatus(f),fl=flujoMeta(f.flujo),saldo=facSaldo(f);
       return `<tr><td class="mono">${f.folio}</td><td>${f.cliente}</td><td>${fmtDate(f.fecha)}</td><td>${fmtDate(f.vencimiento)}</td>
       <td class="r num">${money(facTotal(f))}</td><td class="r num strong" style="color:${saldo>0.01&&todayStr()>f.vencimiento?"var(--bad)":"inherit"}">${money(saldo)}</td>
@@ -470,10 +574,12 @@
   }
 
   function vPagos(){
+    const listaPagos=listaDe(state.pagos,"pag",{});
     return `${headBar("Aplicación de pagos","Cobros registrados y su factura destino","pago","Registrar pago",null)}
+    ${barraBusqueda("pag","Buscar por folio, factura o cliente…",state.pagos.length,listaPagos.length)}
     <div class="panel"><div class="tablewrap"><table>
-    <thead><tr><th>Folio</th><th>Factura</th><th>Cliente</th><th>Fecha</th><th>Método</th><th class="r">Monto</th><th></th></tr></thead>
-    <tbody>${state.pagos.length?state.pagos.map(p=>`<tr><td class="mono">${p.folio}</td>
+    <thead><tr>${th("pag","folio","Folio")}${th("pag","facturaFolio","Factura")}${th("pag","cliente","Cliente")}${th("pag","fecha","Fecha")}${th("pag","metodo","Método")}${th("pag","monto","Monto","r")}<th></th></tr></thead>
+    <tbody>${listaPagos.length?listaPagos.map(p=>`<tr><td class="mono">${p.folio}</td>
       <td class="mono">${p.facturaFolio}${p.aplicaciones&&p.aplicaciones.length>1?`<div style="color:var(--text-faint);font-size:10px">${p.aplicaciones.map(x=>x.facturaFolio+" "+money(x.monto)).join(" · ")}</div>`:""}</td><td>${p.cliente}</td>
       <td>${fmtDate(p.fecha)}</td><td>${p.metodo}</td><td class="r num strong">${money(p.monto)}</td>
       <td><div class="rowact"><button class="act" data-action="edit" data-type="pago" data-id="${p.id}">Editar</button>
@@ -485,11 +591,19 @@
   function vProveedores(){
     const sel=ui.provSel||[];
     const selCosto=state.proveedores.filter(p=>sel.indexOf(p.id)>=0).reduce((a,p)=>a+p.subtotal,0);
+    const listaProv=listaDe(state.proveedores,"prov",{total:p=>p.total,subtotal:p=>p.subtotal},p=>nombreIntegrante(p.integranteId));
     return `${headBar("Costos · facturas de proveedores","Carga XML (CFDI) y genera la cotización al cliente desde el costo real","proveedor","Agregar manual","rep-traza")}
     <div class="panel" style="padding:16px"><label class="drop" id="drop">
       <input type="file" id="xmlfile" accept=".xml,text/xml,application/xml" multiple hidden>
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor"><path d="M12 16V4M7 9l5-5 5 5M4 20h16" stroke-width="1.6"/></svg>
-      <b>Arrastra o haz clic para cargar XML (CFDI)</b><div class="hint">Se extraen emisor, folio, UUID, importes y los conceptos con su costo unitario</div></label></div>
+      <b>Arrastra o haz clic para cargar XML (CFDI)</b><div class="hint">Se extraen emisor, folio, UUID, importes y los conceptos con su costo unitario</div></label>
+      <div class="field" style="margin-top:14px;max-width:340px"><label for="prov-integrante">Integrante responsable del costo <b style="color:var(--bad)">*</b></label>
+        <select id="prov-integrante" data-action="prov-integrante">
+          <option value="">— selecciona antes de cargar —</option>
+          ${state.integrantes.map(i=>`<option value="${i.id}" ${ui.provIntegrante===i.id?"selected":""}>${escAttr(i.nombre)}</option>`).join("")}
+        </select></div>
+      <p class="hintline">Todo costo cargado por XML queda vinculado a un integrante.</p></div>
+    ${barraBusqueda("prov","Buscar por proveedor, folio, UUID o integrante…",state.proveedores.length,listaProv.length)}
     <div class="selbar">
       <span>${sel.length?sel.length+" factura(s) seleccionada(s) · costo "+money(selCosto):"Marca una o varias facturas para cotizarlas a un cliente"}</span>
       <div class="headacts">
@@ -498,17 +612,18 @@
       </div></div>
     <div class="panel"><div class="tablewrap"><table>
     <thead><tr><th style="width:34px"><input type="checkbox" data-action="prov-sel-all" ${sel.length&&sel.length===state.proveedores.length?"checked":""}></th>
-      <th>Proveedor</th><th>Folio / UUID</th><th>Fecha</th><th class="r">Subtotal</th><th class="r">IVA</th><th class="r">Total</th><th>Cotizada en</th><th></th></tr></thead>
-    <tbody>${state.proveedores.length?state.proveedores.map(p=>{const cots=cotDeProveedor(p);
+      ${th("prov","proveedor","Proveedor")}${th("prov","folio","Folio / UUID")}${th("prov","fecha","Fecha")}${th("prov","subtotal","Subtotal","r")}<th class="r">IVA</th>${th("prov","total","Total","r")}<th>Integrante</th><th>Cotizada en</th><th></th></tr></thead>
+    <tbody>${listaProv.length?listaProv.map(p=>{const cots=cotDeProveedor(p);
       return `<tr><td><input type="checkbox" data-action="prov-sel" data-id="${p.id}" ${sel.indexOf(p.id)>=0?"checked":""}></td>
       <td class="strong">${p.proveedor}<div style="color:var(--text-faint);font-size:10.5px">${p.rfc||""}${(p.conceptos||[]).length?" · "+p.conceptos.length+" concepto(s)":""}</div></td>
       <td class="mono">${p.folio||"—"}${p.uuid?`<div style="color:var(--text-faint);font-size:10px">${p.uuid.slice(0,18)}…</div>`:""}</td>
       <td>${fmtDate(p.fecha)}</td><td class="r num">${money(p.subtotal)}</td><td class="r num">${money(p.iva)}</td><td class="r num strong">${money(p.total)}</td>
+      <td>${p.integranteId?`<span class="pill p-mut">${nombreIntegrante(p.integranteId)}</span>`:'<span class="pill p-bad">sin asignar</span>'}</td>
       <td>${cots.length?cots.map(c=>`<span class="pill p-info" style="margin:1px 2px">${c.folio}</span>`).join(""):'<span style="color:var(--text-faint)">—</span>'}</td>
       <td><div class="rowact"><button class="act" data-action="edit" data-type="proveedor" data-id="${p.id}">Editar</button>
-        <button class="act warnact" data-action="del" data-type="proveedores" data-id="${p.id}">Eliminar</button></div></td></tr>`;}).join(""):emptyRow(9,"Carga un XML o agrega una factura de proveedor")}</tbody>
-      ${state.proveedores.length?`<tfoot><tr><td colspan="4" class="r">Totales</td><td class="r num">${money(state.proveedores.reduce((a,p)=>a+p.subtotal,0))}</td>
-        <td class="r num">${money(state.proveedores.reduce((a,p)=>a+p.iva,0))}</td><td class="r num">${money(state.proveedores.reduce((a,p)=>a+p.total,0))}</td><td></td><td></td></tr></tfoot>`:""}</table></div></div>`;
+        <button class="act warnact" data-action="del" data-type="proveedores" data-id="${p.id}">Eliminar</button></div></td></tr>`;}).join(""):emptyRow(10,"Carga un XML o agrega una factura de proveedor")}</tbody>
+      ${listaProv.length?`<tfoot><tr><td colspan="4" class="r">Totales</td><td class="r num">${money(state.proveedores.reduce((a,p)=>a+p.subtotal,0))}</td>
+        <td class="r num">${money(state.proveedores.reduce((a,p)=>a+p.iva,0))}</td><td class="r num">${money(state.proveedores.reduce((a,p)=>a+p.total,0))}</td><td></td><td></td><td></td></tr></tfoot>`:""}</table></div></div>`;
   }
 
   function vProyecciones(){
@@ -571,10 +686,13 @@
   }
 
   function vClientes(){
+    if(!ui.sort.cli)ui.sort.cli={col:"nombre",dir:"asc"};
+    const listaCli=listaDe(state.clientes,"cli",{});
     return `${headBar("Clientes","Perfiles con impuestos y retenciones aplicables · se cargan solos en la cotización","cliente","Nuevo cliente",null)}
+    ${barraBusqueda("cli","Buscar por nombre, RFC o correo…",state.clientes.length,listaCli.length)}
     <div class="panel"><div class="tablewrap"><table>
-    <thead><tr><th>Cliente</th><th>RFC</th><th>Correos</th><th class="r">Margen</th><th class="r">IVA</th><th>Retenciones aplicables</th><th></th></tr></thead>
-    <tbody>${state.clientes.length?state.clientes.map(c=>`<tr><td class="strong">${c.nombre}</td><td class="mono">${c.rfc||"—"}</td>
+    <thead><tr>${th("cli","nombre","Cliente")}${th("cli","rfc","RFC")}<th>Correos</th>${th("cli","margen","Margen","r")}<th class="r">IVA</th><th>Retenciones aplicables</th><th></th></tr></thead>
+    <tbody>${listaCli.length?listaCli.map(c=>`<tr><td class="strong">${c.nombre}</td><td class="mono">${c.rfc||"—"}</td>
       <td style="font-size:12px;color:var(--text-dim)">${c.emails?c.emails:'<span style="color:var(--text-faint)">—</span>'}</td>
       <td class="r num strong" style="color:var(--good)">${c.margen!=null?c.margen+"%":"—"}</td>
       <td class="r num">${c.ivaPct!=null?c.ivaPct+"%":ivaDefPct()+"%"}</td>
@@ -592,7 +710,115 @@
         <button class="act warnact" data-action="cierre-eliminar" data-id="${s.id}">Eliminar</button></div></div>`).join(""):'<div class="empty">Aún no hay cierres guardados. Usa «Guardar cierre» para respaldar el estado actual y poder regresar después.</div>'}</div>`;
   }
 
-  const viewFns={dashboard:vDashboard,proyectos:vProyectos,cotizaciones:vCotizaciones,ventas:vVentas,ordenes:vOrdenes,
+  function vIntegrantes(){
+    if(!ui.sort.int)ui.sort.int={col:"nombre",dir:"asc"};
+    const lista=listaDe(state.integrantes,"int",{});
+    const usos=i=>state.proveedores.filter(x=>x.integranteId===i.id).length+state.gastos.filter(g=>g.pagador===i.id).length;
+    return `${headBar("Integrantes","Personas que absorben costos y reciben dividendos","integrante","Nuevo integrante",null)}
+    ${barraBusqueda("int","Buscar por nombre o correo…",state.integrantes.length,lista.length)}
+    <div class="panel"><div class="tablewrap"><table>
+    <thead><tr>${th("int","nombre","Nombre")}${th("int","email","Correo")}<th class="r">Movimientos</th><th class="r">Proyectos</th><th></th></tr></thead>
+    <tbody>${lista.length?lista.map(i=>{
+      const proys=state.proyectos.filter(p=>(p.integranteIds||[]).indexOf(i.id)>=0);
+      return `<tr><td class="strong">${i.nombre}</td><td style="color:var(--text-dim)">${i.email||"—"}</td>
+      <td class="r num">${usos(i)}</td><td class="r num">${proys.length}</td>
+      <td><div class="rowact"><button class="act" data-action="edit" data-type="integrante" data-id="${i.id}">Editar</button>
+        <button class="act warnact" data-action="del" data-type="integrantes" data-id="${i.id}">Eliminar</button></div></td></tr>`;}).join("")
+      :emptyRow(5,"Da de alta a los integrantes para asignarles costos y dividendos")}</tbody></table></div></div>`;
+  }
+
+  /* ---------- cierre de proyecto y dividendos ---------- */
+  const proyBloqueado=id=>{const p=state.proyectos.find(x=>x.id===id);return !!(p&&p.estado==="cierre");};
+
+  function abrirCierre(pid){
+    const p=state.proyectos.find(x=>x.id===pid);if(!p)return;
+    const d=proyDerived(p);
+    const miembros=(p.integranteIds||[]).map(id=>state.integrantes.find(i=>i.id===id)).filter(Boolean);
+    const base=miembros.length?miembros:state.integrantes;
+    let reparto=(p.dividendos&&p.dividendos.length)?p.dividendos.slice()
+      :base.map((i,k)=>({integranteId:i.id,pct:base.length?+(100/base.length).toFixed(4):0}));
+
+    const o=document.createElement("div");o.className="overlay on";
+    o.innerHTML=`<div class="modal wide">
+      <div class="modal-head"><h3>Cierre de proyecto · ${escAttr(p.nombre)}</h3><button type="button" aria-label="Cerrar" data-x>&times;</button></div>
+      <div style="padding:8px 20px 20px;display:flex;flex-direction:column;gap:14px">
+        <div class="calc">
+          <div><span>Ingresos</span><span class="num">${money(d.venta)}</span></div>
+          <div><span>Costos XML</span><span class="num">−${money(d.costoXml)}</span></div>
+          <div><span>Gastos operativos</span><span class="num">−${money(d.gastoOp)}</span></div>
+          <div class="tot"><span>Margen neto a repartir</span><span class="num" id="cierre-neto">${money(d.neto)}</span></div>
+        </div>
+        <div class="field"><label>Repartición de dividendos</label>
+          <div class="divhead"><span>Integrante</span><span>%</span><span>Monto</span><span></span></div>
+          <div id="divlist"></div>
+          <button type="button" class="ghost" id="divadd" style="align-self:flex-start;margin-top:6px">+ Agregar integrante</button>
+        </div>
+        <div id="divsum"></div>
+        <div class="pdfacts" style="padding:0">
+          <span class="pdfhint">Al cerrar, el proyecto queda bloqueado: no admite más ingresos, costos ni gastos.</span>
+          <button class="ghost" data-x2>Cancelar</button>
+          <button class="primary" id="divguardar">Guardar y cerrar proyecto</button>
+        </div>
+      </div></div>`;
+    document.body.appendChild(o);
+    const cerrar=()=>o.remove();
+    o.addEventListener("click",e=>{if(e.target===o)cerrar();});
+    o.querySelector("[data-x]").onclick=cerrar;
+    o.querySelector("[data-x2]").onclick=cerrar;
+
+    const lista=o.querySelector("#divlist"),resumen=o.querySelector("#divsum"),btn=o.querySelector("#divguardar");
+    const opciones=sel=>state.integrantes.map(i=>`<option value="${i.id}" ${i.id===sel?"selected":""}>${escAttr(i.nombre)}</option>`).join("");
+    function pinta(){
+      lista.innerHTML=reparto.map((r,k)=>`<div class="divrow" data-k="${k}">
+        <select data-c="integrante">${opciones(r.integranteId)}</select>
+        <input type="number" data-c="pct" min="0" max="100" step="0.0001" value="${r.pct}">
+        <span class="num divmonto"></span>
+        <button type="button" class="l-del" aria-label="Quitar">&times;</button></div>`).join("");
+      calcula();
+    }
+    function leer(){
+      reparto=[...lista.querySelectorAll(".divrow")].map(f=>({
+        integranteId:f.querySelector("[data-c=integrante]").value,
+        pct:+f.querySelector("[data-c=pct]").value||0}));
+    }
+    function calcula(){
+      const neto=proyDerived(p).neto;
+      let suma=0;
+      [...lista.querySelectorAll(".divrow")].forEach(f=>{
+        const pct=+f.querySelector("[data-c=pct]").value||0;suma+=pct;
+        f.querySelector(".divmonto").textContent=money(neto*pct/100);
+      });
+      suma=Math.round(suma*10000)/10000;
+      const exacto=Math.abs(suma-100)<0.0001;
+      const dif=Math.round((100-suma)*10000)/10000;
+      resumen.className=exacto?"csv-ok":"csv-err";
+      resumen.innerHTML=exacto
+        ? `Suma correcta: <b>100%</b> · se repartirán ${money(neto)}`
+        : `La suma es <b>${suma}%</b> — ${dif>0?"faltan "+dif+"%":"sobran "+Math.abs(dif)+"%"}. Debe ser exactamente 100% para poder cerrar.`;
+      btn.disabled=!exacto;
+      btn.style.opacity=exacto?"1":".45";
+      btn.style.cursor=exacto?"pointer":"not-allowed";
+    }
+    lista.addEventListener("input",calcula);
+    lista.addEventListener("change",calcula);
+    lista.addEventListener("click",e=>{if(e.target.closest(".l-del")){leer();
+      const k=+e.target.closest(".divrow").dataset.k;reparto.splice(k,1);pinta();}});
+    o.querySelector("#divadd").onclick=()=>{leer();
+      reparto.push({integranteId:(state.integrantes[0]||{}).id||"",pct:0});pinta();};
+    btn.onclick=()=>{
+      leer();
+      const suma=Math.round(reparto.reduce((a,r)=>a+r.pct,0)*10000)/10000;
+      if(Math.abs(suma-100)>0.0001){toast("La repartición debe sumar exactamente 100%");return;}
+      if(reparto.some(r=>!r.integranteId)){toast("Falta elegir integrante en algún renglón");return;}
+      const neto=proyDerived(p).neto;
+      p.dividendos=reparto.map(r=>({integranteId:r.integranteId,pct:r.pct,monto:neto*r.pct/100}));
+      p.estado="cierre";p.fechaCierre=todayStr();p.netoCierre=neto;
+      persist();cerrar();render();toast("Proyecto cerrado y dividendos guardados");
+    };
+    pinta();
+  }
+
+  const viewFns={dashboard:vDashboard,integrantes:vIntegrantes,proyectos:vProyectos,cotizaciones:vCotizaciones,ventas:vVentas,ordenes:vOrdenes,
     facturas:vFacturas,pagos:vPagos,proveedores:vProveedores,gastos:vGastos,clientes:vClientes,proyecciones:vProyecciones,contabilidad:vContabilidad,cierres:vCierres};
   function render(){renderNav();$("#view").innerHTML=viewFns[current]();window.scrollTo({top:0});}
 
@@ -742,7 +968,9 @@
         <div class="grid2"><div class="field"><label for="f-cliid">Cliente</label>
           <select id="f-cliid">${optList(state.clientes,x=>x.nombre,rec?rec.clienteId:null)}</select></div>
         <div class="field"><label for="f-mes">Mes</label><input type="month" id="f-mes" value="${rec?rec.mes:monthKey(t)}"></div></div>
-        <p class="hintline">Marca todos los documentos del proyecto: la venta suma las facturas (u órdenes de venta) y el costo suma las órdenes de compra.</p>
+        <div class="field"><label>Integrantes del proyecto</label>
+          <div class="checklist">${state.integrantes.length?state.integrantes.map(i=>`<label><input type="checkbox" class="c-int" value="${i.id}" ${(rec&&(rec.integranteIds||[]).indexOf(i.id)>=0)?"checked":""}> ${escAttr(i.nombre)}</label>`).join(""):'<div class="none">— da de alta integrantes primero —</div>'}</div></div>
+        <p class="hintline">Marca los documentos del proyecto. El margen neto = ingresos − costos XML − gastos.</p>
         <div class="field"><label>Cotizaciones</label><div class="checklist">${chk("c-cot",state.cotizaciones,x=>x.cliente,sc)}</div></div>
         <div class="field"><label>Órdenes de venta (cliente)</label><div class="checklist">${chk("c-ov",state.ventas,x=>x.cliente,sv)}</div></div>
         <div class="field"><label>Órdenes de compra (proveedor)</label><div class="checklist">${chk("c-oc",state.ordenes,x=>x.proveedor,so)}</div></div>
@@ -750,9 +978,18 @@
       onsubmit=()=>{const g=cls=>[...md.querySelectorAll("."+cls+":checked")].map(el=>el.value);
         const cid=$("#f-cliid").value||null,cl=state.clientes.find(x=>x.id===cid);
         const data={nombre:$("#f-nom").value.trim(),clienteId:cid,cliente:cl?cl.nombre:"",mes:$("#f-mes").value,
-          cotIds:g("c-cot"),ventaIds:g("c-ov"),ordenIds:g("c-oc"),facturaIds:g("c-fac")};
+          integranteIds:g("c-int"),cotIds:g("c-cot"),ventaIds:g("c-ov"),ordenIds:g("c-oc"),facturaIds:g("c-fac")};
+        if(rec&&rec.estado==="cierre"){toast("El proyecto está cerrado: reábrelo para modificarlo.");return false;}
         if(!data.nombre){toast("Escribe el nombre del proyecto.");return false;}
         if(editing)Object.assign(rec,data);else state.proyectos.push(Object.assign({id:uid()},data));};
+    }
+    else if(type==="integrante"){title=editing?"Editar integrante":"Nuevo integrante";
+      body=`<div class="field"><label for="f-nom">Nombre</label><input id="f-nom" required value="${escAttr(rec?rec.nombre:"")}" placeholder="Nombre completo"></div>
+        <div class="field"><label for="f-mail">Correo</label><input id="f-mail" value="${escAttr(rec?rec.email:"")}" placeholder="correo@empresa.com"></div>
+        <p class="hintline">Los integrantes reciben la asignación de costos XML, gastos y dividendos.</p>`;
+      onsubmit=()=>{const data={nombre:$("#f-nom").value.trim(),email:$("#f-mail").value.trim()};
+        if(!data.nombre){toast("Escribe el nombre.");return false;}
+        if(editing)Object.assign(rec,data);else state.integrantes.push(Object.assign({id:uid()},data));};
     }
     else if(type==="cliente"){title=editing?"Editar cliente":"Nuevo cliente";
       body=`<div class="grid2"><div class="field"><label for="f-nom">Nombre / razón social</label><input id="f-nom" required value="${escAttr(rec?rec.nombre:"")}" placeholder="Cliente"></div>
@@ -849,8 +1086,19 @@
     else if(type==="gasto"){title=editing?"Editar gasto":"Nuevo gasto";
       body=`<div class="grid2"><div class="field"><label for="f-fecha">Fecha</label><input type="date" id="f-fecha" value="${rec?rec.fecha:t}"></div>
         ${moneyField("f-imp","Importe (MXN)",rec?rec.importe:"")}</div>
-        <div class="field"><label for="f-con">Concepto</label><input id="f-con" required value="${escAttr(rec?rec.concepto:"")}" placeholder="Descripción del gasto"></div>`;
-      onsubmit=()=>{const data={fecha:$("#f-fecha").value,concepto:$("#f-con").value.trim(),importe:+$("#f-imp").value||0};
+        <div class="field"><label for="f-con">Concepto</label><input id="f-con" required value="${escAttr(rec?rec.concepto:"")}" placeholder="Descripción del gasto"></div>
+        <div class="grid2">
+          <div class="field"><label for="f-pagador">Pagador / responsable</label><select id="f-pagador">
+            <option value="${EMPRESA}" ${(!rec||!rec.pagador||rec.pagador===EMPRESA)?"selected":""}>Empresa</option>
+            ${state.integrantes.map(i=>`<option value="${i.id}" ${rec&&rec.pagador===i.id?"selected":""}>${escAttr(i.nombre)}</option>`).join("")}
+          </select></div>
+          <div class="field"><label for="f-proy">Proyecto</label><select id="f-proy">
+            ${optList(state.proyectos,x=>x.nombre,rec?rec.proyectoId:null)}
+          </select></div></div>`;
+      onsubmit=()=>{const data={fecha:$("#f-fecha").value,concepto:$("#f-con").value.trim(),importe:+$("#f-imp").value||0,
+          pagador:$("#f-pagador").value||EMPRESA,proyectoId:$("#f-proy").value||null};
+        const prG=state.proyectos.find(x=>x.id===data.proyectoId);
+        if(prG&&prG.estado==="cierre"){toast("El proyecto "+prG.nombre+" está en cierre: no admite gastos.");return false;}
         if(!data.concepto){toast("Escribe el concepto del gasto.");return false;}
         if(editing)Object.assign(rec,data);else state.gastos.push(Object.assign({id:uid()},data));};
     }
@@ -858,6 +1106,12 @@
       body=`<div class="field"><label for="f-prov">Proveedor</label><input id="f-prov" required value="${escAttr(rec?rec.proveedor:"")}" placeholder="Razón social"></div>
         <div class="grid2"><div class="field"><label for="f-rfc">RFC</label><input id="f-rfc" value="${escAttr(rec?rec.rfc:"")}" placeholder="RFC emisor"></div>
         <div class="field"><label for="f-fol">Folio</label><input id="f-fol" value="${escAttr(rec?rec.folio:"")}" placeholder="Folio / serie"></div></div>
+        <div class="grid2">
+          <div class="field"><label for="f-integrante">Integrante responsable <b style="color:var(--bad)">*</b></label><select id="f-integrante" required>
+            <option value="">— selecciona —</option>
+            ${state.integrantes.map(i=>`<option value="${i.id}" ${rec&&rec.integranteId===i.id?"selected":""}>${escAttr(i.nombre)}</option>`).join("")}
+          </select></div>
+          <div class="field"><label for="f-proy">Proyecto</label><select id="f-proy">${optList(state.proyectos,x=>x.nombre,rec?rec.proyectoId:null)}</select></div></div>
         <div class="field"><label for="f-fecha">Fecha</label><input type="date" id="f-fecha" value="${rec?rec.fecha:t}"></div>
         <div class="grid2">${moneyField("f-sub","Subtotal (MXN)",rec?rec.subtotal:"")}
         <div class="field"><label for="f-ivam">IVA (MXN)</label><input type="number" id="f-ivam" min="0" step="0.01" value="${rec&&rec.iva!=null?rec.iva:""}" placeholder="se calcula solo"></div></div>
@@ -866,8 +1120,13 @@
       onsubmit=()=>{const sub=+$("#f-sub").value||0;
         const ivaTxt=$("#f-ivam").value;
         const iva=(ivaTxt===""||ivaTxt==null)?sub*(ivaDefPct()/100):(+ivaTxt||0);
+        const integrante=$("#f-integrante").value;
+        if(!integrante){toast("Asigna el integrante responsable del costo.");return false;}
+        const prC=state.proyectos.find(x=>x.id===($("#f-proy").value||null));
+        if(prC&&prC.estado==="cierre"){toast("El proyecto "+prC.nombre+" está en cierre: no admite costos.");return false;}
         const data={proveedor:$("#f-prov").value.trim(),rfc:$("#f-rfc").value.trim(),folio:$("#f-fol").value.trim(),
-          uuid:rec?rec.uuid:"",fecha:$("#f-fecha").value,subtotal:sub,iva,total:sub+iva};
+          uuid:rec?rec.uuid:"",fecha:$("#f-fecha").value,subtotal:sub,iva,total:sub+iva,
+          integranteId:integrante,proyectoId:$("#f-proy").value||null};
         if(editing)Object.assign(rec,data);else state.proveedores.push(Object.assign({id:uid()},data));};
     }
 
@@ -1014,10 +1273,31 @@
   }
 
   function handleXmlFiles(files){
-    const arr=[...files];if(!arr.length)return;let ok=0,fail=0,pend=arr.length;
-    arr.forEach(f=>f.text().then(txt=>{const r=parseCFDI(txt);if(r){state.proveedores.push(r);ok++;}else fail++;}).catch(()=>{fail++;}).finally(()=>{if(--pend===0){persist();render();toast(ok+" factura(s) cargada(s) desde XML"+(fail?", "+fail+" no se pudieron leer":""));}}));
+    const arr=[...files];if(!arr.length)return;
+    const integrante=ui.provIntegrante||"";
+    if(!integrante){
+      toast(state.integrantes.length?"Elige primero el integrante responsable del costo"
+        :"Da de alta un integrante antes de cargar costos");
+      if(!state.integrantes.length)setTimeout(()=>{current="integrantes";render();},900);
+      return;
+    }
+    let ok=0,fail=0,pend=arr.length;
+    arr.forEach(f=>f.text().then(txt=>{const r=parseCFDI(txt);if(r){r.integranteId=integrante;state.proveedores.push(r);ok++;}else fail++;}).catch(()=>{fail++;}).finally(()=>{if(--pend===0){persist();render();toast(ok+" factura(s) cargada(s) desde XML"+(fail?", "+fail+" no se pudieron leer":""));}}));
   }
+  let tBusca=null;
+  document.addEventListener("input",e=>{
+    if(!e.target||e.target.id!=="buscador")return;
+    const sc=e.target.dataset.scope,val=e.target.value;
+    clearTimeout(tBusca);
+    tBusca=setTimeout(()=>{
+      ui.q[sc]=val;render();
+      const el=document.getElementById("buscador");
+      if(el){el.focus();el.setSelectionRange(el.value.length,el.value.length);}
+    },300);
+  });
+
   document.addEventListener("change",e=>{
+    if(e.target&&e.target.id==="prov-integrante"){ui.provIntegrante=e.target.value;}
     if(e.target&&e.target.id==="xmlfile"){handleXmlFiles(e.target.files);e.target.value="";}
     if(e.target&&e.target.id==="xmlventa"){handleXmlVenta(e.target.files);e.target.value="";}
   });
@@ -1500,10 +1780,18 @@
     else if(a==="add"){openForm(b.dataset.type);}
     else if(a==="edit"){openForm(b.dataset.type,{id});}
     else if(a==="filter"){ui[b.dataset.scope]=b.dataset.val;render();}
+    else if(a==="ordenar"){const sc=b.dataset.scope,col=b.dataset.col;
+      const s=ui.sort[sc]||{col:"folio",dir:"desc"};
+      ui.sort[sc]=(s.col===col)?{col,dir:s.dir==="asc"?"desc":"asc"}:{col,dir:"asc"};
+      render();}
+    else if(a==="buscar-limpiar"){ui.q[b.dataset.scope]="";render();}
     else if(a==="theme"){const cur=document.documentElement.getAttribute("data-theme");const isDark=cur?cur==="dark":matchMedia("(prefers-color-scheme: dark)").matches;document.documentElement.setAttribute("data-theme",isDark?"light":"dark");}
     else if(a==="reset"){askConfirm("¿Restaurar los datos de ejemplo? Se reemplazarán tus datos actuales.",()=>{state=seed();(function(){const pm=state.pagos.map(p=>monthKey(p.fecha)).sort();ui.contaMonth=pm.length?pm[pm.length-1]:monthKey(todayStr());})();persist();render();toast("Datos de ejemplo restaurados");},{ok:"Restaurar",danger:false});}
     else if(a==="vaciar"){askConfirm("¿Vaciar TODO? Se eliminarán todos los registros (queda la app en blanco). Considera guardar un cierre antes.",()=>{["cotizaciones","ventas","facturas","pagos","ordenes","proveedores","gastos","proyectos","clientes"].forEach(k=>state[k]=[]);persist();current="dashboard";render();toast("Todos los registros fueron eliminados");},{ok:"Vaciar todo"});}
     else if(a==="cot-status"){const c=state.cotizaciones.find(x=>x.id===id);const o=["borrador","enviada","aceptada","rechazada"];c.estatus=o[(o.indexOf(c.estatus)+1)%o.length];persist();render();}
+    else if(a==="proy-cierre"){abrirCierre(id);}
+    else if(a==="proy-reabrir"){askConfirm("¿Reabrir el proyecto? Podrás volver a modificar ingresos, costos y gastos.",()=>{
+      const p=state.proyectos.find(x=>x.id===id);if(p){p.estado="abierto";persist();render();toast("Proyecto reabierto");}},{ok:"Reabrir",danger:false});}
     else if(a==="cot-masiva"){abrirCargaMasiva();}
     else if(a==="cot-venta"){openForm("venta",{fromCot:id});}
     else if(a==="cot-dup"){const c=state.cotizaciones.find(x=>x.id===id);if(!c)return;
@@ -1529,7 +1817,12 @@
     else if(a==="oc-pagar"){state.ordenes.find(x=>x.id===id).estatus="pagada";persist();render();}
     else if(a==="fac-flujo"){const f=state.facturas.find(x=>x.id===id);const seq=FLUJO.map(x=>x.v);f.flujo=seq[(seq.indexOf(f.flujo)+1)%seq.length];persist();render();}
     else if(a==="fac-pago"){openForm("pago",{preFacId:id});}
-    else if(a==="del"){const type=b.dataset.type;askConfirm("¿Eliminar este registro?",()=>{
+    else if(a==="del"){const type=b.dataset.type;
+      if(type==="gastos"||type==="proveedores"){
+        const r=state[type].find(x=>x.id===id);
+        if(r&&proyBloqueado(r.proyectoId)){toast("Ese registro pertenece a un proyecto cerrado.");return;}
+      }
+      askConfirm("¿Eliminar este registro?",()=>{
       if(type==="facturas"){state.pagos=state.pagos.filter(p=>p.facturaId!==id);state.ventas.forEach(v=>{if(v.facturaId===id){v.facturaId=null;v.estatus="abierta";}});}
       if(type==="ventas"){state.cotizaciones.forEach(c=>{if(c.ventaId===id)c.ventaId=null;});state.facturas.forEach(f=>{if(f.ventaId===id)f.ventaId=null;});}
       if(type==="cotizaciones")state.proveedores.forEach(p=>{if(Array.isArray(p.cotizadaEn))p.cotizadaEn=p.cotizadaEn.filter(x=>x!==id);});
