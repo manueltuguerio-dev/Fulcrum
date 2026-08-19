@@ -62,6 +62,12 @@
     /* ════════════════════════════════════════════
        VARIOS
     ════════════════════════════════════════════ */
+    .radio-row       { display:flex;gap:8px;flex-wrap:wrap;padding:4px 0; }
+    .radio-op        { display:inline-flex;align-items:center;gap:6px;cursor:pointer;
+                       border:1px solid var(--line);border-radius:999px;padding:7px 14px;
+                       font-size:13px;color:var(--txt);margin:0;background:var(--input-bg); }
+    .radio-op:has(input:checked) { border-color:var(--brand);background:var(--row-sel);font-weight:600; }
+    .radio-op input  { width:auto;margin:0; }
     .empty-state     { text-align:center;padding:40px 20px;color:var(--muted); }
     .badge-count     { display:inline-block;background:var(--brand);color:#fff;border-radius:999px;
                        font-size:10px;font-weight:700;padding:1px 7px;vertical-align:middle;margin-left:2px; }
@@ -153,6 +159,13 @@
   <section id="tab-nueva">
     <div class="card">
       <h2>Datos de la maniobra</h2>
+      <div class="aviso" style="margin-bottom:14px">
+        <b>Regla madre: un registro = una maniobra.</b>
+        Si un furgón se descarga a piso y luego se carga a 4 plataformas, son
+        <b>5 registros</b>: uno de descarga y cuatro de carga. Usa
+        <i>Duplicar para siguiente</i> al terminar para no recapturar la unidad.
+      </div>
+      <div id="aviso-otro" class="aviso warn" style="display:none"></div>
       <div id="form-esenciales" class="grid"></div>
 
       <div style="margin-top:16px">
@@ -166,17 +179,36 @@
 
       <div class="row" style="margin-top:14px">
         <button id="btn-iniciar" onclick="Nueva.iniciar()">▶ Iniciar con cronómetro</button>
+        <button class="ghost" onclick="Nueva.duplicar()">⧉ Duplicar para siguiente</button>
         <button class="ghost" onclick="Nueva.limpiar()">Limpiar formulario</button>
       </div>
     </div>
 
     <div class="card">
       <div class="section-toggle" onclick="UI.toggle('sec-carga','chev-carga')">
-        <h2 style="margin:0">Detalle de carga</h2>
+        <h2 style="margin:0">Detalle de carga y costeo</h2>
         <span id="chev-carga" class="chevron">▾</span>
       </div>
       <div id="sec-carga" class="hidden" style="margin-top:12px">
+        <p class="muted" style="margin:0 0 10px">
+          Toneladas netas y atados alimentan los minutos por tonelada y por atado.
+          Sin al menos uno de los dos, la maniobra no se puede costear.
+        </p>
         <div id="form-carga" class="grid"></div>
+      </div>
+    </div>
+
+    <div class="card">
+      <div class="section-toggle" onclick="UI.toggle('sec-tiempos','chev-tiempos')">
+        <h2 style="margin:0">Ocupación del spot</h2>
+        <span id="chev-tiempos" class="chevron">▾</span>
+      </div>
+      <div id="sec-tiempos" class="hidden" style="margin-top:12px">
+        <p class="muted" style="margin:0 0 10px">
+          El cronómetro mide la maniobra. Estas dos horas miden cuánto tiempo estuvo
+          ocupado el spot, que es un dato distinto y también facturable.
+        </p>
+        <div id="form-tiempos" class="grid"></div>
       </div>
     </div>
 
@@ -371,8 +403,31 @@
     <div class="tabs">
       <button id="adm-btn-cam" class="active" onclick="Admin.sub('cam')">Campos del formulario</button>
       <button id="adm-btn-cat"                onclick="Admin.sub('cat')">Catálogos</button>
+      <button id="adm-btn-sem"                onclick="Admin.sub('sem')">Semáforos</button>
       <button id="adm-btn-usr"                onclick="Admin.sub('usr')">Usuarios</button>
       <button id="adm-btn-tem"                onclick="Admin.sub('tem')">Tiempos estimados</button>
+    </div>
+
+    <!-- Semáforos por tipo de maniobra -->
+    <div id="adm-sem" class="hidden">
+      <div class="card">
+        <div class="row" style="justify-content:space-between;margin-bottom:8px">
+          <h2 style="margin:0">Semáforos por tipo de maniobra</h2>
+          <button class="success" onclick="Admin.guardarSem()">Guardar cambios</button>
+        </div>
+        <p class="muted" style="font-size:13px;margin-bottom:14px">
+          Cada tipo de maniobra tiene su propia escala. Un trasvase de 20 minutos es
+          aceptable; una descarga de furgón de 20 minutos es excelente. Un solo umbral
+          para todo distorsiona el reporte.
+        </p>
+        <div class="scroll"><table id="adm-tabla-sem"></table></div>
+        <div class="row" style="margin-top:12px;gap:8px">
+          <input id="adm-sem-tipo" placeholder="Tipo de maniobra…" style="flex:2">
+          <input id="adm-sem-verde" type="number" placeholder="Verde ≤" style="flex:1;min-width:90px" min="0">
+          <input id="adm-sem-ambar" type="number" placeholder="Ámbar ≤" style="flex:1;min-width:90px" min="0">
+          <button onclick="Admin.agregarSem()">Agregar</button>
+        </div>
+      </div>
     </div>
 
     <!-- Campos configurables -->
@@ -486,6 +541,9 @@
       </p>
       <div class="row">
         <button class="warn sm" onclick="Soporte.repararCronometros()">🔧 Reparar cronómetros</button>
+        <button class="ghost sm" onclick="Soporte.recalcular()">🧮 Recalcular métricas de costeo</button>
+        <button class="ghost sm" onclick="Soporte.resaltar()">🚩 Resaltar filas en revisión</button>
+        <button class="ghost sm" onclick="Soporte.formatoFechas()">📅 Formato dd/MM/yyyy</button>
         <button class="ghost sm" onclick="Soporte.limpiarPausas()">Limpiar pausas huérfanas</button>
         <button class="ghost sm" onclick="Soporte.sincronizarMontacargas()">Sincronizar montacargas</button>
         <button class="ghost sm" onclick="Soporte.setup()">Migrar hojas (setup)</button>
@@ -513,8 +571,13 @@
   <div class="modal-box">
     <h2 id="modal-titulo" style="margin:0 0 14px;font-size:16px;font-weight:700;text-transform:none;letter-spacing:0;color:var(--txt)">Finalizar etapa</h2>
     <div class="grid">
-      <div><label>Causa de demora</label><select id="modal-causa"></select></div>
-      <div><label>Demora adicional (min)</label><input type="number" id="modal-demora" value="0" min="0"></div>
+      <div><label>Minutos de paro</label>
+        <input type="number" id="modal-demora" value="0" min="0" oninput="Curso.onParo()">
+      </div>
+      <div id="wrap-modal-causa"><label>Causa del paro <span class="req-star" id="modal-causa-req" style="display:none">*</span></label>
+        <select id="modal-causa"></select>
+      </div>
+      <div><label>Hora de liberación del furgón</label><input type="time" id="modal-liberacion"></div>
       <div><label>¿Daño en esta etapa?</label>
         <select id="modal-dano"><option value="">No</option><option value="1">Sí</option></select>
       </div>
@@ -523,6 +586,7 @@
         <textarea id="modal-obs" style="min-height:56px" placeholder="Notas específicas…"></textarea>
       </div>
     </div>
+    <div id="modal-aviso" class="aviso err" style="display:none;margin-top:12px"></div>
     <div class="row" style="margin-top:16px;justify-content:flex-end;gap:8px">
       <button class="ghost" onclick="Curso.cerrarModal()">Cancelar</button>
       <button id="modal-confirm" class="success" onclick="Curso.confirmarFinalizar()">Confirmar y avanzar ›</button>
@@ -535,10 +599,17 @@
   <div class="modal-box">
     <h2 style="margin:0 0 14px;font-size:16px;font-weight:700;text-transform:none;letter-spacing:0;color:var(--txt)">Editar maniobra</h2>
     <div class="grid">
+      <div><label>Tipo de maniobra</label><select id="edit-tipo_maniobra"></select></div>
       <div><label>Cliente</label><select id="edit-cliente"></select></div>
       <div><label>No. de unidad</label><input id="edit-no_unidad"></div>
       <div><label>Tipo de equipo</label><select id="edit-tipo_equipo"></select></div>
       <div><label>Material</label><select id="edit-material"></select></div>
+      <div><label>Aditamento</label><select id="edit-aditamento"></select></div>
+      <div><label>Toneladas netas</label><input type="number" step="any" min="0" id="edit-toneladas_netas"></div>
+      <div><label>Atados</label><input type="number" min="0" id="edit-atados"></div>
+      <div><label>Piezas sueltas</label><input type="number" min="0" id="edit-piezas_sueltas"></div>
+      <div><label>Hora posicionamiento</label><input type="time" id="edit-hora_posicionamiento"></div>
+      <div><label>Hora liberación</label><input type="time" id="edit-hora_liberacion"></div>
       <div><label>Montacarguistas</label><select id="edit-montacarguistas" multiple></select></div>
       <div><label>Montacargas asignados</label><select id="edit-montacargas" multiple></select></div>
       <div style="grid-column:1/-1"><label>Observaciones</label><textarea id="edit-obs" style="min-height:56px"></textarea></div>
@@ -1193,7 +1264,18 @@ var Auth = {
 ══════════════════════════════════════════════════════════════ */
 var CAMPO_META = {
   fecha:            { tipo: 'date' },
-  turno:            { tipo: 'select', cat: 'TURNOS' },
+  turno:            { tipo: 'radio', cat: 'TURNOS' },
+  tipo_maniobra:    { tipo: 'select', cat: 'TIPOS_MANIOBRA', vacio: '— Selecciona —',
+                      onchange: 'Nueva.onTipoManiobra()',
+                      hint: 'Un registro = una maniobra. No combines operaciones.' },
+  aditamento:       { tipo: 'select', cat: 'ADITAMENTOS', vacio: '—' },
+  toneladas_netas:  { tipo: 'number', step: 'any', min: '0' },
+  atados:           { tipo: 'number', min: '0' },
+  piezas_sueltas:   { tipo: 'number', min: '0' },
+  hora_posicionamiento: { tipo: 'time', hint: 'Cuándo quedó el furgón en el spot' },
+  hora_liberacion:  { tipo: 'time', hint: 'Cuándo se liberó el spot' },
+  prueba_controlada:{ tipo: 'check', hint: 'Aísla el registro de la base general' },
+  etiqueta_prueba:  { tipo: 'text', ph: 'Ej. 6 Furgones Celulosa' },
   flujo:            { tipo: 'select', cat: 'FLUJOS', vacio: '— Selecciona —', onchange: 'Nueva.onFlujo()' },
   cliente:          { tipo: 'select', cat: 'CLIENTES', vacio: '— Selecciona —' },
   no_unidad:        { tipo: 'text', ph: 'TL-1234' },
@@ -1242,9 +1324,11 @@ var App = {
       UI.opts('i_empleado',     c.EMPLEADOS, '—');
       UI.opts('m_tipo',         c.TIPOS_MONTACARGAS, '—');
       UI.opts('e_montacargas',  c.MONTACARGAS, '—');
-      UI.opts('edit-cliente',     c.CLIENTES, '— Selecciona —');
-      UI.opts('edit-tipo_equipo', c.TIPOS_EQUIPO, '—');
-      UI.opts('edit-material',    c.MATERIALES, '—');
+      UI.opts('edit-cliente',       c.CLIENTES, '— Selecciona —');
+      UI.opts('edit-tipo_equipo',   c.TIPOS_EQUIPO, '—');
+      UI.opts('edit-material',      c.MATERIALES, '—');
+      UI.opts('edit-tipo_maniobra', c.TIPOS_MANIOBRA, '—');
+      UI.opts('edit-aditamento',    c.ADITAMENTOS, '—');
       UI.opts('edit-montacarguistas', c.EMPLEADOS);
       UI.opts('edit-montacargas',     c.MONTACARGAS);
 
@@ -1252,7 +1336,12 @@ var App = {
 
       API.call('getTurnoActual', [], function(r) {
         if (r.fecha && $('fecha')) $('fecha').value = r.fecha;
-        if (r.turno && $('turno')) $('turno').value = r.turno;
+        // El turno puede ser radio o select según cómo esté configurado el campo
+        if (!r.turno) return;
+        var rd = document.querySelector('input[name="rd-turno"][value="' + r.turno + '"]');
+        if (rd) { rd.checked = true; return; }
+        var sel = $('turno');
+        if (sel && sel.tagName === 'SELECT') sel.value = r.turno;
       });
       if ($('i_fecha')) $('i_fecha').value = new Date().toISOString().slice(0, 10);
     });
@@ -1306,15 +1395,23 @@ var Nueva = {
       ['montacarguistas','Montacarguistas','esenciales',true],
       ['montacargas','Montacargas asignados','esenciales',false],
       ['ayudantes','Ayudantes','esenciales',false],
+      ['tipo_maniobra','Tipo de maniobra','esenciales',true],
+      ['aditamento','Aditamento','esenciales',false],
+      ['toneladas_netas','Toneladas netas','carga',false], ['atados','Atados','carga',false],
+      ['piezas_sueltas','Piezas sueltas','carga',false],
       ['material','Material','carga',false],           ['presentacion','Presentación','carga',false],
-      ['cant_piezas','Cantidad de piezas','carga',false], ['unidad_medida','Unidad de medida','carga',false],
-      ['tarimas','Tarimas','carga',false],             ['peso_tons','Peso (toneladas)','carga',false],
+      ['unidad_medida','Unidad de medida','carga',false],
+      ['tarimas','Tarimas','carga',false],
       ['cant_equipos','Cant. de equipos','carga',false],
       ['tipo_montacargas','Tipo de montacargas','carga',false],
-      ['num_montacargas','Núm. de montacargas','carga',false],
+      ['num_montacargas','Núm. de montacargas','carga',true],
+      ['hora_posicionamiento','Hora de posicionamiento del furgón','tiempos',false],
+      ['hora_liberacion','Hora de liberación del furgón','tiempos',false],
       ['dano_origen','¿Daño de origen?','danos',false],
       ['dano_origen_desc','Desc. daño de origen','danos',false],
-      ['observaciones','Observaciones','danos',false]
+      ['observaciones','Observaciones','danos',false],
+      ['prueba_controlada','Prueba controlada','danos',false],
+      ['etiqueta_prueba','Etiqueta de la prueba','danos',false]
     ];
     return def.map(function(d, i) {
       return { campo: d[0], etiqueta: d[1], seccion: d[2], obligatorio: d[3], visible: true, orden: (i + 1) * 10 };
@@ -1322,7 +1419,7 @@ var Nueva = {
   },
 
   construirFormulario: function() {
-    ['esenciales', 'carga', 'danos'].forEach(function(sec) {
+    ['esenciales', 'carga', 'tiempos', 'danos'].forEach(function(sec) {
       var cont = $('form-' + sec);
       if (!cont) return;
       var campos = STATE.campos.filter(function(c) { return c.seccion === sec && c.visible; });
@@ -1330,6 +1427,62 @@ var Nueva = {
         '<p class="muted" style="grid-column:1/-1">Sin campos visibles en esta sección.</p>';
     });
     Nueva.onFlujo();
+    Nueva.onTipoManiobra();
+  },
+
+  /** "Otro" obliga a justificar en Observaciones; el aviso lo deja claro antes de guardar */
+  onTipoManiobra: function() {
+    var el = $('tipo_maniobra');
+    var v = el ? (el.value || '') : '';
+    var esOtro = v.toLowerCase() === 'otro';
+    var w = $('wrap-observaciones');
+    if (w) {
+      var lbl = w.querySelector('label');
+      if (lbl && lbl.innerHTML.indexOf('req-star') === -1 && esOtro) {
+        lbl.innerHTML = lbl.innerHTML + ' <span class="req-star js-otro">*</span>';
+      } else if (lbl && !esOtro) {
+        var s = lbl.querySelector('.js-otro');
+        if (s) s.parentNode.removeChild(s);
+      }
+    }
+    UI.aviso('aviso-otro', esOtro
+      ? 'Elegiste "Otro": describe la maniobra en Observaciones. Es obligatorio.'
+      : '', 'warn');
+    // Al elegir "Otro" abrimos la sección de observaciones para que se vea
+    if (esOtro) {
+      var sec = $('sec-danos');
+      if (sec && sec.classList.contains('hidden')) UI.toggle('sec-danos', 'chev-danos');
+    }
+  },
+
+  /** Facilita la regla de división: conserva la unidad y limpia lo específico */
+  duplicar: function() {
+    var conservar = {};
+    ['fecha', 'turno', 'flujo', 'cliente', 'no_unidad', 'tipo_equipo',
+     'montacarguistas', 'montacargas', 'ayudantes', 'aditamento',
+     'hora_posicionamiento', 'prueba_controlada', 'etiqueta_prueba'].forEach(function(k) {
+      conservar[k] = Nueva.valor(k);
+    });
+    Nueva.limpiar();
+    Object.keys(conservar).forEach(function(k) {
+      var meta = CAMPO_META[k] || {};
+      var el = $(k);
+      if (meta.tipo === 'multi' && el) {
+        var set = {};
+        [].concat(conservar[k] || []).forEach(function(v) { set[v] = true; });
+        Array.prototype.slice.call(el.options).forEach(function(o) { o.selected = !!set[o.value]; });
+      } else if (meta.tipo === 'radio') {
+        var r = document.querySelector('input[name="rd-' + k + '"][value="' + conservar[k] + '"]');
+        if (r) r.checked = true;
+      } else if (meta.tipo === 'check' && el) {
+        el.checked = !!conservar[k];
+      } else if (el) {
+        el.value = conservar[k] || '';
+      }
+    });
+    UI.toast('Listo: captura la siguiente maniobra de esta misma unidad', 'ok');
+    var t = $('tipo_maniobra');
+    if (t) t.focus();
   },
 
   campoHTML: function(c) {
@@ -1340,7 +1493,18 @@ var Nueva = {
     var hint = meta.hint ? '<div class="muted" style="margin-top:3px">' + UI.esc(meta.hint) + '</div>' : '';
     var ctrl;
 
-    if (meta.tipo === 'select') {
+    if (meta.tipo === 'radio') {
+      ctrl = '<div class="radio-row" id="' + c.campo + '">' +
+        lista.map(function(v, i) {
+          return '<label class="radio-op"><input type="radio" name="rd-' + c.campo + '" value="' +
+            UI.esc(v) + '"' + (i === 0 ? ' checked' : '') + '> ' + UI.esc(v) + '</label>';
+        }).join('') + '</div>';
+    } else if (meta.tipo === 'check') {
+      ctrl = '<label class="campo-sw" style="padding:9px 0"><input type="checkbox" id="' + c.campo +
+        '"> <span>Sí</span></label>';
+    } else if (meta.tipo === 'time') {
+      ctrl = '<input type="time" id="' + c.campo + '">';
+    } else if (meta.tipo === 'select') {
       ctrl = '<select id="' + c.campo + '"' + (meta.onchange ? ' onchange="' + meta.onchange + '"' : '') + '>' +
         (meta.vacio ? '<option value="">' + UI.esc(meta.vacio) + '</option>' : '') +
         lista.map(function(v) { return '<option>' + UI.esc(v) + '</option>'; }).join('') + '</select>';
@@ -1367,9 +1531,14 @@ var Nueva = {
 
   valor: function(campo) {
     var meta = CAMPO_META[campo] || { tipo: 'text' };
+    if (meta.tipo === 'radio') {
+      var r = document.querySelector('input[name="rd-' + campo + '"]:checked');
+      return r ? r.value : '';
+    }
     var el = $(campo);
     if (!el) return meta.tipo === 'multi' ? [] : '';
     if (meta.tipo === 'multi') return UI.multiVal(campo);
+    if (meta.tipo === 'check') return !!el.checked;
     if (meta.tipo === 'sino')  return !!el.value;
     return el.value;
   },
@@ -1403,6 +1572,12 @@ var Nueva = {
         if (w) w.classList.add('campo-invalido');
       }
     });
+    // "Otro" exige justificación escrita
+    if (String(d.tipo_maniobra || '').toLowerCase() === 'otro' && !String(d.observaciones || '').trim()) {
+      faltan.push('Observaciones (obligatorias con tipo "Otro")');
+      var wo = $('wrap-observaciones');
+      if (wo) wo.classList.add('campo-invalido');
+    }
     if (faltan.length) {
       UI.aviso(avisoId, 'Faltan campos obligatorios: ' + faltan.join(', '), 'err');
       return false;
@@ -1469,14 +1644,17 @@ var Nueva = {
 
   limpiar: function() {
     STATE.campos.forEach(function(c) {
+      var meta = CAMPO_META[c.campo] || {};
+      if (meta.tipo === 'radio') return;              // el turno se conserva
       var el = $(c.campo);
       if (!el) return;
-      var meta = CAMPO_META[c.campo] || {};
       if (meta.tipo === 'multi') Array.prototype.slice.call(el.options).forEach(function(o) { o.selected = false; });
+      else if (meta.tipo === 'check') el.checked = false;
       else if (c.campo === 'cant_equipos') el.value = '1';
       else if (c.campo === 'fecha') el.value = new Date().toISOString().slice(0, 10);
-      else if (c.campo !== 'turno' && c.campo !== 'flujo') el.value = '';
+      else if (c.campo !== 'flujo') el.value = '';
     });
+    Nueva.onTipoManiobra();
     ['r_hora_inicio','r_hora_fin','r_dano_maniobra_desc'].forEach(function(k) {
       if ($(k)) $(k).value = '';
     });
@@ -1717,16 +1895,35 @@ var Curso = {
     $('modal-obs').value = '';
     $('modal-dano').value = '';
     $('modal-dano-desc').value = '';
+    $('modal-liberacion').value = '';
+    $('modal-causa').value = '';
+    UI.aviso('modal-aviso', '');
+    Curso.onParo();
     UI.show('modal');
   },
   cerrarModal: function() { UI.hide('modal'); STATE.modalEtapa = ''; },
 
+  /** La causa sólo se exige cuando de verdad hubo tiempo detenido */
+  onParo: function() {
+    var min = Number($('modal-demora').value || 0);
+    $('modal-causa-req').style.display = min > 0 ? '' : 'none';
+    $('wrap-modal-causa').classList.toggle('campo-invalido', min > 0 && !$('modal-causa').value);
+  },
+
   confirmarFinalizar: function() {
     if (!STATE.modalEtapa) return;
+    var paro  = Number($('modal-demora').value || 0);
+    var causa = $('modal-causa').value;
+    if (paro > 0 && !causa) {
+      UI.aviso('modal-aviso', 'Registraste ' + paro + ' minutos de paro: indica la causa.', 'err');
+      $('wrap-modal-causa').classList.add('campo-invalido');
+      return;
+    }
     var id = STATE.modalEtapa;
     var extras = {
-      demora_min:         Number($('modal-demora').value || 0),
-      causa_demora:       $('modal-causa').value,
+      demora_min:         paro,
+      causa_demora:       causa,
+      hora_liberacion:    $('modal-liberacion').value,
       observaciones:      $('modal-obs').value,
       dano_maniobra:      !!$('modal-dano').value,
       dano_maniobra_desc: $('modal-dano-desc').value
@@ -1734,8 +1931,12 @@ var Curso = {
     Curso.cerrarModal();
     API.call('finalizarEtapa', [id, extras], function(r) {
       if (r.maniobra_finalizada) {
-        UI.toast('✓ Maniobra completa · Total ' + UI.fmtMin(r.tiempo_total_min) +
-                 ' · Efectivo ' + UI.fmtMin(r.tiempo_efectivo_min), 'ok');
+        var extra = r.min_por_atado ? ' · ' + r.min_por_atado + ' min/atado' : '';
+        if (r.min_montacargas_por_ton) extra += ' · ' + r.min_montacargas_por_ton + ' min-montacargas/ton';
+        UI.toast('✓ Maniobra completa · Total ' + UI.fmtMin(r.tiempo_total_min) + extra, 'ok');
+        if (r.revision === 'REVISIÓN') {
+          UI.toast('⚠ Marcada para REVISIÓN: ' + r.motivo_revision, 'err');
+        }
       } else {
         UI.toast('✓ Etapa finalizada · Siguiente: ' + r.siguiente.nombre, 'ok');
       }
@@ -1753,6 +1954,13 @@ var Curso = {
     $('edit-tipo_equipo').value = m.tipo_equipo || '';
     $('edit-material').value    = m.material || '';
     $('edit-obs').value         = m.observaciones || '';
+    $('edit-tipo_maniobra').value        = m.tipo_maniobra || '';
+    $('edit-aditamento').value           = m.aditamento || '';
+    $('edit-toneladas_netas').value      = m.toneladas_netas === '' ? '' : m.toneladas_netas;
+    $('edit-atados').value               = m.atados === '' ? '' : m.atados;
+    $('edit-piezas_sueltas').value       = m.piezas_sueltas === '' ? '' : m.piezas_sueltas;
+    $('edit-hora_posicionamiento').value = m.hora_posicionamiento || '';
+    $('edit-hora_liberacion').value      = m.hora_liberacion || '';
     UI.setMulti('edit-montacarguistas', m.montacarguistas);
     UI.setMulti('edit-montacargas',     m.montacargas);
     UI.show('modal-edit');
@@ -1769,7 +1977,14 @@ var Curso = {
       material:        $('edit-material').value,
       observaciones:   $('edit-obs').value,
       montacarguistas: UI.multiVal('edit-montacarguistas'),
-      montacargas:     UI.multiVal('edit-montacargas')
+      montacargas:     UI.multiVal('edit-montacargas'),
+      tipo_maniobra:        $('edit-tipo_maniobra').value,
+      aditamento:           $('edit-aditamento').value,
+      toneladas_netas:      $('edit-toneladas_netas').value,
+      atados:               $('edit-atados').value,
+      piezas_sueltas:       $('edit-piezas_sueltas').value,
+      hora_posicionamiento: $('edit-hora_posicionamiento').value,
+      hora_liberacion:      $('edit-hora_liberacion').value
     };
     Curso.cerrarEdit();
     API.call('editarManiobra', [id, d], function() {
@@ -1814,6 +2029,31 @@ var Lista = {
                 Lista.dt.sel = {}; Lista.cargar();
               });
             } },
+          { label: '✔ Validar (quitar revisión)', clase: 'success',
+            confirmar: '¿Validar {n} registro(s)? Volverán a contar en los promedios.',
+            fn: function(ids) {
+              API.call('validarRegistros', [ids, (STATE.usr && STATE.usr.nombre) || ''], function(r) {
+                UI.toast('✓ ' + r.validados + ' registro(s) validados', 'ok');
+                Lista.dt.sel = {}; Lista.cargar();
+              });
+            } },
+          { label: '⚠ Marcar revisión', clase: 'warn',
+            confirmar: '¿Marcar {n} registro(s) para revisión? Quedarán fuera de los promedios.',
+            fn: function(ids) {
+              var motivo = prompt('Motivo de la revisión:', 'Marcada manualmente por supervisor');
+              if (motivo === null) return;
+              API.call('marcarRevision', [ids, motivo], function(r) {
+                UI.toast('✓ ' + r.marcados + ' registro(s) marcados', 'ok');
+                Lista.dt.sel = {}; Lista.cargar();
+              });
+            } },
+          { label: '🧮 Recalcular métricas', clase: 'ghost',
+            fn: function(ids) {
+              API.call('recalcularMetricas', [ids], function(r) {
+                UI.toast('✓ ' + r.recalculadas + ' recalculadas', 'ok');
+                Lista.dt.sel = {}; Lista.cargar();
+              });
+            } },
           { label: '🗑 Eliminar', clase: 'danger',
             confirmar: '¿Eliminar {n} maniobra(s) y sus etapas? No se puede deshacer.',
             fn: function(ids) {
@@ -1830,30 +2070,54 @@ var Lista = {
         acciones: acciones,
         vacio: 'Aún no hay maniobras registradas.',
         filtros: [
-          { key: 'fecha',   label: 'Fecha', tipo: 'fecha' },
-          { key: 'estado',  label: 'Estado' },
-          { key: 'cliente', label: 'Cliente' },
-          { key: 'flujo',   label: 'Flujo' },
-          { key: 'turno',   label: 'Turno' },
-          { key: 'semaforo',label: 'Semáforo' }
+          { key: 'fecha',             label: 'Fecha', tipo: 'fecha' },
+          { key: 'tipo_maniobra',     label: 'Tipo de maniobra' },
+          { key: 'cliente',           label: 'Cliente' },
+          { key: 'estado',            label: 'Estado' },
+          { key: 'revision',          label: 'Revisión' },
+          { key: 'prueba_controlada', label: 'Prueba controlada' },
+          { key: 'turno',             label: 'Turno' },
+          { key: 'aditamento',        label: 'Aditamento' },
+          { key: 'semaforo',          label: 'Semáforo' }
         ],
         cols: [
           { key: 'folio',               label: 'Folio' },
           { key: 'fecha',               label: 'Fecha' },
           { key: 'turno',               label: 'Turno' },
-          { key: 'flujo',               label: 'Flujo' },
+          { key: 'tipo_maniobra',       label: 'Tipo de maniobra' },
           { key: 'cliente',             label: 'Cliente' },
           { key: 'no_unidad',           label: 'Unidad' },
-          { key: 'etapa',               label: 'Etapa' },
           { key: 'estado',              label: 'Estado', tipo: 'estado' },
+          { key: 'revision',            label: 'Revisión',
+            render: function(r) {
+              if (r.revision === 'REVISIÓN')
+                return '<span class="badge ROJO" title="' + UI.esc(r.motivo_revision) + '">REVISIÓN</span>';
+              if (r.revision === 'VALIDADO') return '<span class="badge VERDE">Validado</span>';
+              return r.revision ? '<span class="badge NEUTRO">' + UI.esc(r.revision) + '</span>' : '—';
+            } },
+          { key: 'toneladas_netas',     label: 'Ton netas', tipo: 'num' },
+          { key: 'atados',              label: 'Atados', tipo: 'num' },
+          { key: 'piezas_sueltas',      label: 'Pzas sueltas', tipo: 'num' },
+          { key: 'tiempo_total_min',    label: 'Total', tipo: 'min' },
+          { key: 'demora_min',          label: 'Paro', tipo: 'min' },
+          { key: 'tiempo_efectivo_min', label: 'Efectivo', tipo: 'min' },
+          { key: 'min_por_atado',       label: 'Min/atado', tipo: 'num' },
+          { key: 'min_por_tonelada',    label: 'Min/ton', tipo: 'num' },
+          { key: 'min_montacargas',     label: 'Min montacargas', tipo: 'num' },
+          { key: 'min_montacargas_ton', label: 'Min-mont/ton', tipo: 'num' },
+          { key: 'ocupacion_spot_min',  label: 'Ocupación spot', tipo: 'min' },
+          { key: 'aditamento',          label: 'Aditamento' },
           { key: 'montacargas',         label: 'Montacargas' },
           { key: 'montacarguistas',     label: 'Montacarguistas' },
+          { key: 'hora_posicionamiento',label: 'Posicionado' },
           { key: 'hora_inicio',         label: 'Inicio' },
           { key: 'hora_fin',            label: 'Fin' },
-          { key: 'tiempo_total_min',    label: 'Total', tipo: 'min' },
-          { key: 'demora_min',          label: 'Demora', tipo: 'min' },
-          { key: 'tiempo_efectivo_min', label: 'Efectivo', tipo: 'min' },
-          { key: 'semaforo',            label: 'Semáforo', tipo: 'semaforo' }
+          { key: 'hora_liberacion',     label: 'Liberado' },
+          { key: 'causa_demora',        label: 'Causa del paro' },
+          { key: 'prueba_controlada',   label: 'Prueba' },
+          { key: 'etiqueta_prueba',     label: 'Etiqueta prueba' },
+          { key: 'semaforo',            label: 'Semáforo', tipo: 'semaforo' },
+          { key: 'motivo_revision',     label: 'Motivo revisión' }
         ]
       });
     }
@@ -2091,18 +2355,62 @@ var Incidencias = {
    ADMIN
 ══════════════════════════════════════════════════════════════ */
 var Admin = {
-  campos: [], catalogos: [], catActivo: null, catItems: [], tiempos: [],
+  campos: [], catalogos: [], catActivo: null, catItems: [], tiempos: [], semaforos: [],
 
   sub: function(s) {
-    ['cam','cat','usr','tem'].forEach(function(k) {
+    ['cam','cat','sem','usr','tem'].forEach(function(k) {
       var el = $('adm-' + k), b = $('adm-btn-' + k);
       if (el) el.classList.toggle('hidden', k !== s);
       if (b)  b.classList.toggle('active', k === s);
     });
     if (s === 'cam') Admin.cargarCampos();
     if (s === 'cat') Admin.cargarCat();
+    if (s === 'sem') Admin.cargarSem();
     if (s === 'usr') Admin.cargarUsr();
     if (s === 'tem') Admin.cargarTem();
+  },
+
+  /* ── Semáforos por tipo de maniobra ── */
+  cargarSem: function() {
+    API.call('getSemaforos', [], function(rows) {
+      Admin.semaforos = rows || [];
+      Admin.renderSem();
+    });
+  },
+
+  renderSem: function() {
+    $('adm-tabla-sem').innerHTML =
+      '<tr><th>Tipo de maniobra</th><th>Verde hasta (min)</th><th>Ámbar hasta (min)</th><th>Rojo</th><th></th></tr>' +
+      (Admin.semaforos.length
+        ? Admin.semaforos.map(function(s, i) {
+            return '<tr>' +
+              '<td><input value="' + UI.esc(s.tipo) + '" oninput="Admin.semaforos[' + i + '].tipo=this.value" style="min-width:200px"></td>' +
+              '<td><input type="number" min="0" value="' + s.verde + '" oninput="Admin.semaforos[' + i + '].verde=Number(this.value)" style="width:90px"></td>' +
+              '<td><input type="number" min="0" value="' + s.ambar + '" oninput="Admin.semaforos[' + i + '].ambar=Number(this.value)" style="width:90px"></td>' +
+              '<td><span class="badge ROJO">&gt; ' + s.ambar + ' min</span></td>' +
+              '<td><button class="danger xs" onclick="Admin.semaforos.splice(' + i + ',1);Admin.renderSem()">✕</button></td></tr>';
+          }).join('')
+        : '<tr><td colspan="5" class="dt-empty">Sin semáforos configurados</td></tr>');
+  },
+
+  agregarSem: function() {
+    var t = ($('adm-sem-tipo').value || '').trim();
+    if (!t) { $('adm-sem-tipo').focus(); return; }
+    Admin.semaforos.push({
+      tipo: t,
+      verde: Number($('adm-sem-verde').value || 0),
+      ambar: Number($('adm-sem-ambar').value || 0)
+    });
+    Admin.renderSem();
+    $('adm-sem-tipo').value = $('adm-sem-verde').value = $('adm-sem-ambar').value = '';
+    $('adm-sem-tipo').focus();
+  },
+
+  guardarSem: function() {
+    API.call('guardarSemaforos', [Admin.semaforos], function() {
+      UI.toast('✓ Semáforos guardados. Recalcula las métricas para aplicarlos al histórico.', 'ok');
+      App.cargarCatalogos();
+    });
   },
 
   /* ── Campos obligatorios / visibles ── */
@@ -2114,7 +2422,8 @@ var Admin = {
   },
 
   renderCampos: function() {
-    var secciones = { esenciales: 'Datos de la maniobra', carga: 'Detalle de carga', danos: 'Daños y observaciones' };
+    var secciones = { esenciales: 'Datos de la maniobra', carga: 'Detalle de carga y costeo',
+                      tiempos: 'Ocupación del spot', danos: 'Daños y observaciones' };
     var html = '';
     Object.keys(secciones).forEach(function(sec) {
       var items = Admin.campos.filter(function(c) { return c.seccion === sec; });
@@ -2360,7 +2669,8 @@ var Soporte = {
       var etiquetas = {
         maniobras_activas: 'Maniobras activas', maniobras_huerfanas: 'Maniobras atoradas',
         etapas_activas: 'Etapas activas', etapas_sin_inicio: 'Etapas sin hora inicio',
-        pausas_registradas: 'Pausas activas', campos_configurados: 'Campos configurados',
+        pausas_registradas: 'Pausas activas', registros_en_revision: 'En revisión',
+        sin_tipo_maniobra: 'Sin tipo de maniobra', campos_configurados: 'Campos configurados',
         montacargas_registrados: 'Montacargas', usuarios: 'Usuarios'
       };
       $('diag-resumen').innerHTML = Object.keys(etiquetas).map(function(k) {
@@ -2405,6 +2715,26 @@ var Soporte = {
     API.call('repararCronometros', [], function(r) {
       UI.toast('✓ ' + r.reparadas + ' cronómetro(s) reparado(s)', 'ok');
       Soporte.cargar();
+    });
+  },
+
+  recalcular: function() {
+    if (!confirm('¿Recalcular las métricas de costeo de todas las maniobras finalizadas?')) return;
+    API.call('recalcularMetricas', [null], function(r) {
+      UI.toast('✓ ' + r.recalculadas + ' maniobra(s) recalculadas', 'ok');
+      Soporte.cargar();
+    });
+  },
+
+  resaltar: function() {
+    API.call('resaltarRevisiones', [], function(r) {
+      UI.toast('✓ ' + r.resaltadas + ' fila(s) marcadas en rojo en la hoja', 'ok');
+    });
+  },
+
+  formatoFechas: function() {
+    API.call('formatearFechas', [], function(r) {
+      UI.toast('✓ ' + (r.msg || 'Formato aplicado'), 'ok');
     });
   },
 

@@ -28,6 +28,7 @@ var HOJA_TEMS = 'TIEMPOS_EST';
 var HOJA_USR  = 'USUARIOS';
 var HOJA_MON  = 'MONTACARGAS';
 var HOJA_CAM  = 'CAMPOS';
+var HOJA_SEM  = 'SEMAFOROS';
 
 /* ════════════════════════════════════════════════════════════
    CATÁLOGOS Y ETAPAS POR DEFECTO
@@ -37,11 +38,32 @@ var DEFAULT_CONFIG = {
   TURNO_VESPERTINO_INICIO: '14:00', TURNO_VESPERTINO_FIN:    '22:00',
   TURNO_NOCTURNO_INICIO:   '22:00', TURNO_NOCTURNO_FIN:      '06:00',
   CORREOS_REPORTE: '', UMBRAL_VERDE_MIN: '45', UMBRAL_AMBAR_MIN: '90',
-  REPORTE_DIARIO_HORA: '6', REPORTE_SEMANAL_DIA: 'LUNES'
+  REPORTE_DIARIO_HORA: '6', REPORTE_SEMANAL_DIA: 'LUNES',
+
+  // Mínimo de registros para que el dashboard muestre un tiempo
+  N_MINIMO_DASHBOARD: '5',
+  // Rangos humanamente posibles: fuera de esto la fila se marca REVISIÓN
+  ANOMALIA_MIN_POR_ATADO_MIN: '0.3', ANOMALIA_MIN_POR_ATADO_MAX: '25',
+  ANOMALIA_MIN_POR_TON_MIN:   '0.5', ANOMALIA_MIN_POR_TON_MAX:   '90',
+  ANOMALIA_DURACION_MIN_MIN:  '3',   ANOMALIA_DURACION_MIN_MAX:  '600'
 };
 
+/**
+ * Regla madre: un registro = una maniobra.
+ * Este catálogo es cerrado: nunca debe contener combinaciones
+ * del estilo "Descarga y acomodo" o "Descarga y carga".
+ */
+var TIPOS_MANIOBRA_DEFAULT = [
+  'Descarga furgón a piso',
+  'Acomodo y estiba',
+  'Carga plataforma desde piso',
+  'Trasvase directo furgón a plataforma',
+  'Descarga plataforma',
+  'Otro'
+];
+
 var CATALOGOS_DEFAULT = {
-  TURNOS:            ['Matutino', 'Vespertino', 'Nocturno'],
+  TURNOS:            ['Día', 'Madrugada'],
   FLUJOS:            ['ENTRADA', 'SALIDA', 'TRANSBORDO', 'INTERNO'],
   CLIENTES:          ['Cliente demo'],
   TIPOS_EQUIPO:      ['Caja seca', 'Caja refrigerada', 'Plataforma', 'Contenedor 20', 'Contenedor 40'],
@@ -49,8 +71,28 @@ var CATALOGOS_DEFAULT = {
   MATERIALES:        ['Materia prima', 'Producto terminado', 'Empaque'],
   PRESENTACIONES:    ['Tarima', 'Caja', 'Saco', 'Granel', 'Rollo'],
   UNIDADES_MEDIDA:   ['Tarima', 'Caja', 'Saco', 'Pieza', 'Tonelada'],
-  CAUSAS_DEMORA:     ['Falta de personal', 'Falla de equipo', 'Documentación', 'Espera de andén', 'Producto dañado', 'Otro']
+  CAUSAS_DEMORA:     ['Esperando camión', 'Falla de equipo', 'Falta de espacio',
+                      'Documentación', 'Comida', 'Cambio de turno', 'Otro'],
+  TIPOS_MANIOBRA:    TIPOS_MANIOBRA_DEFAULT,
+  ADITAMENTOS:       ['Clamp de cartón', 'Cuchillas', 'Roll clamp', 'Doble pallet']
 };
+
+/** Combinaciones prohibidas: se rechazan al guardar y se detectan en el diagnóstico */
+var TIPOS_MANIOBRA_PROHIBIDOS = /(\s+y\s+|\s*\/\s*|\s*\+\s*|&)/i;
+
+/**
+ * Semáforos por tipo de maniobra: [tipo, verde hasta (min), amarillo hasta (min)].
+ * Los tres primeros vienen de las bases operativas del 15/08/2026.
+ * Los marcados como heredados usan el umbral genérico hasta que se definan.
+ */
+var SEMAFOROS_DEFAULT = [
+  ['Descarga furgón a piso',                40, 60],
+  ['Carga plataforma desde piso',           15, 25],
+  ['Trasvase directo furgón a plataforma',  15, 30],
+  ['Acomodo y estiba',                      45, 90],   // heredado — pendiente de definir
+  ['Descarga plataforma',                   45, 90],   // heredado — pendiente de definir
+  ['Otro',                                  45, 90]
+];
 
 var ETAPAS_FLUJO = {
   ENTRADA:    ['Llegada', 'Ingreso a andén', 'Descarga', 'Documentación', 'Salida'],
@@ -70,28 +112,43 @@ var DEFAULT_TIEMPOS = [
  * [clave, etiqueta, sección, obligatorio, visible, orden]
  */
 var CAMPOS_DEFAULT = [
-  ['fecha',            'Fecha',                 'esenciales', false, true,  10],
-  ['turno',            'Turno',                 'esenciales', false, true,  20],
-  ['flujo',            'Flujo',                 'esenciales', true,  true,  30],
-  ['cliente',          'Cliente',               'esenciales', true,  true,  40],
-  ['no_unidad',        'No. de unidad / furgón','esenciales', true,  true,  50],
-  ['tipo_equipo',      'Tipo de equipo',        'esenciales', true,  true,  60],
-  ['montacarguistas',  'Montacarguistas',       'esenciales', true,  true,  70],
-  ['montacargas',      'Montacargas asignados', 'esenciales', false, true,  80],
-  ['ayudantes',        'Ayudantes',             'esenciales', false, true,  90],
-  ['material',         'Material',              'carga',      false, true, 110],
-  ['presentacion',     'Presentación',          'carga',      false, true, 120],
-  ['cant_piezas',      'Cantidad de piezas',    'carga',      false, true, 130],
-  ['unidad_medida',    'Unidad de medida',      'carga',      false, true, 140],
-  ['tarimas',          'Tarimas',               'carga',      false, true, 150],
-  ['peso_tons',        'Peso (toneladas)',      'carga',      false, true, 160],
-  ['cant_equipos',     'Cant. de equipos',      'carga',      false, true, 170],
-  ['tipo_montacargas', 'Tipo de montacargas',   'carga',      false, true, 180],
-  ['num_montacargas',  'Núm. de montacargas',   'carga',      false, true, 190],
-  ['dano_origen',      '¿Daño de origen?',      'danos',      false, true, 210],
-  ['dano_origen_desc', 'Desc. daño de origen',  'danos',      false, true, 220],
-  ['observaciones',    'Observaciones',         'danos',      false, true, 230]
+  ['fecha',              'Fecha',                    'esenciales', false, true,  10],
+  ['turno',              'Turno',                    'esenciales', true,  true,  20],
+  ['tipo_maniobra',      'Tipo de maniobra',         'esenciales', true,  true,  25],
+  ['flujo',              'Flujo',                    'esenciales', true,  true,  30],
+  ['cliente',            'Cliente',                  'esenciales', true,  true,  40],
+  ['no_unidad',          'No. de unidad / furgón',   'esenciales', true,  true,  50],
+  ['tipo_equipo',        'Tipo de equipo',           'esenciales', true,  true,  60],
+  ['montacarguistas',    'Montacarguistas',          'esenciales', true,  true,  70],
+  ['montacargas',        'Montacargas asignados',    'esenciales', false, true,  80],
+  ['ayudantes',          'Ayudantes',                'esenciales', false, true,  90],
+  ['aditamento',         'Aditamento',               'esenciales', false, true,  95],
+
+  ['toneladas_netas',    'Toneladas netas',          'carga',      false, true, 105],
+  ['atados',             'Atados',                   'carga',      false, true, 106],
+  ['piezas_sueltas',     'Piezas sueltas',           'carga',      false, true, 107],
+  ['material',           'Material',                 'carga',      false, true, 110],
+  ['presentacion',       'Presentación',             'carga',      false, true, 120],
+  ['cant_piezas',        'Cantidad (obsoleto)',      'carga',      false, false,130],
+  ['unidad_medida',      'Unidad de medida',         'carga',      false, true, 140],
+  ['tarimas',            'Tarimas',                  'carga',      false, true, 150],
+  ['peso_tons',          'Peso bruto (toneladas)',   'carga',      false, false,160],
+  ['cant_equipos',       'Cant. de equipos',         'carga',      false, true, 170],
+  ['tipo_montacargas',   'Tipo de montacargas',      'carga',      false, true, 180],
+  ['num_montacargas',    'Núm. de montacargas',      'carga',      true,  true, 190],
+
+  ['hora_posicionamiento','Hora de posicionamiento del furgón', 'tiempos', false, true, 205],
+  ['hora_liberacion',    'Hora de liberación del furgón',       'tiempos', false, true, 206],
+
+  ['dano_origen',        '¿Daño de origen?',         'danos',      false, true, 210],
+  ['dano_origen_desc',   'Desc. daño de origen',     'danos',      false, true, 220],
+  ['observaciones',      'Observaciones',            'danos',      false, true, 230],
+  ['prueba_controlada',  'Prueba controlada',        'danos',      false, true, 240],
+  ['etiqueta_prueba',    'Etiqueta de la prueba',    'danos',      false, true, 250]
 ];
+
+/** Campo cuyo valor "Otro" obliga a capturar observaciones */
+var CAMPO_OBLIGA_OBS = 'tipo_maniobra';
 
 var ESTADOS_MONTACARGAS = ['disponible', 'en_uso', 'mantenimiento', 'baja'];
 
@@ -109,8 +166,21 @@ var COLUMNAS = [
   'Tiempo total (min)', 'Demora (min)', 'Causa demora', 'Tiempo efectivo (min)', 'Min/pieza',
   'Daño origen', 'Desc. daño origen', 'Daño maniobra', 'Desc. daño maniobra',
   'Observaciones', 'Semáforo', 'Registrado por', 'Timestamp',
-  'Montacargas asignados'
+  'Montacargas asignados',
+  // ── Bases para la Bitácora de Maniobras (15/08/2026) ──
+  'Tipo maniobra', 'Toneladas netas', 'Atados', 'Piezas sueltas', 'Aditamento',
+  'Hora posicionamiento', 'Hora liberación', 'Min ocupación spot',
+  'Min por atado', 'Min por tonelada', 'Min montacargas', 'Min montacargas por ton',
+  'Prueba controlada', 'Etiqueta prueba',
+  'Revisión', 'Motivo revisión', 'Validado por'
 ];
+
+// Índices de las columnas nuevas (para no contar a mano)
+var C_TIPO_MAN = 40, C_TON = 41, C_ATADOS = 42, C_PZAS = 43, C_ADIT = 44,
+    C_H_POS = 45, C_H_LIB = 46, C_OCUPACION = 47,
+    C_MIN_ATADO = 48, C_MIN_TON = 49, C_MIN_MONTA = 50, C_MIN_MONTA_TON = 51,
+    C_PRUEBA = 52, C_ETIQ_PRUEBA = 53,
+    C_REVISION = 54, C_MOTIVO_REV = 55, C_VALIDADO = 56;
 
 // ETAPAS (19 cols)
 // idx: 0=ID 1=ID_man 2=Folio 3=Num 4=Nombre 5=Estado
@@ -129,6 +199,7 @@ var COL_USR = ['ID', 'Email', 'Nombre', 'PIN', 'Rol', 'Activo', 'Timestamp'];
 var COL_MON = ['ID', 'Código', 'Tipo', 'Marca', 'Modelo', 'Capacidad (ton)',
                'Estado', 'Ubicación', 'Notas', 'Activo', 'Timestamp'];
 var COL_CAM = ['Campo', 'Etiqueta', 'Sección', 'Obligatorio', 'Visible', 'Orden'];
+var COL_SEM = ['Tipo maniobra', 'Verde hasta (min)', 'Amarillo hasta (min)'];
 var COL_INC = ['ID', 'Fecha', 'Folio maniobra', 'Empleado', 'Tipo', 'Severidad',
                'Descripción', 'Estado', 'Resolución', 'Registrado por', 'Timestamp'];
 var COL_CFG = ['Clave', 'Valor', 'Descripción'];
@@ -494,7 +565,266 @@ function _validarObligatorios_(data) {
                  (Object.prototype.toString.call(v) === '[object Array]' && !v.length));
     if (vacio) faltan.push(c.etiqueta);
   });
+  // Regla condicional: "Otro" exige justificar en Observaciones
+  if (String(data[CAMPO_OBLIGA_OBS] || '').toLowerCase() === 'otro' &&
+      !String(data.observaciones || '').trim()) {
+    faltan.push('Observaciones (obligatorias cuando el tipo de maniobra es "Otro")');
+  }
   return faltan;
+}
+
+/**
+ * Regla madre: un registro = una maniobra.
+ * Rechaza tipos combinados como "Descarga y acomodo" o "Descarga / Carga".
+ */
+function _validarTipoUnico_(tipo) {
+  var t = String(tipo || '').trim();
+  if (!t) return '';
+  if (TIPOS_MANIOBRA_PROHIBIDOS.test(t) && t.toLowerCase().indexOf('trasvase') !== 0) {
+    return 'El tipo de maniobra "' + t + '" combina dos operaciones. ' +
+           'Cada maniobra debe registrarse por separado: captura un registro por cada evento.';
+  }
+  return '';
+}
+
+/* ════════════════════════════════════════════════════════════
+   SEMÁFOROS POR TIPO DE MANIOBRA
+   Sustituyen al umbral genérico único de 45/90 minutos.
+════════════════════════════════════════════════════════════ */
+
+function getSemaforos() {
+  var sh = hoja_(HOJA_SEM, COL_SEM);
+  if (sh.getLastRow() < 2) {
+    sh.getRange(2, 1, SEMAFOROS_DEFAULT.length, COL_SEM.length).setValues(SEMAFOROS_DEFAULT);
+  }
+  return sh.getRange(2, 1, Math.max(1, sh.getLastRow() - 1), COL_SEM.length).getValues()
+    .filter(function(r) { return String(r[0] || '').trim(); })
+    .map(function(r) {
+      return { tipo: String(r[0]).trim(), verde: Number(r[1] || 0), ambar: Number(r[2] || 0) };
+    });
+}
+
+function guardarSemaforos(items) {
+  return seguro_('guardarSemaforos', function() {
+    var sh = hoja_(HOJA_SEM, COL_SEM);
+    if (sh.getLastRow() > 1) sh.getRange(2, 1, sh.getLastRow() - 1, COL_SEM.length).clearContent();
+    var filas = (items || [])
+      .filter(function(i) { return String(i.tipo || '').trim(); })
+      .map(function(i) { return [String(i.tipo).trim(), Number(i.verde || 0), Number(i.ambar || 0)]; });
+    if (filas.length) sh.getRange(2, 1, filas.length, COL_SEM.length).setValues(filas);
+    return { ok: true, guardados: filas.length };
+  });
+}
+
+/** Semáforo con escala propia del tipo de maniobra; cae al genérico si no hay regla */
+function semaforoPorTipo_(tipo, min, cfg, mapa) {
+  var m = Number(min);
+  if (!m && m !== 0) return 'SIN DATO';
+  var regla = null;
+  (mapa || getSemaforos()).forEach(function(s) {
+    if (s.tipo.toLowerCase() === String(tipo || '').trim().toLowerCase()) regla = s;
+  });
+  if (!regla || !regla.verde) return semaforo_(min, cfg);
+  if (m <= regla.verde) return 'VERDE';
+  if (m <= (regla.ambar || regla.verde)) return 'ÁMBAR';
+  return 'ROJO';
+}
+
+/* ════════════════════════════════════════════════════════════
+   MÉTRICAS AUTOCALCULADAS Y DETECCIÓN DE ANOMALÍAS
+   Nadie captura estos valores a mano.
+════════════════════════════════════════════════════════════ */
+
+/** Número real de montacargas: prioriza la lista de unidades asignadas */
+function _numMontacargas_(row) {
+  var asignados = textoLista_(row[39]).length;
+  if (asignados) return asignados;
+  var n = Number(row[17] || 0);
+  return n > 0 ? n : 1;
+}
+
+function _redondea_(v, dec) {
+  var f = Math.pow(10, dec === undefined ? 2 : dec);
+  return Math.round(v * f) / f;
+}
+
+/**
+ * Calcula las cuatro métricas de costeo y decide si la fila necesita revisión.
+ * Devuelve un objeto listo para escribirse en la fila.
+ */
+function _calcularMetricas_(row, cfg) {
+  cfg = cfg || getConfigObj();
+  var totalMin  = Number(row[26] || 0);
+  var paroMin   = Number(row[27] || 0);
+  var efectivo  = Math.max(0, totalMin - paroMin);
+  var toneladas = Number(row[C_TON] || 0);
+  var atados    = Number(row[C_ATADOS] || 0);
+  var nMonta    = _numMontacargas_(row);
+
+  var minAtado    = atados    > 0 ? _redondea_(efectivo / atados, 2)    : '';
+  var minTon      = toneladas > 0 ? _redondea_(efectivo / toneladas, 2) : '';
+  var minMonta    = _redondea_(totalMin * nMonta, 1);
+  var minMontaTon = toneladas > 0 ? _redondea_(minMonta / toneladas, 2) : '';
+
+  var ocupacion = minutosEntre(String(row[C_H_POS] || ''), String(row[C_H_LIB] || ''));
+
+  // ── Anomalías: velocidades fuera de lo humanamente posible ──
+  var motivos = [];
+  function fuera(valor, minCfg, maxCfg, etiqueta) {
+    if (valor === '' || !isFinite(valor)) return;
+    var lo = Number(cfg[minCfg]), hi = Number(cfg[maxCfg]);
+    if (isFinite(lo) && valor < lo) motivos.push(etiqueta + ' = ' + valor + ' (mínimo esperado ' + lo + ')');
+    if (isFinite(hi) && valor > hi) motivos.push(etiqueta + ' = ' + valor + ' (máximo esperado ' + hi + ')');
+  }
+  fuera(minAtado, 'ANOMALIA_MIN_POR_ATADO_MIN', 'ANOMALIA_MIN_POR_ATADO_MAX', 'Min/atado');
+  fuera(minTon,   'ANOMALIA_MIN_POR_TON_MIN',   'ANOMALIA_MIN_POR_TON_MAX',   'Min/tonelada');
+  if (totalMin > 0) {
+    fuera(totalMin, 'ANOMALIA_DURACION_MIN_MIN', 'ANOMALIA_DURACION_MIN_MAX', 'Duración total');
+  }
+  if (totalMin > 0 && !toneladas && !atados) {
+    motivos.push('Sin toneladas ni atados: no se puede costear');
+  }
+
+  return {
+    efectivo:     efectivo,
+    ocupacion:    ocupacion,
+    minAtado:     minAtado,
+    minTon:       minTon,
+    minMonta:     minMonta,
+    minMontaTon:  minMontaTon,
+    revision:     motivos.length ? 'REVISIÓN' : 'OK',
+    motivo:       motivos.join(' · ')
+  };
+}
+
+/** Escribe métricas + semáforo en una fila ya cargada en memoria */
+function _aplicarMetricas_(row, cfg, mapaSem) {
+  var m = _calcularMetricas_(row, cfg);
+  row[29]              = m.efectivo;
+  row[C_OCUPACION]     = m.ocupacion || '';
+  row[C_MIN_ATADO]     = m.minAtado;
+  row[C_MIN_TON]       = m.minTon;
+  row[C_MIN_MONTA]     = m.minMonta;
+  row[C_MIN_MONTA_TON] = m.minMontaTon;
+  row[36]              = semaforoPorTipo_(row[C_TIPO_MAN], row[26], cfg, mapaSem);
+  // Una fila ya validada por un supervisor no se vuelve a marcar
+  if (String(row[C_VALIDADO] || '').trim()) {
+    row[C_REVISION] = 'VALIDADO';
+  } else {
+    row[C_REVISION]    = m.revision;
+    row[C_MOTIVO_REV]  = m.motivo;
+  }
+  return m;
+}
+
+/** Recalcula métricas de todas las maniobras finalizadas (o de las indicadas) */
+function recalcularMetricas(ids) {
+  return seguro_('recalcularMetricas', function() {
+    var sh = hoja_(HOJA, COLUMNAS);
+    if (sh.getLastRow() < 2) return { ok: true, recalculadas: 0 };
+    var rango = sh.getRange(2, 1, sh.getLastRow() - 1, COLUMNAS.length);
+    var vals  = rango.getValues();
+    var cfg   = getConfigObj();
+    var mapa  = getSemaforos();
+    var filtro = null;
+    if (ids && ids.length) {
+      filtro = {};
+      [].concat(ids).forEach(function(i) { filtro[String(i)] = true; });
+    }
+    var n = 0;
+    vals.forEach(function(row) {
+      if (!String(row[0] || '').trim()) return;
+      if (filtro && !filtro[String(row[0])]) return;
+      if (String(row[20] || '') !== 'finalizada') return;
+      _aplicarMetricas_(row, cfg, mapa);
+      n++;
+    });
+    if (n) rango.setValues(vals);
+    return { ok: true, recalculadas: n };
+  });
+}
+
+/** Un supervisor acepta la fila: deja de estar excluida del dashboard */
+function validarRegistros(ids, quien) {
+  return seguro_('validarRegistros', function() {
+    var sh = hoja_(HOJA, COLUMNAS);
+    if (sh.getLastRow() < 2) return { ok: true, validados: 0 };
+    var set = {};
+    [].concat(ids || []).forEach(function(i) { set[String(i)] = true; });
+    var rango = sh.getRange(2, 1, sh.getLastRow() - 1, COLUMNAS.length);
+    var vals  = rango.getValues();
+    var n = 0;
+    vals.forEach(function(row) {
+      if (!set[String(row[0])]) return;
+      row[C_REVISION] = 'VALIDADO';
+      row[C_VALIDADO] = String(quien || usuario_()) + ' · ' +
+        Utilities.formatDate(new Date(), Session.getScriptTimeZone(), 'dd/MM/yyyy HH:mm');
+      n++;
+    });
+    if (n) rango.setValues(vals);
+    return { ok: true, validados: n };
+  });
+}
+
+/** Vuelve a marcar filas para revisión manual */
+function marcarRevision(ids, motivo) {
+  return seguro_('marcarRevision', function() {
+    var sh = hoja_(HOJA, COLUMNAS);
+    if (sh.getLastRow() < 2) return { ok: true, marcados: 0 };
+    var set = {};
+    [].concat(ids || []).forEach(function(i) { set[String(i)] = true; });
+    var rango = sh.getRange(2, 1, sh.getLastRow() - 1, COLUMNAS.length);
+    var vals  = rango.getValues();
+    var n = 0;
+    vals.forEach(function(row) {
+      if (!set[String(row[0])]) return;
+      row[C_REVISION]   = 'REVISIÓN';
+      row[C_MOTIVO_REV] = String(motivo || 'Marcada manualmente');
+      row[C_VALIDADO]   = '';
+      n++;
+    });
+    if (n) rango.setValues(vals);
+    return { ok: true, marcados: n };
+  });
+}
+
+/** Pinta de rojo las filas marcadas REVISIÓN para que salten a la vista en la hoja */
+function resaltarRevisiones() {
+  return seguro_('resaltarRevisiones', function() {
+    var sh = hoja_(HOJA, COLUMNAS);
+    if (sh.getLastRow() < 2) return { ok: true, resaltadas: 0 };
+    var n = sh.getLastRow() - 1;
+    var estados = sh.getRange(2, C_REVISION + 1, n, 1).getValues();
+    var fondos = estados.map(function(r) {
+      var v = String(r[0] || '');
+      var color = v === 'REVISIÓN' ? '#f8d7da' : (v === 'VALIDADO' ? '#d8f0e3' : null);
+      var fila = [];
+      for (var i = 0; i < COLUMNAS.length; i++) fila.push(color);
+      return fila;
+    });
+    sh.getRange(2, 1, n, COLUMNAS.length).setBackgrounds(fondos);
+    var marcadas = estados.filter(function(r) { return String(r[0]) === 'REVISIÓN'; }).length;
+    return { ok: true, resaltadas: marcadas };
+  });
+}
+
+/** Formato de fecha estricto dd/MM/yyyy para evitar ambigüedades */
+function formatearFechas() {
+  return seguro_('formatearFechas', function() {
+    var sh = hoja_(HOJA, COLUMNAS);
+    if (sh.getLastRow() < 2) return { ok: true };
+    var n = sh.getLastRow() - 1;
+    sh.getRange(2, 3, n, 1).setNumberFormat('dd/mm/yyyy');
+    sh.getRange(2, 22, n, 1).setNumberFormat('dd/mm/yyyy hh:mm');
+    sh.getRange(2, 23, n, 1).setNumberFormat('dd/mm/yyyy hh:mm');
+    var shEta = hoja_(HOJA_ETA, COL_ETA);
+    if (shEta.getLastRow() >= 2) {
+      var ne = shEta.getLastRow() - 1;
+      shEta.getRange(2, 7, ne, 1).setNumberFormat('dd/mm/yyyy hh:mm:ss');
+      shEta.getRange(2, 9, ne, 1).setNumberFormat('dd/mm/yyyy hh:mm:ss');
+    }
+    return { ok: true, msg: 'Formato dd/MM/yyyy aplicado' };
+  });
 }
 
 /* ════════════════════════════════════════════════════════════
@@ -676,6 +1006,21 @@ function setup() {
   // CAMPOS del formulario
   _sembrarCampos_(hoja_(HOJA_CAM, COL_CAM));
 
+  // SEMÁFOROS por tipo de maniobra
+  var semSh = hoja_(HOJA_SEM, COL_SEM);
+  if (semSh.getLastRow() < 2) {
+    semSh.getRange(2, 1, SEMAFOROS_DEFAULT.length, COL_SEM.length).setValues(SEMAFOROS_DEFAULT);
+  }
+
+  // Catálogos nuevos sobre hojas ya existentes (no borra valores previos)
+  _asegurarValoresCatalogo_('TIPOS_MANIOBRA', TIPOS_MANIOBRA_DEFAULT);
+  _asegurarValoresCatalogo_('ADITAMENTOS',    CATALOGOS_DEFAULT.ADITAMENTOS);
+  _asegurarValoresCatalogo_('TURNOS',         CATALOGOS_DEFAULT.TURNOS);
+  _asegurarValoresCatalogo_('CAUSAS_DEMORA',  CATALOGOS_DEFAULT.CAUSAS_DEMORA);
+
+  // Formato de fecha estricto dd/MM/yyyy
+  try { formatearFechas(); } catch (e) {}
+
   // USUARIOS — cuenta master
   var uSh = hoja_(HOJA_USR, COL_USR);
   if (uSh.getLastRow() < 2) {
@@ -814,8 +1159,44 @@ function getCatalogos() {
   out.TIEMPOS_EST  = getTimeposEstimados();
   out.ETAPAS_FLUJO = ETAPAS_FLUJO;
   out.CAMPOS       = getCamposConfig();
+  out.SEMAFOROS    = getSemaforos();
+  // El catálogo de tipos de maniobra es cerrado: si la hoja no lo trae, se usa el maestro
+  if (!out.TIPOS_MANIOBRA || !out.TIPOS_MANIOBRA.length) out.TIPOS_MANIOBRA = TIPOS_MANIOBRA_DEFAULT;
+  if (!out.ADITAMENTOS   || !out.ADITAMENTOS.length)    out.ADITAMENTOS    = CATALOGOS_DEFAULT.ADITAMENTOS;
   out.server_now_ms = Date.now();
   return out;
+}
+
+/**
+ * Añade a un catálogo los valores que le falten, sin borrar los que ya tenga.
+ * Sirve para propagar catálogos nuevos a hojas ya en producción.
+ */
+function _asegurarValoresCatalogo_(tipo, valores) {
+  var cs = ss_().getSheetByName(HOJA_CAT);
+  if (!cs) return 0;
+  var vals = cs.getDataRange().getValues();
+  if (!vals.length) return 0;
+
+  var col = -1;
+  for (var c = 0; c < vals[0].length; c++) {
+    if (String(vals[0][c] || '').trim() === tipo) { col = c + 1; break; }
+  }
+  if (col === -1) {
+    col = vals[0].length + 1;
+    _pintarCabecera_(cs.getRange(1, col).setValue(tipo));
+    vals = cs.getDataRange().getValues();
+  }
+
+  var existentes = {}, ultima = 1;
+  for (var r = 1; r < vals.length; r++) {
+    var v = String((vals[r] || [])[col - 1] || '').trim();
+    if (v) { existentes[v.toLowerCase()] = true; ultima = r + 1; }
+  }
+  var faltan = (valores || []).filter(function(v) { return !existentes[String(v).toLowerCase()]; });
+  if (faltan.length) {
+    cs.getRange(ultima + 1, col, faltan.length, 1).setValues(faltan.map(function(v) { return [v]; }));
+  }
+  return faltan.length;
 }
 
 function agregarCatalogo(catalogo, valor) {
@@ -1044,6 +1425,9 @@ function iniciarManiobra(data) {
     if (faltan.length)
       return { ok: false, error: 'Faltan campos obligatorios: ' + faltan.join(', '), campos_faltantes: faltan };
 
+    var errTipo = _validarTipoUnico_(data.tipo_maniobra);
+    if (errTipo) return { ok: false, error: errTipo };
+
     var sh      = hoja_(HOJA, COLUMNAS);
     var shEta   = hoja_(HOJA_ETA, COL_ETA);
     var tiempos = getTimeposEstimados();
@@ -1070,7 +1454,16 @@ function iniciarManiobra(data) {
       'en_curso', ahora, '', 0, '', '', '', 0, '', '', '',
       data.dano_origen ? 'SÍ' : 'NO', data.dano_origen_desc || '',
       'NO', '', _fmtObs(data), 'EN CURSO', usuario_(), ahora,
-      monta
+      monta,
+      data.tipo_maniobra || '',
+      data.toneladas_netas === '' || data.toneladas_netas === undefined ? '' : Number(data.toneladas_netas),
+      data.atados         === '' || data.atados         === undefined ? '' : Number(data.atados),
+      data.piezas_sueltas === '' || data.piezas_sueltas === undefined ? '' : Number(data.piezas_sueltas),
+      data.aditamento || '',
+      data.hora_posicionamiento || '', data.hora_liberacion || '', '',
+      '', '', '', '',
+      data.prueba_controlada ? 'SÍ' : 'NO', data.etiqueta_prueba || '',
+      '', '', ''
     ]);
 
     var tiempoEst = tiempos[primera] || 0;
@@ -1092,6 +1485,9 @@ function registrarManiobra(data) {
     if (faltan.length)
       return { ok: false, error: 'Faltan campos obligatorios: ' + faltan.join(', '), campos_faltantes: faltan };
 
+    var errTipo = _validarTipoUnico_(data.tipo_maniobra);
+    if (errTipo) return { ok: false, error: errTipo };
+
     var sh    = hoja_(HOJA, COLUMNAS);
     var id    = uuid_();
     var tz    = Session.getScriptTimeZone();
@@ -1104,7 +1500,7 @@ function registrarManiobra(data) {
     var piezas   = Number(data.cant_piezas || 0);
     var minPieza = (efectivo > 0 && piezas > 0) ? Math.round((efectivo / piezas) * 100) / 100 : '';
 
-    sh.appendRow([
+    var row = [
       id, folio, fecha, data.turno, data.flujo, data.etapa || '—',
       data.cliente, data.no_unidad, data.tipo_equipo,
       Number(data.cant_equipos || 1), data.material, data.presentacion,
@@ -1117,9 +1513,24 @@ function registrarManiobra(data) {
       data.dano_origen ? 'SÍ' : 'NO', data.dano_origen_desc || '',
       data.dano_maniobra ? 'SÍ' : 'NO', data.dano_maniobra_desc || '',
       _fmtObs(data), semaforo_(total, cfg), usuario_(), new Date(),
-      listaTexto_(data.montacargas)
-    ]);
-    return { ok: true, id: id, folio: folio, tiempo_total_min: total };
+      listaTexto_(data.montacargas),
+      data.tipo_maniobra || '',
+      data.toneladas_netas === '' || data.toneladas_netas === undefined ? '' : Number(data.toneladas_netas),
+      data.atados         === '' || data.atados         === undefined ? '' : Number(data.atados),
+      data.piezas_sueltas === '' || data.piezas_sueltas === undefined ? '' : Number(data.piezas_sueltas),
+      data.aditamento || '',
+      data.hora_posicionamiento || '', data.hora_liberacion || '', '',
+      '', '', '', '',
+      data.prueba_controlada ? 'SÍ' : 'NO', data.etiqueta_prueba || '',
+      '', '', ''
+    ];
+
+    // Las métricas de costeo se calculan aquí mismo: el registro ya nace cerrado
+    var m = _aplicarMetricas_(row, cfg, getSemaforos());
+    sh.appendRow(row);
+
+    return { ok: true, id: id, folio: folio, tiempo_total_min: total,
+             revision: m.revision, motivo_revision: m.motivo };
   });
 }
 
@@ -1180,6 +1591,23 @@ function editarManiobra(id, data) {
     if (data.ayudantes        !== undefined) row[19] = listaTexto_(data.ayudantes);
     if (data.observaciones    !== undefined) row[35] = data.observaciones;
     if (data.montacargas      !== undefined) row[39] = listaTexto_(data.montacargas);
+
+    if (data.tipo_maniobra    !== undefined) {
+      var errTipo = _validarTipoUnico_(data.tipo_maniobra);
+      if (errTipo) return { ok: false, error: errTipo };
+      row[C_TIPO_MAN] = data.tipo_maniobra;
+    }
+    if (data.toneladas_netas  !== undefined) row[C_TON]    = data.toneladas_netas === '' ? '' : Number(data.toneladas_netas);
+    if (data.atados           !== undefined) row[C_ATADOS] = data.atados         === '' ? '' : Number(data.atados);
+    if (data.piezas_sueltas   !== undefined) row[C_PZAS]   = data.piezas_sueltas === '' ? '' : Number(data.piezas_sueltas);
+    if (data.aditamento       !== undefined) row[C_ADIT]   = data.aditamento;
+    if (data.hora_posicionamiento !== undefined) row[C_H_POS] = data.hora_posicionamiento;
+    if (data.hora_liberacion      !== undefined) row[C_H_LIB] = data.hora_liberacion;
+    if (data.prueba_controlada    !== undefined) row[C_PRUEBA] = data.prueba_controlada ? 'SÍ' : 'NO';
+    if (data.etiqueta_prueba      !== undefined) row[C_ETIQ_PRUEBA] = data.etiqueta_prueba;
+
+    // Editar datos de costeo obliga a recalcular las métricas derivadas
+    if (String(row[20] || '') === 'finalizada') _aplicarMetricas_(row, getConfigObj(), getSemaforos());
 
     sh.getRange(fila, 1, 1, COLUMNAS.length).setValues([row]);
     return { ok: true };
@@ -1288,7 +1716,25 @@ function getManiobras(filtros) {
         observaciones:       String(r[35] || ''),
         semaforo:            String(r[36] || ''),
         registrado_por:      String(r[37] || ''),
-        montacargas:         String(r[39] || '')
+        montacargas:         String(r[39] || ''),
+
+        tipo_maniobra:       String(r[C_TIPO_MAN] || ''),
+        toneladas_netas:     r[C_TON]    === '' ? '' : Number(r[C_TON] || 0),
+        atados:              r[C_ATADOS] === '' ? '' : Number(r[C_ATADOS] || 0),
+        piezas_sueltas:      r[C_PZAS]   === '' ? '' : Number(r[C_PZAS] || 0),
+        aditamento:          String(r[C_ADIT] || ''),
+        hora_posicionamiento:String(r[C_H_POS] || ''),
+        hora_liberacion:     String(r[C_H_LIB] || ''),
+        ocupacion_spot_min:  r[C_OCUPACION] === '' ? '' : Number(r[C_OCUPACION] || 0),
+        min_por_atado:       r[C_MIN_ATADO] === '' ? '' : Number(r[C_MIN_ATADO] || 0),
+        min_por_tonelada:    r[C_MIN_TON]   === '' ? '' : Number(r[C_MIN_TON] || 0),
+        min_montacargas:     r[C_MIN_MONTA] === '' ? '' : Number(r[C_MIN_MONTA] || 0),
+        min_montacargas_ton: r[C_MIN_MONTA_TON] === '' ? '' : Number(r[C_MIN_MONTA_TON] || 0),
+        prueba_controlada:   String(r[C_PRUEBA] || 'NO'),
+        etiqueta_prueba:     String(r[C_ETIQ_PRUEBA] || ''),
+        revision:            String(r[C_REVISION] || ''),
+        motivo_revision:     String(r[C_MOTIVO_REV] || ''),
+        validado_por:        String(r[C_VALIDADO] || '')
       });
       if (out.length >= limite) break;
     }
@@ -1401,6 +1847,13 @@ function getManiobrasEnCurso() {
         iniciado_ms:     toMs_(r[21]),
         observaciones:   String(r[35] || ''),
         montacargas:     String(r[39] || ''),
+        tipo_maniobra:   String(r[C_TIPO_MAN] || ''),
+        toneladas_netas: r[C_TON]    === '' ? '' : Number(r[C_TON] || 0),
+        atados:          r[C_ATADOS] === '' ? '' : Number(r[C_ATADOS] || 0),
+        aditamento:      String(r[C_ADIT] || ''),
+        hora_posicionamiento: String(r[C_H_POS] || ''),
+        hora_liberacion:      String(r[C_H_LIB] || ''),
+        prueba_controlada:    String(r[C_PRUEBA] || 'NO'),
         completado_seg:  completadoSeg,
         etapa_actual:    etapaActual,
         etapas:          etapas
@@ -1598,23 +2051,39 @@ function _cerrarManiobra(idManiobra, filaM, shM, shEta, extras) {
   var ahora      = new Date();
   var cfg        = getConfigObj();
 
-  shM.getRange(filaM,  6).setValue('Completada');
-  shM.getRange(filaM, 21).setValue('finalizada');
-  shM.getRange(filaM, 23).setValue(ahora);
-  shM.getRange(filaM, 25).setValue(horaInicio);
-  shM.getRange(filaM, 26).setValue(horaFin);
-  shM.getRange(filaM, 27).setValue(sumaTotal);
-  shM.getRange(filaM, 28).setValue(sumaDemora);
-  shM.getRange(filaM, 30).setValue(efectivo);
-  shM.getRange(filaM, 31).setValue(minPieza);
+  // Se escribe la fila completa de una sola pasada para poder calcular
+  // las métricas de costeo sobre los valores ya consolidados.
+  var rango = shM.getRange(filaM, 1, 1, COLUMNAS.length);
+  var row   = rango.getValues()[0];
+
+  row[5]  = 'Completada';
+  row[20] = 'finalizada';
+  row[22] = ahora;
+  row[24] = horaInicio;
+  row[25] = horaFin;
+  row[26] = sumaTotal;
+  row[27] = sumaDemora;
+  row[29] = efectivo;
+  row[30] = minPieza;
+  if (extras && extras.causa_demora && !String(row[28] || '').trim()) row[28] = extras.causa_demora;
   if (extras && extras.dano_maniobra) {
-    shM.getRange(filaM, 34).setValue('SÍ');
-    shM.getRange(filaM, 35).setValue(extras.dano_maniobra_desc || '');
+    row[33] = 'SÍ';
+    row[34] = extras.dano_maniobra_desc || '';
   }
-  shM.getRange(filaM, 37).setValue(semaforo_(sumaTotal, cfg));
+  // Hora de liberación del furgón: se toma la del cierre si no se capturó antes
+  if (!String(row[C_H_LIB] || '').trim() && extras && extras.hora_liberacion) {
+    row[C_H_LIB] = extras.hora_liberacion;
+  }
+
+  var m = _aplicarMetricas_(row, cfg, getSemaforos());
+  rango.setValues([row]);
 
   return { ok: true, maniobra_finalizada: true,
-    tiempo_total_min: sumaTotal, tiempo_efectivo_min: efectivo, demora_min: sumaDemora };
+    tiempo_total_min: sumaTotal, tiempo_efectivo_min: efectivo, demora_min: sumaDemora,
+    min_por_atado: m.minAtado, min_por_tonelada: m.minTon,
+    min_montacargas: m.minMonta, min_montacargas_por_ton: m.minMontaTon,
+    revision: m.revision, motivo_revision: m.motivo,
+    semaforo: row[36] };
 }
 
 /* ════════════════════════════════════════════════════════════
@@ -1626,9 +2095,9 @@ function indicadores(dias) {
     dias = Number(dias || 30);
     var sh = hoja_(HOJA, COLUMNAS);
     var base = { ok: true, maniobras: 0, en_curso: 0, promedio_min: 0, promedio_efectivo_min: 0,
-      demora_total_min: 0, danos: 0, total_registros: 0,
+      demora_total_min: 0, danos: 0, total_registros: 0, excluidos_revision: 0,
       semaforo: { VERDE: 0, 'ÁMBAR': 0, ROJO: 0 },
-      por_cliente: [], por_etapa: [], por_flujo: [], por_empleado: [] };
+      por_cliente: [], por_etapa: [], por_flujo: [], por_empleado: [], por_tipo: [] };
     if (sh.getLastRow() < 2) return base;
 
     var vals   = sh.getRange(2, 1, sh.getLastRow() - 1, COLUMNAS.length).getValues();
@@ -1637,8 +2106,9 @@ function indicadores(dias) {
     limite.setHours(0, 0, 0, 0);
 
     var tot = 0, enCurso = 0, sumaTotal = 0, sumaEfec = 0, conTiempo = 0, demoras = 0, danos = 0;
+    var excluidos = 0;
     var sem = { VERDE: 0, 'ÁMBAR': 0, ROJO: 0 };
-    var cli = {}, eta = {}, flu = {}, emp = {};
+    var cli = {}, eta = {}, flu = {}, emp = {}, tip = {};
 
     function acum(mapa, clave, min) {
       clave = String(clave || '').trim();
@@ -1678,6 +2148,9 @@ function indicadores(dias) {
       }
       if (!f || f < limite) continue;
 
+      // Las filas marcadas REVISIÓN no ensucian los promedios generales
+      if (String(r[C_REVISION] || '') === 'REVISIÓN') { excluidos++; continue; }
+
       tot++;
       var min = Number(r[26] || 0);
       if (min > 0) { sumaTotal += min; conTiempo++; }
@@ -1691,6 +2164,7 @@ function indicadores(dias) {
       acum(cli, r[6],  min);
       acum(eta, r[5],  min);
       acum(flu, r[4],  min);
+      acum(tip, r[C_TIPO_MAN], min);
       textoLista_(r[18]).concat(textoLista_(r[19])).forEach(function(n) { acum(emp, n, min); });
     }
 
@@ -1705,7 +2179,217 @@ function indicadores(dias) {
     base.por_etapa             = lista(eta);
     base.por_flujo             = lista(flu);
     base.por_empleado          = lista(emp);
+    base.por_tipo              = lista(tip);
+    base.excluidos_revision    = excluidos;
     return base;
+  });
+}
+
+/* ════════════════════════════════════════════════════════════
+   ESTADÍSTICA POR TIPO DE MANIOBRA
+   Regla de oro: segmentar primero por tipo, luego por cliente.
+   Nunca se promedian maniobras de tipos distintos.
+════════════════════════════════════════════════════════════ */
+
+function _percentil_(arr, p) {
+  if (!arr || !arr.length) return 0;
+  var a = arr.slice().sort(function(x, y) { return x - y; });
+  if (a.length === 1) return _redondea_(a[0], 1);
+  var idx = (a.length - 1) * p;
+  var lo  = Math.floor(idx), hi = Math.ceil(idx);
+  var val = lo === hi ? a[lo] : a[lo] + (a[hi] - a[lo]) * (idx - lo);
+  return _redondea_(val, 1);
+}
+function _mediana_(arr) { return _percentil_(arr, 0.5); }
+function _promedio_(arr) {
+  if (!arr || !arr.length) return 0;
+  var s = 0;
+  arr.forEach(function(v) { s += v; });
+  return _redondea_(s / arr.length, 1);
+}
+
+function _nuevoAcum_(nombre) {
+  return { nombre: nombre, total: [], atado: [], ton: [], montaTon: [], ocupacion: [], paro: [] };
+}
+
+function _acumular_(a, r) {
+  var t = Number(r[26] || 0);
+  if (t > 0) a.total.push(t);
+  if (Number(r[C_MIN_ATADO]     || 0) > 0) a.atado.push(Number(r[C_MIN_ATADO]));
+  if (Number(r[C_MIN_TON]       || 0) > 0) a.ton.push(Number(r[C_MIN_TON]));
+  if (Number(r[C_MIN_MONTA_TON] || 0) > 0) a.montaTon.push(Number(r[C_MIN_MONTA_TON]));
+  if (Number(r[C_OCUPACION]     || 0) > 0) a.ocupacion.push(Number(r[C_OCUPACION]));
+  a.paro.push(Number(r[27] || 0));
+}
+
+function _resumir_(a, nMin, semMapa, cfg) {
+  var n = a.total.length;
+  var suficiente = n >= nMin;
+  var mediana = _mediana_(a.total);
+  return {
+    nombre:          a.nombre,
+    n:               n,
+    suficiente:      suficiente,
+    // Con menos de N registros no se publica el tiempo: sería engañoso
+    mediana_min:     suficiente ? mediana            : '',
+    p80_min:         suficiente ? _percentil_(a.total, 0.8) : '',
+    promedio_min:    suficiente ? _promedio_(a.total)  : '',
+    min_max:         suficiente ? _percentil_(a.total, 0) + ' – ' + _percentil_(a.total, 1) : '',
+    med_min_atado:   suficiente ? _mediana_(a.atado)    : '',
+    med_min_ton:     suficiente ? _mediana_(a.ton)      : '',
+    med_monta_ton:   suficiente ? _mediana_(a.montaTon) : '',
+    med_ocupacion:   suficiente ? _mediana_(a.ocupacion): '',
+    paro_promedio:   suficiente ? _promedio_(a.paro)    : '',
+    semaforo:        suficiente ? semaforoPorTipo_(a.nombre, mediana, cfg, semMapa) : 'SIN DATO',
+    mensaje:         suficiente ? '' : 'Datos insuficientes (' + n + ' de ' + nMin + ' registros)'
+  };
+}
+
+/**
+ * Estadística segmentada por tipo de maniobra y, dentro de cada tipo, por cliente.
+ * Excluye las filas marcadas REVISIÓN salvo que se pidan explícitamente.
+ *
+ * opts: { incluirRevision, prueba: 'solo'|'excluir'|'', cliente, tipo }
+ */
+function estadisticasPorTipo(dias, opts) {
+  return seguro_('estadisticasPorTipo', function() {
+    opts = opts || {};
+    dias = Number(dias || 30);
+    var sh = hoja_(HOJA, COLUMNAS);
+    var cfg  = getConfigObj();
+    var nMin = Math.max(1, Number(cfg.N_MINIMO_DASHBOARD || 5));
+    var semMapa = getSemaforos();
+    var vacio = { ok: true, n_minimo: nMin, tipos: [], excluidos_revision: 0,
+                  total_evaluados: 0, sin_tipo: 0 };
+    if (sh.getLastRow() < 2) return vacio;
+
+    var vals = sh.getRange(2, 1, sh.getLastRow() - 1, COLUMNAS.length).getValues();
+    var limite = new Date();
+    limite.setDate(limite.getDate() - dias);
+    limite.setHours(0, 0, 0, 0);
+
+    var porTipo = {}, excluidos = 0, evaluados = 0, sinTipo = 0;
+
+    vals.forEach(function(r) {
+      if (!String(r[0] || '').trim()) return;
+      if (String(r[20] || '') !== 'finalizada') return;
+
+      var ms = toMs_(r[2]) || toMs_(r[22]) || toMs_(r[21]);
+      if (!ms || new Date(ms) < limite) return;
+
+      // Filas anómalas fuera del promedio hasta que un supervisor las valide
+      if (String(r[C_REVISION] || '') === 'REVISIÓN' && !opts.incluirRevision) { excluidos++; return; }
+
+      var esPrueba = String(r[C_PRUEBA] || '') === 'SÍ';
+      if (opts.prueba === 'solo'    && !esPrueba) return;
+      if (opts.prueba === 'excluir' &&  esPrueba) return;
+      if (opts.cliente && String(r[6] || '') !== opts.cliente) return;
+
+      var tipo = String(r[C_TIPO_MAN] || '').trim();
+      if (!tipo) { sinTipo++; tipo = '(sin tipo de maniobra)'; }
+      if (opts.tipo && tipo !== opts.tipo) return;
+
+      evaluados++;
+      if (!porTipo[tipo]) porTipo[tipo] = { acum: _nuevoAcum_(tipo), clientes: {} };
+      _acumular_(porTipo[tipo].acum, r);
+
+      var cli = String(r[6] || '(sin cliente)');
+      if (!porTipo[tipo].clientes[cli]) porTipo[tipo].clientes[cli] = _nuevoAcum_(cli);
+      _acumular_(porTipo[tipo].clientes[cli], r);
+    });
+
+    var tipos = Object.keys(porTipo).map(function(t) {
+      var nodo = porTipo[t];
+      var res  = _resumir_(nodo.acum, nMin, semMapa, cfg);
+      res.clientes = Object.keys(nodo.clientes)
+        .map(function(c) { return _resumir_(nodo.clientes[c], nMin, semMapa, cfg); })
+        .sort(function(a, b) { return b.n - a.n; });
+      return res;
+    }).sort(function(a, b) { return b.n - a.n; });
+
+    return { ok: true, n_minimo: nMin, tipos: tipos, excluidos_revision: excluidos,
+             total_evaluados: evaluados, sin_tipo: sinTipo };
+  });
+}
+
+/**
+ * Análisis de la prueba controlada: compara el mismo tipo de maniobra
+ * según cuántos montacargas se usaron. Responde "¿1 o 2 montacargas?".
+ */
+function analisisPruebaControlada(dias, etiqueta) {
+  return seguro_('analisisPruebaControlada', function() {
+    dias = Number(dias || 365);
+    var sh = hoja_(HOJA, COLUMNAS);
+    if (sh.getLastRow() < 2) return { ok: true, grupos: [], etiquetas: [] };
+
+    var vals = sh.getRange(2, 1, sh.getLastRow() - 1, COLUMNAS.length).getValues();
+    var limite = new Date();
+    limite.setDate(limite.getDate() - dias);
+    limite.setHours(0, 0, 0, 0);
+
+    var cfg   = getConfigObj();
+    var nMin  = 1;   // en una prueba controlada cada registro cuenta
+    var mapa  = {}, etiquetas = {};
+
+    vals.forEach(function(r) {
+      if (String(r[20] || '') !== 'finalizada') return;
+      if (String(r[C_PRUEBA] || '') !== 'SÍ') return;
+      var ms = toMs_(r[2]) || toMs_(r[22]);
+      if (!ms || new Date(ms) < limite) return;
+
+      var etq = String(r[C_ETIQ_PRUEBA] || '(sin etiqueta)');
+      etiquetas[etq] = true;
+      if (etiqueta && etq !== etiqueta) return;
+
+      var nMonta = _numMontacargas_(r);
+      var clave  = String(r[C_TIPO_MAN] || 'Sin tipo') + ' · ' + nMonta + ' montacargas';
+      if (!mapa[clave]) {
+        mapa[clave] = _nuevoAcum_(clave);
+        mapa[clave].tipo = String(r[C_TIPO_MAN] || '');
+        mapa[clave].montacargas = nMonta;
+        mapa[clave].etiqueta = etq;
+      }
+      _acumular_(mapa[clave], r);
+    });
+
+    var grupos = Object.keys(mapa).map(function(k) {
+      var res = _resumir_(mapa[k], nMin, getSemaforos(), cfg);
+      res.tipo        = mapa[k].tipo;
+      res.montacargas = mapa[k].montacargas;
+      res.etiqueta    = mapa[k].etiqueta;
+      return res;
+    }).sort(function(a, b) {
+      return a.tipo === b.tipo ? a.montacargas - b.montacargas : a.tipo.localeCompare(b.tipo, 'es');
+    });
+
+    return { ok: true, grupos: grupos, etiquetas: Object.keys(etiquetas).sort() };
+  });
+}
+
+/** Filas marcadas REVISIÓN pendientes de que un supervisor las valide */
+function getRegistrosEnRevision() {
+  return seguro_('getRegistrosEnRevision', function() {
+    var sh = hoja_(HOJA, COLUMNAS);
+    if (sh.getLastRow() < 2) return { ok: true, filas: [] };
+    var filas = [];
+    sh.getRange(2, 1, sh.getLastRow() - 1, COLUMNAS.length).getValues().forEach(function(r) {
+      if (String(r[C_REVISION] || '') !== 'REVISIÓN') return;
+      filas.push({
+        id:              String(r[0]),
+        folio:           String(r[1] || ''),
+        fecha:           fechaISO_(r[2]),
+        cliente:         String(r[6] || ''),
+        no_unidad:       String(r[7] || ''),
+        tipo_maniobra:   String(r[C_TIPO_MAN] || ''),
+        tiempo_total_min: Number(r[26] || 0),
+        atados:          r[C_ATADOS] === '' ? '' : Number(r[C_ATADOS] || 0),
+        toneladas_netas: r[C_TON]    === '' ? '' : Number(r[C_TON] || 0),
+        min_por_atado:   r[C_MIN_ATADO] === '' ? '' : Number(r[C_MIN_ATADO] || 0),
+        min_por_tonelada:r[C_MIN_TON]   === '' ? '' : Number(r[C_MIN_TON] || 0),
+        motivo_revision: String(r[C_MOTIVO_REV] || '')
+      });
+    });
+    return { ok: true, filas: filas };
   });
 }
 
@@ -1827,7 +2511,7 @@ function diagnostico() {
     var esperadas = [
       [HOJA, COLUMNAS], [HOJA_ETA, COL_ETA], [HOJA_CAT, null], [HOJA_TEMS, COL_TEM],
       [HOJA_EMP, COL_EMP], [HOJA_MON, COL_MON], [HOJA_CAM, COL_CAM],
-      [HOJA_INC, COL_INC], [HOJA_CFG, COL_CFG], [HOJA_USR, COL_USR]
+      [HOJA_SEM, COL_SEM], [HOJA_INC, COL_INC], [HOJA_CFG, COL_CFG], [HOJA_USR, COL_USR]
     ];
 
     esperadas.forEach(function(par) {
@@ -1903,8 +2587,43 @@ function diagnostico() {
       });
     }
 
+    // Calidad del dato de costeo: tipo faltante, sin toneladas/atados y filas en revisión
+    var enRevision = 0, sinTipo = 0, sinCosteo = 0, finalizadas = 0, tiposMalos = {};
+    if (shM && shM.getLastRow() >= 2) {
+      shM.getRange(2, 1, shM.getLastRow() - 1, COLUMNAS.length).getValues().forEach(function(r) {
+        if (String(r[20] || '') !== 'finalizada') return;
+        finalizadas++;
+        if (String(r[C_REVISION] || '') === 'REVISIÓN') enRevision++;
+        var tipo = String(r[C_TIPO_MAN] || '').trim();
+        if (!tipo) sinTipo++;
+        else if (_validarTipoUnico_(tipo)) tiposMalos[tipo] = (tiposMalos[tipo] || 0) + 1;
+        if (!Number(r[C_TON] || 0) && !Number(r[C_ATADOS] || 0)) sinCosteo++;
+      });
+    }
+    if (enRevision) {
+      out.problemas.push(enRevision + ' registro(s) marcados REVISIÓN están excluidos de los promedios. ' +
+                         'Valídalos o corrígelos desde el Dashboard.');
+    }
+    if (sinTipo) {
+      out.problemas.push(sinTipo + ' maniobra(s) finalizadas sin Tipo de maniobra. ' +
+                         'El dashboard no puede segmentarlas: edítalas y asígnales tipo.');
+    }
+    if (sinCosteo) {
+      out.problemas.push(sinCosteo + ' maniobra(s) finalizadas sin toneladas ni atados: ' +
+                         'no producen minutos por tonelada ni por atado.');
+    }
+    Object.keys(tiposMalos).forEach(function(t) {
+      out.problemas.push('El tipo "' + t + '" combina dos maniobras (' + tiposMalos[t] +
+                         ' registros). Sepáralos: un registro = una maniobra.');
+    });
+
     var props = PropertiesService.getScriptProperties().getProperties();
     var pausas = Object.keys(props).filter(function(k) { return k.indexOf('pe_') === 0; });
+
+    out.calidad = {
+      finalizadas: finalizadas, en_revision: enRevision,
+      sin_tipo_maniobra: sinTipo, sin_datos_costeo: sinCosteo
+    };
 
     out.resumen = {
       maniobras_activas:       manActivas,
@@ -1912,6 +2631,8 @@ function diagnostico() {
       etapas_activas:          activas,
       etapas_sin_inicio:       sinInicio,
       pausas_registradas:      pausas.length,
+      registros_en_revision:   enRevision,
+      sin_tipo_maniobra:       sinTipo,
       campos_configurados:     getCamposConfig().length,
       montacargas_registrados: getMontacargas(false).length,
       usuarios:                getUsuarios().length
@@ -2030,6 +2751,9 @@ function onOpen() {
       .addItem('📊 Ver indicadores (30 días)', 'mostrarIndicadores')
       .addItem('🩺 Diagnóstico del sistema', 'mostrarDiagnostico')
       .addItem('🔧 Reparar cronómetros', 'repararCronometros')
+      .addItem('🧮 Recalcular métricas de costeo', 'recalcularMetricas')
+      .addItem('🚩 Resaltar filas en revisión', 'resaltarRevisiones')
+      .addItem('📅 Aplicar formato dd/MM/yyyy', 'formatearFechas')
       .addItem('📧 Reconfigurar triggers', 'configurarTriggers')
       .addToUi();
   } catch (e) {}

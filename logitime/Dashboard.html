@@ -32,6 +32,17 @@
     .tab-panel        { display:none; }
     .tab-panel.active { display:block; }
     .loading-row      { color:var(--muted);font-size:13px;padding:24px;text-align:center; }
+    .empty-state      { text-align:center;padding:36px 20px;color:var(--muted);font-size:13px; }
+
+    /* Tarjeta por tipo de maniobra */
+    .tipo-card   { border:1px solid var(--line);border-radius:12px;padding:16px;margin-bottom:16px;background:var(--bg); }
+    .tipo-head   { display:flex;justify-content:space-between;align-items:flex-start;gap:10px;margin-bottom:12px; }
+    .tipo-nom    { font-size:16px;font-weight:700; }
+    .met-grid    { display:grid;gap:8px;grid-template-columns:repeat(auto-fill,minmax(140px,1fr)); }
+    .met         { background:var(--card);border:1px solid var(--line);border-radius:9px;padding:9px 11px; }
+    .met-k       { font-size:10px;text-transform:uppercase;letter-spacing:.05em;color:var(--muted); }
+    .met-v       { font-size:18px;font-weight:700;margin:3px 0 1px;font-variant-numeric:tabular-nums; }
+    .met-s       { font-size:10px;color:var(--muted); }
   </style>
 </head>
 <body>
@@ -141,7 +152,12 @@
   </div>
 
   <div class="tabs" id="dash-tabs">
-    <button class="active" onclick="Dash.tab('tendencia',this)">Tendencia</button>
+    <button class="active" onclick="Dash.tab('tipo',this)">Por tipo de maniobra ★</button>
+    <button onclick="Dash.tab('prueba',this)">Prueba controlada</button>
+    <button onclick="Dash.tab('revision',this)">
+      En revisión <span id="badge-rev" class="badge ROJO" style="display:none"></span>
+    </button>
+    <button onclick="Dash.tab('tendencia',this)">Tendencia</button>
     <button onclick="Dash.tab('cliente',this)">Por cliente</button>
     <button onclick="Dash.tab('flujo',this)">Por flujo</button>
     <button onclick="Dash.tab('etapa',this)">Por etapa</button>
@@ -150,7 +166,68 @@
     <button onclick="Dash.tab('movimientos',this)">Movimientos</button>
   </div>
 
-  <div id="tab-tendencia" class="tab-panel active">
+  <!-- ══ POR TIPO DE MANIOBRA — vista principal ══ -->
+  <div id="tab-tipo" class="tab-panel active">
+    <div class="card">
+      <div class="filters" style="margin-bottom:14px">
+        <div>
+          <label>Registros anómalos</label>
+          <select id="sel-revision" onchange="Dash.cargarTipos()">
+            <option value="">Excluir los marcados REVISIÓN</option>
+            <option value="1">Incluirlos en el cálculo</option>
+          </select>
+        </div>
+        <div>
+          <label>Prueba controlada</label>
+          <select id="sel-prueba" onchange="Dash.cargarTipos()">
+            <option value="">Incluir todo</option>
+            <option value="excluir">Excluir la prueba</option>
+            <option value="solo">Solo la prueba</option>
+          </select>
+        </div>
+        <div>
+          <label>Cliente</label>
+          <select id="sel-cliente" onchange="Dash.cargarTipos()"><option value="">Todos</option></select>
+        </div>
+      </div>
+      <div id="tipo-aviso"></div>
+      <div id="tipos-cont"></div>
+    </div>
+  </div>
+
+  <!-- ══ PRUEBA CONTROLADA ══ -->
+  <div id="tab-prueba" class="tab-panel">
+    <div class="card">
+      <h2>Prueba controlada · 1 contra 2 montacargas</h2>
+      <p class="muted" style="margin:0 0 12px">
+        Compara el mismo tipo de maniobra según cuántos montacargas se usaron, con la
+        data aislada de la base general.
+      </p>
+      <div class="filters" style="margin-bottom:14px">
+        <div><label>Etiqueta</label>
+          <select id="sel-etiqueta" onchange="Dash.cargarPrueba()"><option value="">Todas</option></select>
+        </div>
+      </div>
+      <div id="prueba-cont"></div>
+    </div>
+  </div>
+
+  <!-- ══ EN REVISIÓN ══ -->
+  <div id="tab-revision" class="tab-panel">
+    <div class="card">
+      <div class="row" style="justify-content:space-between;margin-bottom:10px">
+        <h2 style="margin:0">Registros excluidos por anomalía</h2>
+        <button class="success sm" onclick="Dash.validarSel()">✔ Validar seleccionados</button>
+      </div>
+      <p class="muted" style="margin:0 0 12px">
+        Estas filas tienen velocidades fuera de rango humano y no cuentan en los promedios.
+        Corrígelas en Operaciones o valídalas si el dato es correcto.
+      </p>
+      <div id="mt-revision"></div>
+    </div>
+  </div>
+
+  <div id="tab-tendencia" class="tab-panel">
     <div class="card"><h2>Tendencia de maniobras finalizadas</h2><div id="mt-serie"></div></div>
   </div>
 
@@ -530,6 +607,20 @@ var Dash = {
       { key: 'promedio_est_min',     label: 'Estimado', tipo: 'min' },
       { key: 'promedio_retraso_min', label: 'Retraso promedio', tipo: 'min' }
     ]});
+    Dash.t.revision = MT.crear({ mount: 'mt-revision', nombre: 'en_revision', idKey: 'id',
+      vacio: 'Ningún registro marcado para revisión. La base está limpia.', cols: [
+      { key: 'folio',            label: 'Folio' },
+      { key: 'fecha',            label: 'Fecha' },
+      { key: 'cliente',          label: 'Cliente' },
+      { key: 'no_unidad',        label: 'Unidad' },
+      { key: 'tipo_maniobra',    label: 'Tipo de maniobra' },
+      { key: 'tiempo_total_min', label: 'Total', tipo: 'min' },
+      { key: 'atados',           label: 'Atados', tipo: 'num' },
+      { key: 'toneladas_netas',  label: 'Ton netas', tipo: 'num' },
+      { key: 'min_por_atado',    label: 'Min/atado', tipo: 'num' },
+      { key: 'min_por_tonelada', label: 'Min/ton', tipo: 'num' },
+      { key: 'motivo_revision',  label: 'Motivo' }
+    ]});
     Dash.t.mov = MT.crear({ mount: 'mt-mov', nombre: 'movimientos', cols: [
       { key: 'folio',          label: 'Folio' },
       { key: 'fecha',          label: 'Fecha' },
@@ -593,6 +684,159 @@ var Dash = {
 
     Dash.cargarSerie();
     Dash.cargarDetalle(dias);
+    Dash.cargarTipos();
+    Dash.cargarPrueba();
+    Dash.cargarRevision();
+  },
+
+  /* ══ Estadística por tipo de maniobra ══ */
+  cargarTipos: function() {
+    if (!STATE.usr) return;
+    var opts = {
+      incluirRevision: $('sel-revision').value === '1',
+      prueba:          $('sel-prueba').value,
+      cliente:         $('sel-cliente').value
+    };
+    $('tipos-cont').innerHTML = '<div class="loading-row">Calculando medianas y percentiles…</div>';
+    API.call('estadisticasPorTipo', [$('sel-dias').value, opts], function(res) {
+      Dash.renderTipos(res);
+    }, function(msg) {
+      $('tipos-cont').innerHTML = '<div class="aviso err">' + UI.esc(msg) + '</div>';
+    });
+  },
+
+  renderTipos: function(res) {
+    var avisos = [];
+    if (res.excluidos_revision) {
+      avisos.push(res.excluidos_revision + ' registro(s) quedaron fuera por estar marcados REVISIÓN.');
+    }
+    if (res.sin_tipo) {
+      avisos.push(res.sin_tipo + ' registro(s) no tienen Tipo de maniobra y se agruparon aparte. ' +
+                  'Asígnales tipo desde Operaciones para que el reporte sea defendible.');
+    }
+    $('tipo-aviso').innerHTML = avisos.map(function(a) {
+      return '<div class="aviso warn">' + UI.esc(a) + '</div>';
+    }).join('');
+
+    if (!res.tipos.length) {
+      $('tipos-cont').innerHTML = '<div class="empty-state">Sin maniobras finalizadas en este período.</div>';
+      return;
+    }
+
+    $('tipos-cont').innerHTML = res.tipos.map(function(t) {
+      return '<div class="tipo-card">' +
+        '<div class="tipo-head">' +
+          '<div><div class="tipo-nom">' + UI.esc(t.nombre) + '</div>' +
+            '<div class="muted">N = ' + t.n + ' registro' + (t.n === 1 ? '' : 's') +
+            (t.suficiente ? ' · rango ' + UI.esc(t.min_max) + ' min' : '') + '</div></div>' +
+          (t.suficiente
+            ? '<span class="badge ' + (t.semaforo === 'ÁMBAR' ? 'AMBAR' : UI.esc(t.semaforo)) + '">' +
+              UI.esc(t.semaforo) + '</span>'
+            : '<span class="badge NEUTRO">Datos insuficientes</span>') +
+        '</div>' +
+
+        (t.suficiente
+          ? '<div class="met-grid">' +
+              Dash.met('Mediana',        UI.fmtMin(t.mediana_min), 'el tiempo típico') +
+              Dash.met('Percentil 80',   UI.fmtMin(t.p80_min),     '8 de cada 10 caben aquí') +
+              Dash.met('Promedio',       UI.fmtMin(t.promedio_min),'sensible a atípicos') +
+              Dash.met('Min / atado',    t.med_min_atado  || '—',  'mediana') +
+              Dash.met('Min / tonelada', t.med_min_ton    || '—',  'mediana') +
+              Dash.met('Min-mont / ton', t.med_monta_ton  || '—',  'indicador de costo') +
+              Dash.met('Ocupación spot', UI.fmtMin(t.med_ocupacion), 'mediana') +
+              Dash.met('Paro promedio',  UI.fmtMin(t.paro_promedio), 'tiempo detenido') +
+            '</div>'
+          : '<div class="aviso warn" style="margin:10px 0 0">' + UI.esc(t.mensaje) +
+            '. No se publica el tiempo para no reportar un dato que no se sostiene.</div>') +
+
+        '<div class="scroll" style="margin-top:12px"><table class="dt-table">' +
+          '<tr><th>Cliente</th><th class="num">N</th><th class="num">Mediana</th><th class="num">P80</th>' +
+          '<th class="num">Min/atado</th><th class="num">Min/ton</th><th class="num">Min-mont/ton</th><th>Semáforo</th></tr>' +
+          t.clientes.map(function(c) {
+            if (!c.suficiente) {
+              return '<tr><td>' + UI.esc(c.nombre) + '</td><td class="num">' + c.n + '</td>' +
+                '<td colspan="6" class="muted">' + UI.esc(c.mensaje) + '</td></tr>';
+            }
+            return '<tr><td>' + UI.esc(c.nombre) + '</td>' +
+              '<td class="num">' + c.n + '</td>' +
+              '<td class="num">' + UI.fmtMin(c.mediana_min) + '</td>' +
+              '<td class="num">' + UI.fmtMin(c.p80_min) + '</td>' +
+              '<td class="num">' + (c.med_min_atado || '—') + '</td>' +
+              '<td class="num">' + (c.med_min_ton || '—') + '</td>' +
+              '<td class="num">' + (c.med_monta_ton || '—') + '</td>' +
+              '<td><span class="badge ' + (c.semaforo === 'ÁMBAR' ? 'AMBAR' : UI.esc(c.semaforo)) + '">' +
+                UI.esc(c.semaforo) + '</span></td></tr>';
+          }).join('') +
+        '</table></div>' +
+      '</div>';
+    }).join('');
+  },
+
+  met: function(k, v, sub) {
+    return '<div class="met"><div class="met-k">' + UI.esc(k) + '</div>' +
+      '<div class="met-v">' + v + '</div>' +
+      '<div class="met-s">' + UI.esc(sub) + '</div></div>';
+  },
+
+  /* ══ Prueba controlada ══ */
+  cargarPrueba: function() {
+    if (!STATE.usr) return;
+    API.call('analisisPruebaControlada', [$('sel-dias').value, $('sel-etiqueta').value], function(res) {
+      var sel = $('sel-etiqueta');
+      var prev = sel.value;
+      sel.innerHTML = '<option value="">Todas</option>' +
+        (res.etiquetas || []).map(function(e) { return '<option>' + UI.esc(e) + '</option>'; }).join('');
+      sel.value = prev;
+
+      if (!res.grupos.length) {
+        $('prueba-cont').innerHTML = '<div class="empty-state">' +
+          'Sin registros marcados como prueba controlada.<br>' +
+          '<span style="font-size:12px">Marca la casilla "Prueba controlada" al capturar la maniobra.</span></div>';
+        return;
+      }
+      $('prueba-cont').innerHTML =
+        '<div class="scroll"><table class="dt-table">' +
+        '<tr><th>Tipo de maniobra</th><th class="num">Montacargas</th><th class="num">N</th>' +
+        '<th class="num">Mediana</th><th class="num">P80</th><th class="num">Min/ton</th>' +
+        '<th class="num">Min-mont/ton</th><th>Etiqueta</th></tr>' +
+        res.grupos.map(function(g) {
+          return '<tr><td>' + UI.esc(g.tipo || '—') + '</td>' +
+            '<td class="num"><b>' + g.montacargas + '</b></td>' +
+            '<td class="num">' + g.n + '</td>' +
+            '<td class="num">' + UI.fmtMin(g.mediana_min) + '</td>' +
+            '<td class="num">' + UI.fmtMin(g.p80_min) + '</td>' +
+            '<td class="num">' + (g.med_min_ton || '—') + '</td>' +
+            '<td class="num">' + (g.med_monta_ton || '—') + '</td>' +
+            '<td>' + UI.esc(g.etiqueta || '—') + '</td></tr>';
+        }).join('') + '</table></div>' +
+        '<p class="muted" style="margin-top:12px">' +
+        'Compara <b>Min-mont/ton</b> entre las filas del mismo tipo: es la métrica que dice si ' +
+        'el segundo montacargas se paga solo. Si baja poco, duplicar equipo no rinde.</p>';
+    });
+  },
+
+  /* ══ Registros en revisión ══ */
+  cargarRevision: function() {
+    if (!STATE.usr) return;
+    API.call('getRegistrosEnRevision', [], function(res) {
+      var filas = (res && res.filas) || [];
+      MT.set(Dash.t.revision, filas);
+      var b = $('badge-rev');
+      b.textContent = filas.length;
+      b.style.display = filas.length ? '' : 'none';
+    });
+  },
+
+  validarSel: function() {
+    var t = Dash.t.revision;
+    var ids = t.datos.filter(function(r) { return t.sel[r._i]; }).map(function(r) { return r.id; });
+    if (!ids.length) { UI.toast('Selecciona al menos un registro', 'err'); return; }
+    if (!confirm('¿Validar ' + ids.length + ' registro(s)? Volverán a contar en los promedios.')) return;
+    API.call('validarRegistros', [ids, (STATE.usr && STATE.usr.nombre) || ''], function(r) {
+      UI.toast('✓ ' + r.validados + ' registro(s) validados', 'ok');
+      Dash.cargarRevision();
+      Dash.cargarTipos();
+    });
   },
 
   cargarSerie: function() {
@@ -637,6 +881,21 @@ var Dash = {
         '<span>' + s[1] + ': <strong>' + s[2] + '</strong>' + pct + '</span></div>';
     }).join('<span style="color:var(--line);margin:0 6px">|</span>');
     $('card-semaforo').style.display = total ? '' : 'none';
+
+    if (k.excluidos_revision) {
+      $('dash-aviso').innerHTML += '<div class="aviso warn">' + k.excluidos_revision +
+        ' registro(s) marcados REVISIÓN están excluidos de estos indicadores. ' +
+        'Revísalos en la pestaña "En revisión".</div>';
+    }
+
+    // Alimenta el filtro de cliente de la vista por tipo
+    var selCli = $('sel-cliente');
+    if (selCli) {
+      var prev = selCli.value;
+      selCli.innerHTML = '<option value="">Todos</option>' +
+        (k.por_cliente || []).map(function(c) { return '<option>' + UI.esc(c.nombre) + '</option>'; }).join('');
+      selCli.value = prev;
+    }
 
     MT.set(Dash.t.cliente,  k.por_cliente  || []);
     MT.set(Dash.t.flujo,    k.por_flujo    || []);
