@@ -158,6 +158,55 @@
     .empty-state     { text-align:center;padding:40px 20px;color:var(--muted); }
     .badge-count     { display:inline-block;background:var(--brand);color:#fff;border-radius:999px;
                        font-size:10px;font-weight:700;padding:1px 7px;vertical-align:middle;margin-left:2px; }
+
+    /* ════════════════════════════════════════════
+       TELÉFONO
+    ════════════════════════════════════════════ */
+    @media (max-width:760px) {
+      /* Una maniobra por pantalla: nada de columnas apretadas */
+      #curso { grid-template-columns:1fr !important; }
+      .man-title    { font-size:17px; }
+      .man-total-val{ font-size:26px; }
+      .eta-item     { padding:11px 11px; }
+      .eta-icon     { width:26px;height:26px;font-size:12px; }
+      .eta-name     { font-size:14px; }
+      .eta-time.active { font-size:19px; }
+
+      /* Los botones de la maniobra son la acción principal: que se puedan picar */
+      .action-bar   { gap:8px; }
+      .action-bar button { flex:1 1 calc(50% - 4px);justify-content:center; }
+      .action-bar .spacer { display:none; }
+      .action-bar button.danger { flex:0 0 52px; }
+
+      .prod-grid    { grid-template-columns:repeat(auto-fit,minmax(76px,1fr)); }
+      .prod-v       { font-size:17px; }
+
+      .radio-op     { flex:1 1 calc(50% - 4px);justify-content:center;padding:12px 10px;font-size:15px; }
+      .section-toggle { padding:6px 0; }
+
+      /* Panel de indicadores */
+      .pnl-2col     { grid-template-columns:1fr; }
+      .kpi-strip    { grid-template-columns:repeat(2,1fr);gap:9px; }
+      .kpi-card     { padding:12px 12px; }
+      .kpi-v        { font-size:21px; }
+      .met-grid     { grid-template-columns:repeat(2,1fr); }
+      .tipo-nom     { font-size:15px; }
+      .pnl-tabs     { overflow-x:auto;flex-wrap:nowrap;scrollbar-width:none; }
+      .pnl-tabs::-webkit-scrollbar { display:none; }
+      .pnl-tabs button { flex:0 0 auto;white-space:nowrap; }
+      .dist-bar     { height:38px; }
+      .cli-tabla    { font-size:12px; }
+
+      .campo-row    { gap:8px; }
+      .campo-row .nom { flex:1 1 100%; }
+    }
+
+    @media (max-width:400px) {
+      .action-bar button { flex:1 1 100%; }
+      .action-bar button.danger { flex:1 1 100%; }
+      .kpi-strip { grid-template-columns:1fr 1fr; }
+      .met-grid  { grid-template-columns:1fr 1fr; }
+    }
     .live-bar        { display:flex;align-items:center;gap:7px;font-size:11px;color:var(--muted); }
     .campo-row       { display:flex;align-items:center;gap:10px;padding:7px 10px;border-radius:8px;
                        border:1px solid var(--line);margin-bottom:6px;background:var(--bg);flex-wrap:wrap; }
@@ -800,8 +849,8 @@
       <div><label>Piezas sueltas</label><input type="number" min="0" id="edit-piezas_sueltas"></div>
       <div><label>Hora posicionamiento</label><input type="time" id="edit-hora_posicionamiento"></div>
       <div><label>Hora liberación</label><input type="time" id="edit-hora_liberacion"></div>
-      <div><label>Montacarguistas</label><select id="edit-montacarguistas" multiple></select></div>
-      <div><label>Montacargas asignados</label><select id="edit-montacargas" multiple></select></div>
+      <div style="grid-column:1/-1"><label>Montacarguistas</label><div id="edit-montacarguistas"></div></div>
+      <div style="grid-column:1/-1"><label>Montacargas asignados</label><div id="edit-montacargas"></div></div>
       <div style="grid-column:1/-1"><label>Observaciones</label><textarea id="edit-obs" style="min-height:56px"></textarea></div>
     </div>
     <div class="row" style="margin-top:16px;justify-content:flex-end;gap:8px">
@@ -945,6 +994,85 @@ var UI = {
 var $ = UI.$;
 
 /* ══════════════════════════════════════════════════════════════
+   CHIPS — selección múltiple con un solo toque
+   <select multiple> exige Ctrl/⌘ en escritorio y un gesto que casi
+   nadie descubre en teléfono. Estos chips funcionan igual en ambos.
+══════════════════════════════════════════════════════════════ */
+var Chips = {
+  html: function(id, lista, seleccionados) {
+    lista = lista || [];
+    var sel = {};
+    [].concat(seleccionados || []).forEach(function(v) { sel[String(v).trim()] = true; });
+
+    if (!lista.length) {
+      return '<div class="chips-wrap" id="' + id + '" data-chips="1">' +
+        '<div class="chips-vacio">Sin opciones dadas de alta todavía.</div></div>';
+    }
+    var filtro = lista.length > 10
+      ? '<input class="chips-filtro" placeholder="Filtrar…" oninput="Chips.filtrar(this)">'
+      : '';
+    return '<div class="chips-wrap" id="' + id + '" data-chips="1">' + filtro +
+      '<div class="chips">' +
+        lista.map(function(v) {
+          return '<button type="button" class="chip' + (sel[v] ? ' on' : '') + '" ' +
+            'data-v="' + UI.esc(v) + '" onclick="Chips.toggle(this)">' + UI.esc(v) + '</button>';
+        }).join('') +
+      '</div><div class="chips-cuenta"></div></div>';
+  },
+
+  toggle: function(btn) {
+    btn.classList.toggle('on');
+    Chips.cuenta(btn.closest('.chips-wrap'));
+  },
+
+  filtrar: function(input) {
+    var q = (input.value || '').trim().toLowerCase();
+    input.closest('.chips-wrap').querySelectorAll('.chip').forEach(function(c) {
+      var visible = !q || c.dataset.v.toLowerCase().indexOf(q) >= 0;
+      // Un chip ya elegido nunca se esconde: debe poder quitarse
+      c.style.display = (visible || c.classList.contains('on')) ? '' : 'none';
+    });
+  },
+
+  cuenta: function(wrap) {
+    if (!wrap) return;
+    var n = wrap.querySelectorAll('.chip.on').length;
+    var el = wrap.querySelector('.chips-cuenta');
+    if (el) el.textContent = n ? n + ' seleccionado' + (n === 1 ? '' : 's') : '';
+  },
+
+  val: function(id) {
+    var w = $(id);
+    if (!w) return [];
+    return Array.prototype.slice.call(w.querySelectorAll('.chip.on'))
+      .map(function(c) { return c.dataset.v; });
+  },
+
+  set: function(id, valores) {
+    var w = $(id);
+    if (!w) return;
+    var sel = {};
+    // Acepta un arreglo o el texto "A; B; C" tal como se guarda en la hoja
+    (Object.prototype.toString.call(valores) === '[object Array]'
+      ? valores
+      : String(valores || '').split(';')
+    ).forEach(function(v) { sel[String(v).trim()] = true; });
+
+    w.querySelectorAll('.chip').forEach(function(c) {
+      c.classList.toggle('on', !!sel[c.dataset.v]);
+    });
+    Chips.cuenta(w);
+  },
+
+  limpiar: function(id) {
+    var w = $(id);
+    if (!w) return;
+    w.querySelectorAll('.chip.on').forEach(function(c) { c.classList.remove('on'); });
+    Chips.cuenta(w);
+  }
+};
+
+/* ══════════════════════════════════════════════════════════════
    API — envoltura única de google.script.run
    · normaliza {ok:false,error} como fallo
    · deja traza de cada llamada para el panel de Soporte
@@ -1072,10 +1200,61 @@ var DT = {
       '<div class="dt-toolbar" id="' + t.id + '-tools"></div>' +
       '<div class="dt-chips" id="' + t.id + '-chips"></div>' +
       '<div id="' + t.id + '-selbar"></div>' +
-      '<div class="dt-wrap scroll-y"><table class="dt-table">' +
+      '<div class="dt-wrap scroll-y" id="' + t.id + '-tabla"><table class="dt-table">' +
         '<thead id="' + t.id + '-head"></thead><tbody id="' + t.id + '-body"></tbody>' +
       '</table></div>' +
+      '<div class="dt-cards" id="' + t.id + '-cards"></div>' +
       '<div class="dt-foot" id="' + t.id + '-foot"></div>';
+  },
+
+  /** Cada fila se vuelve una tarjeta con pares etiqueta/valor */
+  renderCards: function(t, filas, pagina, desde) {
+    document.getElementById(t.id + '-tabla').style.display = 'none';
+    var cont = document.getElementById(t.id + '-cards');
+
+    if (!pagina.length) {
+      cont.innerHTML = '<div class="dt-empty">' +
+        (filas.length === 0 && !t.buscar && !Object.keys(t.valFiltros).length
+          ? UI.esc(t.vacio)
+          : 'Ningún registro coincide con los filtros aplicados.') + '</div>';
+      DT._pintarSelbar(t);
+      DT._pintarFoot(t, filas.length, desde, 0);
+      return;
+    }
+
+    var cols = t.cols.filter(function(c) { return c.tipo !== 'acciones'; });
+    var acc  = t.cols.filter(function(c) { return c.tipo === 'acciones'; });
+    var titulo = cols[0];
+    // En pantalla chica solo caben unos cuantos datos por tarjeta
+    var resto = (t.movil && t.movil.length)
+      ? cols.filter(function(c) { return t.movil.indexOf(c.key) >= 0 && c.key !== titulo.key; })
+      : cols.slice(1, 7);
+
+    cont.innerHTML = pagina.map(function(r, i) {
+      var rid = String(r[t.idKey]);
+      var sel = !!t.sel[rid];
+      return '<div class="dt-cardrow' + (sel ? ' sel' : '') + '">' +
+        '<div class="dt-cardhead">' +
+          (t.seleccionable
+            ? '<input type="checkbox" ' + (sel ? 'checked' : '') +
+              ' onclick="DT.selFila(\'' + t.id + '\',\'' + rid + '\',' + (desde + i) + ',event)">'
+            : '') +
+          '<span class="dt-cardtitle">' + DT.celda(r, titulo) + '</span>' +
+        '</div>' +
+        '<div class="dt-cardgrid">' +
+          resto.map(function(c) {
+            return '<div><div class="dt-cardk">' + UI.esc(c.label) + '</div>' +
+              '<div class="dt-cardv">' + DT.celda(r, c) + '</div></div>';
+          }).join('') +
+        '</div>' +
+        (acc.length
+          ? '<div class="dt-cardacc">' + acc.map(function(c) { return DT.celda(r, c); }).join('') + '</div>'
+          : '') +
+      '</div>';
+    }).join('');
+
+    DT._pintarSelbar(t);
+    DT._pintarFoot(t, filas.length, desde, pagina.length);
   },
 
   _pintarFiltros: function(t) {
@@ -1180,6 +1359,11 @@ var DT = {
     return out;
   },
 
+  /** En teléfono la rejilla se vuelve ilegible: se cambia a tarjetas */
+  esMovil: function() {
+    return window.matchMedia('(max-width: 760px)').matches;
+  },
+
   render: function(t) {
     if (typeof t === 'string') t = DT._reg[t];
     var filas = DT.filtrar(t);
@@ -1187,6 +1371,13 @@ var DT = {
     var desde = t.pagina * t.pageSize;
     if (desde >= total) { t.pagina = 0; desde = 0; }
     var pagina = filas.slice(desde, desde + t.pageSize);
+
+    if (DT.esMovil()) {
+      DT.renderCards(t, filas, pagina, desde);
+      return;
+    }
+    document.getElementById(t.id + '-tabla').style.display = '';
+    document.getElementById(t.id + '-cards').innerHTML = '';
 
     // Cabecera
     var head = '<tr>';
@@ -1484,9 +1675,9 @@ var CAMPO_META = {
   cliente:          { tipo: 'select', cat: 'CLIENTES', vacio: '— Selecciona —' },
   no_unidad:        { tipo: 'text', ph: 'TL-1234' },
   tipo_equipo:      { tipo: 'select', cat: 'TIPOS_EQUIPO', vacio: '—' },
-  montacarguistas:  { tipo: 'multi', cat: 'EMPLEADOS', hint: 'Ctrl/⌘ para elegir varios' },
-  montacargas:      { tipo: 'multi', cat: 'MONTACARGAS', hint: 'Unidades del inventario' },
-  ayudantes:        { tipo: 'multi', cat: 'EMPLEADOS' },
+  montacarguistas:  { tipo: 'multi', cat: 'EMPLEADOS',   full: true, hint: 'Toca para elegir uno o varios' },
+  montacargas:      { tipo: 'multi', cat: 'MONTACARGAS', full: true, hint: 'Unidades del inventario' },
+  ayudantes:        { tipo: 'multi', cat: 'EMPLEADOS',   full: true },
   material:         { tipo: 'select', cat: 'MATERIALES', vacio: '—' },
   presentacion:     { tipo: 'select', cat: 'PRESENTACIONES', vacio: '—' },
   cant_piezas:      { tipo: 'number', step: 'any' },
@@ -1514,6 +1705,16 @@ var App = {
     document.addEventListener('visibilitychange', function() {
       if (!document.hidden) Curso.tick();
     });
+
+    // Al girar el teléfono las tablas cambian entre rejilla y tarjetas
+    var mq = window.matchMedia('(max-width: 760px)');
+    var repintar = function() {
+      Object.keys(DT._reg).forEach(function(k) { DT.render(DT._reg[k]); });
+      STATE.cursoSig = '';          // fuerza redibujar las tarjetas de maniobra
+      Curso.render(true);
+    };
+    if (mq.addEventListener) mq.addEventListener('change', repintar);
+    else if (mq.addListener) mq.addListener(repintar);
   },
 
   cargarCatalogos: function() {
@@ -1533,8 +1734,8 @@ var App = {
       UI.opts('edit-material',      c.MATERIALES, '—');
       UI.opts('edit-tipo_maniobra', c.TIPOS_MANIOBRA, '—');
       UI.opts('edit-aditamento',    c.ADITAMENTOS, '—');
-      UI.opts('edit-montacarguistas', c.EMPLEADOS);
-      UI.opts('edit-montacargas',     c.MONTACARGAS);
+      $('edit-montacarguistas').innerHTML = Chips.html('chips-edit-emp',   c.EMPLEADOS,   []);
+      $('edit-montacargas').innerHTML     = Chips.html('chips-edit-monta', c.MONTACARGAS, []);
 
       App.camposExtra(c);
 
@@ -1677,10 +1878,8 @@ var Nueva = {
     Object.keys(conservar).forEach(function(k) {
       var meta = CAMPO_META[k] || {};
       var el = $(k);
-      if (meta.tipo === 'multi' && el) {
-        var set = {};
-        [].concat(conservar[k] || []).forEach(function(v) { set[v] = true; });
-        Array.prototype.slice.call(el.options).forEach(function(o) { o.selected = !!set[o.value]; });
+      if (meta.tipo === 'multi') {
+        Chips.set(k, conservar[k]);
       } else if (meta.tipo === 'radio') {
         var r = document.querySelector('input[name="rd-' + k + '"][value="' + conservar[k] + '"]');
         if (r) r.checked = true;
@@ -1719,8 +1918,7 @@ var Nueva = {
         (meta.vacio ? '<option value="">' + UI.esc(meta.vacio) + '</option>' : '') +
         lista.map(function(v) { return '<option>' + UI.esc(v) + '</option>'; }).join('') + '</select>';
     } else if (meta.tipo === 'multi') {
-      ctrl = '<select id="' + c.campo + '" multiple>' +
-        lista.map(function(v) { return '<option>' + UI.esc(v) + '</option>'; }).join('') + '</select>';
+      ctrl = Chips.html(c.campo, lista, []);
     } else if (meta.tipo === 'textarea') {
       ctrl = '<textarea id="' + c.campo + '" placeholder="' + UI.esc(meta.ph || '') + '"></textarea>';
     } else if (meta.tipo === 'sino') {
@@ -1745,9 +1943,9 @@ var Nueva = {
       var r = document.querySelector('input[name="rd-' + campo + '"]:checked');
       return r ? r.value : '';
     }
+    if (meta.tipo === 'multi') return Chips.val(campo);
     var el = $(campo);
-    if (!el) return meta.tipo === 'multi' ? [] : '';
-    if (meta.tipo === 'multi') return UI.multiVal(campo);
+    if (!el) return '';
     if (meta.tipo === 'check') return !!el.checked;
     if (meta.tipo === 'sino')  return !!el.value;
     return el.value;
@@ -1856,10 +2054,10 @@ var Nueva = {
     STATE.campos.forEach(function(c) {
       var meta = CAMPO_META[c.campo] || {};
       if (meta.tipo === 'radio') return;              // el turno se conserva
+      if (meta.tipo === 'multi') { Chips.limpiar(c.campo); return; }
       var el = $(c.campo);
       if (!el) return;
-      if (meta.tipo === 'multi') Array.prototype.slice.call(el.options).forEach(function(o) { o.selected = false; });
-      else if (meta.tipo === 'check') el.checked = false;
+      if (meta.tipo === 'check') el.checked = false;
       else if (c.campo === 'cant_equipos') el.value = '1';
       else if (c.campo === 'fecha') el.value = new Date().toISOString().slice(0, 10);
       else if (c.campo !== 'flujo') el.value = '';
@@ -2218,8 +2416,8 @@ var Curso = {
     $('edit-piezas_sueltas').value       = m.piezas_sueltas === '' ? '' : m.piezas_sueltas;
     $('edit-hora_posicionamiento').value = m.hora_posicionamiento || '';
     $('edit-hora_liberacion').value      = m.hora_liberacion || '';
-    UI.setMulti('edit-montacarguistas', m.montacarguistas);
-    UI.setMulti('edit-montacargas',     m.montacargas);
+    Chips.set('chips-edit-emp',   m.montacarguistas);
+    Chips.set('chips-edit-monta', m.montacargas);
     UI.show('modal-edit');
   },
   cerrarEdit: function() { UI.hide('modal-edit'); STATE.editId = ''; },
@@ -2233,8 +2431,8 @@ var Curso = {
       tipo_equipo:     $('edit-tipo_equipo').value,
       material:        $('edit-material').value,
       observaciones:   $('edit-obs').value,
-      montacarguistas: UI.multiVal('edit-montacarguistas'),
-      montacargas:     UI.multiVal('edit-montacargas'),
+      montacarguistas: Chips.val('chips-edit-emp'),
+      montacargas:     Chips.val('chips-edit-monta'),
       tipo_maniobra:        $('edit-tipo_maniobra').value,
       aditamento:           $('edit-aditamento').value,
       toneladas_netas:      $('edit-toneladas_netas').value,
@@ -2326,6 +2524,9 @@ var Lista = {
         seleccionable: Auth.esMaster(),
         acciones: acciones,
         vacio: 'Aún no hay maniobras registradas.',
+        // Lo que se muestra en cada tarjeta cuando se ve desde el teléfono
+        movil: ['fecha', 'tipo_maniobra', 'cliente', 'no_unidad', 'estado',
+                'tiempo_total_min', 'min_por_tonelada', 'revision'],
         filtros: [
           { key: 'fecha',             label: 'Fecha', tipo: 'fecha' },
           { key: 'tipo_maniobra',     label: 'Tipo de maniobra' },
@@ -2989,6 +3190,7 @@ var Panel = {
       Panel.dtRev = DT.crear({
         mount: 'dt-revision', nombre: 'en_revision', idKey: 'id',
         vacio: 'Ningún registro marcado para revisión. La base está limpia.',
+        movil: ['fecha', 'cliente', 'tipo_maniobra', 'tiempo_total_min', 'min_por_atado', 'motivo_revision'],
         filtros: [{ key: 'tipo_maniobra', label: 'Tipo' }, { key: 'cliente', label: 'Cliente' }],
         acciones: [
           { label: '✔ Validar', clase: 'success',

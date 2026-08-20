@@ -43,6 +43,19 @@
     .met-k       { font-size:10px;text-transform:uppercase;letter-spacing:.05em;color:var(--muted); }
     .met-v       { font-size:18px;font-weight:700;margin:3px 0 1px;font-variant-numeric:tabular-nums; }
     .met-s       { font-size:10px;color:var(--muted); }
+
+    @media (max-width:760px) {
+      .filters > div   { min-width:0;flex:1 1 calc(50% - 5px); }
+      .kpi-grid        { grid-template-columns:repeat(2,1fr);gap:9px; }
+      .kpi-val         { font-size:21px; }
+      .met-grid        { grid-template-columns:repeat(2,1fr); }
+      .bar-label       { width:96px; }
+      .tipo-card       { padding:13px; }
+      .tipo-nom        { font-size:15px; }
+      #dash-tabs       { overflow-x:auto;flex-wrap:nowrap;scrollbar-width:none; }
+      #dash-tabs::-webkit-scrollbar { display:none; }
+      #dash-tabs button{ flex:0 0 auto;white-space:nowrap; }
+    }
   </style>
 </head>
 <body>
