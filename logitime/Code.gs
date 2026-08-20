@@ -172,7 +172,8 @@ var COLUMNAS = [
   'Hora posicionamiento', 'Hora liberación', 'Min ocupación spot',
   'Min por atado', 'Min por tonelada', 'Min montacargas', 'Min montacargas por ton',
   'Prueba controlada', 'Etiqueta prueba',
-  'Revisión', 'Motivo revisión', 'Validado por'
+  'Revisión', 'Motivo revisión', 'Validado por',
+  'Min por tarima'
 ];
 
 // Índices de las columnas nuevas (para no contar a mano)
@@ -180,7 +181,9 @@ var C_TIPO_MAN = 40, C_TON = 41, C_ATADOS = 42, C_PZAS = 43, C_ADIT = 44,
     C_H_POS = 45, C_H_LIB = 46, C_OCUPACION = 47,
     C_MIN_ATADO = 48, C_MIN_TON = 49, C_MIN_MONTA = 50, C_MIN_MONTA_TON = 51,
     C_PRUEBA = 52, C_ETIQ_PRUEBA = 53,
-    C_REVISION = 54, C_MOTIVO_REV = 55, C_VALIDADO = 56;
+    C_REVISION = 54, C_MOTIVO_REV = 55, C_VALIDADO = 56,
+    C_MIN_TARIMA = 57;
+var C_MIN_PIEZA = 30;   // columna original "Min/pieza", ahora sobre piezas sueltas
 
 // ETAPAS (19 cols)
 // idx: 0=ID 1=ID_man 2=Folio 3=Num 4=Nombre 5=Estado
@@ -659,10 +662,14 @@ function _calcularMetricas_(row, cfg) {
   var efectivo  = Math.max(0, totalMin - paroMin);
   var toneladas = Number(row[C_TON] || 0);
   var atados    = Number(row[C_ATADOS] || 0);
+  var piezas    = Number(row[C_PZAS] || 0) || Number(row[12] || 0);  // piezas sueltas, o el campo viejo
+  var tarimas   = Number(row[14] || 0);
   var nMonta    = _numMontacargas_(row);
 
   var minAtado    = atados    > 0 ? _redondea_(efectivo / atados, 2)    : '';
   var minTon      = toneladas > 0 ? _redondea_(efectivo / toneladas, 2) : '';
+  var minPieza    = piezas    > 0 ? _redondea_(efectivo / piezas, 2)    : '';
+  var minTarima   = tarimas   > 0 ? _redondea_(efectivo / tarimas, 2)   : '';
   var minMonta    = _redondea_(totalMin * nMonta, 1);
   var minMontaTon = toneladas > 0 ? _redondea_(minMonta / toneladas, 2) : '';
 
@@ -690,6 +697,8 @@ function _calcularMetricas_(row, cfg) {
     ocupacion:    ocupacion,
     minAtado:     minAtado,
     minTon:       minTon,
+    minPieza:     minPieza,
+    minTarima:    minTarima,
     minMonta:     minMonta,
     minMontaTon:  minMontaTon,
     revision:     motivos.length ? 'REVISIÓN' : 'OK',
@@ -704,6 +713,8 @@ function _aplicarMetricas_(row, cfg, mapaSem) {
   row[C_OCUPACION]     = m.ocupacion || '';
   row[C_MIN_ATADO]     = m.minAtado;
   row[C_MIN_TON]       = m.minTon;
+  row[C_MIN_PIEZA]     = m.minPieza;
+  row[C_MIN_TARIMA]    = m.minTarima;
   row[C_MIN_MONTA]     = m.minMonta;
   row[C_MIN_MONTA_TON] = m.minMontaTon;
   row[36]              = semaforoPorTipo_(row[C_TIPO_MAN], row[26], cfg, mapaSem);
@@ -1470,7 +1481,7 @@ function iniciarManiobra(data) {
     var idEtapa   = _crearEtapa(shEta, id, folio, 1, primera, tiempoEst);
 
     // El montacargas queda ocupado mientras la maniobra esté activa
-    _setEstadoPorCodigo_(textoLista_(monta).map(function(s) { return s.split('·')[0].trim(); }), 'en_uso');
+    _setEstadoPorCodigo_(_codigosMontacargas_(monta), 'en_uso');
 
     return { ok: true, id: id, folio: folio,
       etapa: { id: idEtapa, num: 1, nombre: primera, total: lista.length, tiempo_estimado_min: tiempoEst }
@@ -1551,9 +1562,13 @@ function eliminarManiobrasLote(ids) {
     var n = 0;
 
     if (sh.getLastRow() >= 2) {
-      var mans = sh.getRange(2, 1, sh.getLastRow() - 1, 1).getValues();
+      var mans = sh.getRange(2, 1, sh.getLastRow() - 1, COLUMNAS.length).getValues();
       for (var i = mans.length - 1; i >= 0; i--) {
-        if (set[String(mans[i][0])]) { sh.deleteRow(i + 2); n++; }
+        if (!set[String(mans[i][0])]) continue;
+        // El equipo asignado vuelve al inventario antes de borrar el registro
+        _setEstadoPorCodigo_(_codigosMontacargas_(mans[i][39]), 'disponible');
+        sh.deleteRow(i + 2);
+        n++;
       }
     }
 
@@ -1590,7 +1605,15 @@ function editarManiobra(id, data) {
     if (data.montacarguistas  !== undefined) row[18] = listaTexto_(data.montacarguistas);
     if (data.ayudantes        !== undefined) row[19] = listaTexto_(data.ayudantes);
     if (data.observaciones    !== undefined) row[35] = data.observaciones;
-    if (data.montacargas      !== undefined) row[39] = listaTexto_(data.montacargas);
+    if (data.montacargas      !== undefined) {
+      var activa = String(row[20] || '') === 'en_curso' || String(row[20] || '') === 'en_pausa';
+      if (activa) {
+        // Suelta los que salen y ocupa los que entran
+        _setEstadoPorCodigo_(_codigosMontacargas_(row[39]), 'disponible');
+        _setEstadoPorCodigo_(_codigosMontacargas_(listaTexto_(data.montacargas)), 'en_uso');
+      }
+      row[39] = listaTexto_(data.montacargas);
+    }
 
     if (data.tipo_maniobra    !== undefined) {
       var errTipo = _validarTipoUnico_(data.tipo_maniobra);
@@ -1652,8 +1675,7 @@ function forzarCierreManiobrasLote(ids) {
       var mans = sh.getRange(2, 1, sh.getLastRow() - 1, COLUMNAS.length).getValues();
       mans.forEach(function(r, i) {
         if (!set[String(r[0])]) return;
-        _setEstadoPorCodigo_(textoLista_(r[39]).map(function(s) { return s.split('·')[0].trim(); }), 'disponible');
-        _cerrarManiobra(String(r[0]), i + 2, sh, shEta, {});
+        _cerrarManiobra(String(r[0]), i + 2, sh, shEta, {});   // libera el equipo por dentro
         n++;
       });
     }
@@ -1728,6 +1750,8 @@ function getManiobras(filtros) {
         ocupacion_spot_min:  r[C_OCUPACION] === '' ? '' : Number(r[C_OCUPACION] || 0),
         min_por_atado:       r[C_MIN_ATADO] === '' ? '' : Number(r[C_MIN_ATADO] || 0),
         min_por_tonelada:    r[C_MIN_TON]   === '' ? '' : Number(r[C_MIN_TON] || 0),
+        min_por_pieza:       r[C_MIN_PIEZA] === '' ? '' : Number(r[C_MIN_PIEZA] || 0),
+        min_por_tarima:      r[C_MIN_TARIMA]=== '' ? '' : Number(r[C_MIN_TARIMA] || 0),
         min_montacargas:     r[C_MIN_MONTA] === '' ? '' : Number(r[C_MIN_MONTA] || 0),
         min_montacargas_ton: r[C_MIN_MONTA_TON] === '' ? '' : Number(r[C_MIN_MONTA_TON] || 0),
         prueba_controlada:   String(r[C_PRUEBA] || 'NO'),
@@ -1840,7 +1864,7 @@ function getManiobrasEnCurso() {
         material:        String(r[10] || ''),
         presentacion:    String(r[11] || ''),
         cant_piezas:     r[12] === '' ? '' : Number(r[12] || 0),
-        tarimas:         r[14] === '' ? '' : Number(r[14] || 0),
+        tarimas:         Number(r[14] || 0),
         montacarguistas: String(r[18] || ''),
         ayudantes:       String(r[19] || ''),
         estado:          String(r[20] || ''),
@@ -1848,8 +1872,11 @@ function getManiobrasEnCurso() {
         observaciones:   String(r[35] || ''),
         montacargas:     String(r[39] || ''),
         tipo_maniobra:   String(r[C_TIPO_MAN] || ''),
-        toneladas_netas: r[C_TON]    === '' ? '' : Number(r[C_TON] || 0),
-        atados:          r[C_ATADOS] === '' ? '' : Number(r[C_ATADOS] || 0),
+        // Cantidades para calcular productividad en vivo contra el cronómetro
+        toneladas_netas: Number(r[C_TON]    || 0),
+        atados:          Number(r[C_ATADOS] || 0),
+        piezas_sueltas:  Number(r[C_PZAS]   || 0) || Number(r[12] || 0),
+        num_montacargas: _numMontacargas_(r),
         aditamento:      String(r[C_ADIT] || ''),
         hora_posicionamiento: String(r[C_H_POS] || ''),
         hora_liberacion:      String(r[C_H_LIB] || ''),
@@ -2016,11 +2043,12 @@ function _avanzarOManiobra(idManiobra, folio, numActual, extras) {
     };
   }
 
-  var codigos = textoLista_(shM.getRange(filaM, 40).getValue())
-    .map(function(s) { return s.split('·')[0].trim(); });
-  _setEstadoPorCodigo_(codigos, 'disponible');
-
   return _cerrarManiobra(idManiobra, filaM, shM, shEta, extras);
+}
+
+/** Extrae los códigos de montacargas de un valor "MC-01 · Contrabalanceado; MC-02 · …" */
+function _codigosMontacargas_(valor) {
+  return textoLista_(valor).map(function(s) { return s.split('·')[0].trim(); }).filter(Boolean);
 }
 
 function _cerrarManiobra(idManiobra, filaM, shM, shEta, extras) {
@@ -2077,6 +2105,10 @@ function _cerrarManiobra(idManiobra, filaM, shM, shEta, extras) {
 
   var m = _aplicarMetricas_(row, cfg, getSemaforos());
   rango.setValues([row]);
+
+  // Al cerrar la maniobra el equipo vuelve al inventario disponible.
+  // Va aquí dentro para que ocurra por cualquier vía de cierre.
+  _setEstadoPorCodigo_(_codigosMontacargas_(row[39]), 'disponible');
 
   return { ok: true, maniobra_finalizada: true,
     tiempo_total_min: sumaTotal, tiempo_efectivo_min: efectivo, demora_min: sumaDemora,
@@ -2209,7 +2241,8 @@ function _promedio_(arr) {
 }
 
 function _nuevoAcum_(nombre) {
-  return { nombre: nombre, total: [], atado: [], ton: [], montaTon: [], ocupacion: [], paro: [] };
+  return { nombre: nombre, total: [], atado: [], ton: [], pieza: [], tarima: [],
+           montaTon: [], ocupacion: [], paro: [], semaforos: {} };
 }
 
 function _acumular_(a, r) {
@@ -2217,16 +2250,27 @@ function _acumular_(a, r) {
   if (t > 0) a.total.push(t);
   if (Number(r[C_MIN_ATADO]     || 0) > 0) a.atado.push(Number(r[C_MIN_ATADO]));
   if (Number(r[C_MIN_TON]       || 0) > 0) a.ton.push(Number(r[C_MIN_TON]));
+  if (Number(r[C_MIN_PIEZA]     || 0) > 0) a.pieza.push(Number(r[C_MIN_PIEZA]));
+  if (Number(r[C_MIN_TARIMA]    || 0) > 0) a.tarima.push(Number(r[C_MIN_TARIMA]));
   if (Number(r[C_MIN_MONTA_TON] || 0) > 0) a.montaTon.push(Number(r[C_MIN_MONTA_TON]));
   if (Number(r[C_OCUPACION]     || 0) > 0) a.ocupacion.push(Number(r[C_OCUPACION]));
   a.paro.push(Number(r[27] || 0));
+  var s = String(r[36] || '');
+  if (s) a.semaforos[s] = (a.semaforos[s] || 0) + 1;
 }
 
 function _resumir_(a, nMin, semMapa, cfg) {
   var n = a.total.length;
   var suficiente = n >= nMin;
   var mediana = _mediana_(a.total);
+  // Umbrales del tipo, para dibujar las bandas en la gráfica de distribución
+  var regla = null;
+  (semMapa || []).forEach(function(s) {
+    if (s.tipo.toLowerCase() === String(a.nombre || '').trim().toLowerCase()) regla = s;
+  });
   return {
+    regla_verde: regla ? regla.verde : '',
+    regla_ambar: regla ? regla.ambar : '',
     nombre:          a.nombre,
     n:               n,
     suficiente:      suficiente,
@@ -2237,9 +2281,17 @@ function _resumir_(a, nMin, semMapa, cfg) {
     min_max:         suficiente ? _percentil_(a.total, 0) + ' – ' + _percentil_(a.total, 1) : '',
     med_min_atado:   suficiente ? _mediana_(a.atado)    : '',
     med_min_ton:     suficiente ? _mediana_(a.ton)      : '',
+    med_min_pieza:   suficiente ? _mediana_(a.pieza)    : '',
+    med_min_tarima:  suficiente ? _mediana_(a.tarima)   : '',
     med_monta_ton:   suficiente ? _mediana_(a.montaTon) : '',
     med_ocupacion:   suficiente ? _mediana_(a.ocupacion): '',
     paro_promedio:   suficiente ? _promedio_(a.paro)    : '',
+    p20_min:         suficiente ? _percentil_(a.total, 0.2) : '',
+    minimo:          suficiente ? _percentil_(a.total, 0)   : '',
+    maximo:          suficiente ? _percentil_(a.total, 1)   : '',
+    // Serie cruda para dibujar la distribución en el dashboard
+    valores:         a.total.slice(0, 240).sort(function(x, y) { return x - y; }),
+    semaforos:       a.semaforos,
     semaforo:        suficiente ? semaforoPorTipo_(a.nombre, mediana, cfg, semMapa) : 'SIN DATO',
     mensaje:         suficiente ? '' : 'Datos insuficientes (' + n + ' de ' + nMin + ' registros)'
   };
