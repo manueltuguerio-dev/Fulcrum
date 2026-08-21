@@ -2785,14 +2785,9 @@ function doGet(e) {
   var file = page === 'dashboard' ? 'Dashboard' : 'Index';
   return HtmlService.createTemplateFromFile(file).evaluate()
     .setTitle('LogiTime')
-    // viewport-fit=cover deja que la app use el área bajo el notch;
-    // el CSS la respeta con env(safe-area-inset-*)
+    // addMetaTag solo admite "viewport" y "google-site-verification";
+    // el resto de las etiquetas de app instalable van en el HTML directamente.
     .addMetaTag('viewport', 'width=device-width, initial-scale=1, viewport-fit=cover')
-    .addMetaTag('mobile-web-app-capable', 'yes')
-    .addMetaTag('apple-mobile-web-app-capable', 'yes')
-    .addMetaTag('apple-mobile-web-app-status-bar-style', 'black-translucent')
-    .addMetaTag('apple-mobile-web-app-title', 'LogiTime')
-    .addMetaTag('theme-color', '#0b1526')
     .setXFrameOptionsMode(HtmlService.XFrameOptionsMode.ALLOWALL);
 }
 
