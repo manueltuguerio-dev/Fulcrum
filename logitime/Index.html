@@ -219,6 +219,11 @@
     .campo-row .nom  { flex:1;min-width:150px;font-size:13px; }
     .campo-row .sec  { font-size:10px;color:var(--muted);text-transform:uppercase;letter-spacing:.05em; }
     .campo-sw        { display:flex;align-items:center;gap:5px;font-size:12px;color:var(--muted);cursor:pointer; }
+    .campo-deptos    { display:flex;align-items:center;gap:9px;flex-wrap:wrap;flex:1 1 100%;
+                       padding-top:7px;margin-top:2px;border-top:1px dashed var(--line); }
+    .eta-depto       { display:inline-block;margin-left:7px;font-size:9.5px;font-weight:600;
+                       text-transform:uppercase;letter-spacing:.04em;color:var(--muted);
+                       background:var(--bg);border:1px solid var(--line);border-radius:999px;padding:1px 7px; }
     .diag-grid       { display:grid;gap:10px;grid-template-columns:repeat(auto-fill,minmax(160px,1fr)); }
     .diag-item       { background:var(--bg);border:1px solid var(--line);border-radius:9px;padding:10px 12px; }
     .diag-k          { font-size:10px;text-transform:uppercase;letter-spacing:.06em;color:var(--muted); }
@@ -648,9 +653,70 @@
     <div class="tabs">
       <button id="adm-btn-cam" class="active" onclick="Admin.sub('cam')">Campos del formulario</button>
       <button id="adm-btn-cat"                onclick="Admin.sub('cat')">Catálogos</button>
+      <button id="adm-btn-flu"                onclick="Admin.sub('flu')">Flujos y etapas</button>
+      <button id="adm-btn-dep"                onclick="Admin.sub('dep')">Departamentos</button>
       <button id="adm-btn-sem"                onclick="Admin.sub('sem')">Semáforos</button>
       <button id="adm-btn-usr"                onclick="Admin.sub('usr')">Usuarios</button>
       <button id="adm-btn-tem"                onclick="Admin.sub('tem')">Tiempos estimados</button>
+    </div>
+
+    <!-- Secuencias de etapas por flujo -->
+    <div id="adm-flu" class="hidden">
+      <div class="card">
+        <div class="row" style="justify-content:space-between;margin-bottom:10px">
+          <h2 style="margin:0">Flujos configurados</h2>
+          <button onclick="Admin.nuevoFlujo()">+ Nuevo flujo</button>
+        </div>
+        <p class="muted" style="margin:0 0 12px;font-size:13px">
+          Cada flujo define la secuencia de etapas que seguirá el cronómetro,
+          quién es responsable de cada una y cuántos minutos debería tardar.
+        </p>
+        <div id="adm-flu-lista" style="display:flex;flex-wrap:wrap;gap:8px"></div>
+      </div>
+
+      <div id="adm-flu-editor" class="card hidden">
+        <div class="row" style="justify-content:space-between;margin-bottom:12px">
+          <h2 id="adm-flu-titulo" style="margin:0">Flujo</h2>
+          <div class="row" style="gap:8px">
+            <button class="danger sm" onclick="Admin.eliminarFlujo()">Eliminar flujo</button>
+            <button class="ghost sm" onclick="Admin.cerrarFlujo()">Cerrar ✕</button>
+          </div>
+        </div>
+        <div class="scroll"><table id="adm-tabla-flu"></table></div>
+        <div class="row" style="margin-top:12px;gap:8px">
+          <input id="adm-flu-etapa" placeholder="Nombre de la etapa…" style="flex:2;min-width:150px">
+          <select id="adm-flu-depto" style="flex:1;min-width:130px"></select>
+          <input id="adm-flu-min" type="number" min="0" placeholder="Min" style="flex:0 0 90px">
+          <button onclick="Admin.agregarEtapaFlujo()">Agregar etapa</button>
+        </div>
+        <div class="row" style="margin-top:14px;justify-content:flex-end">
+          <button class="success" onclick="Admin.guardarFlujo()">Guardar secuencia</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- Departamentos -->
+    <div id="adm-dep" class="hidden">
+      <div class="card">
+        <h2>Alta de departamento</h2>
+        <p class="muted" style="margin:0 0 12px;font-size:13px">
+          Los departamentos deciden quién opera cada etapa y qué campos ve cada usuario.
+          Una cuenta MASTER siempre ve y opera todo.
+        </p>
+        <div class="grid">
+          <input type="hidden" id="dep-id">
+          <div><label>Nombre <span class="req-star">*</span></label><input id="dep-nombre" placeholder="Patio, Almacén, Documentación…"></div>
+          <div style="grid-column:1/-1"><label>Descripción</label><input id="dep-desc" placeholder="Qué hace este departamento"></div>
+        </div>
+        <div class="row" style="margin-top:12px">
+          <button onclick="Admin.guardarDep()">Guardar departamento</button>
+          <button class="ghost" onclick="Admin.limpiarDep()">Cancelar</button>
+        </div>
+      </div>
+      <div class="card">
+        <h2>Departamentos registrados</h2>
+        <div class="scroll"><table id="adm-tabla-dep"></table></div>
+      </div>
     </div>
 
     <!-- Semáforos por tipo de maniobra -->
@@ -738,6 +804,7 @@
             <div><label>Rol</label>
               <select id="adm-u-rol"><option>OPERADOR</option><option>DASHBOARD</option><option>MASTER</option></select>
             </div>
+            <div><label>Departamento</label><select id="adm-u-depto"></select></div>
           </div>
           <div class="row" style="margin-top:10px;gap:8px;justify-content:flex-end">
             <button class="ghost sm" onclick="Admin.cancelarUsr()">Cancelar</button>
@@ -822,7 +889,11 @@
       <div id="wrap-modal-causa"><label>Causa del paro <span class="req-star" id="modal-causa-req" style="display:none">*</span></label>
         <select id="modal-causa"></select>
       </div>
-      <div><label>Hora de liberación del furgón</label><input type="time" id="modal-liberacion"></div>
+      <div id="wrap-modal-lib">
+        <label>Hora de liberación del furgón <span class="req-star" id="modal-lib-req" style="display:none">*</span></label>
+        <input type="time" id="modal-liberacion">
+        <div class="muted" id="modal-lib-hint" style="margin-top:3px"></div>
+      </div>
       <div><label>¿Daño en esta etapa?</label>
         <select id="modal-dano"><option value="">No</option><option value="1">Sí</option></select>
       </div>
@@ -862,6 +933,22 @@
     <div class="row" style="margin-top:16px;justify-content:flex-end;gap:8px">
       <button class="ghost" onclick="Curso.cerrarEdit()">Cancelar</button>
       <button class="success" onclick="Curso.confirmarEdit()">Guardar cambios</button>
+    </div>
+  </div>
+</div>
+
+<!-- MODAL: comentario de supervisión -->
+<div id="modal-sup" class="modal-overlay hidden">
+  <div class="modal-box">
+    <h2 id="sup-titulo" style="margin:0 0 8px;font-size:16px;font-weight:700;text-transform:none;letter-spacing:0;color:var(--txt)">Validar registros</h2>
+    <p class="muted" id="sup-intro" style="margin:0 0 12px"></p>
+    <label>Comentario del supervisor <span class="req-star">*</span></label>
+    <textarea id="sup-texto" style="min-height:110px"
+              placeholder="Ej. Se verificó con el operador: fueron 45 atados en 3 viajes, el tiempo es correcto."></textarea>
+    <div id="sup-aviso" class="aviso err" style="display:none;margin-top:10px"></div>
+    <div class="row" style="margin-top:14px;justify-content:flex-end;gap:8px">
+      <button class="ghost" onclick="Supervision.cerrar()">Cancelar</button>
+      <button class="success" onclick="Supervision.confirmar()">Guardar y validar</button>
     </div>
   </div>
 </div>
@@ -1633,7 +1720,8 @@ var Auth = {
   aplicar: function() {
     $('login-overlay').style.display = 'none';
     var b = $('usr-badge');
-    b.textContent = (STATE.usr.nombre || STATE.usr.email) + ' · ' + STATE.usr.rol;
+    b.textContent = (STATE.usr.nombre || STATE.usr.email) + ' · ' + STATE.usr.rol +
+      (STATE.usr.departamento ? ' · ' + STATE.usr.departamento : '');
     b.style.display = '';
     $('logout-btn').style.display = '';
 
@@ -1657,7 +1745,13 @@ var Auth = {
     if (soloPanel) App.tab('panel');
   },
 
-  esMaster: function() { return !!(STATE.usr && STATE.usr.rol === 'MASTER'); }
+  esMaster: function() { return !!(STATE.usr && STATE.usr.rol === 'MASTER'); },
+
+  /** Contexto que el servidor usa para decidir qué ve y qué opera este usuario */
+  ctx: function() {
+    if (!STATE.usr) return null;
+    return { rol: STATE.usr.rol, departamento: STATE.usr.departamento || '' };
+  }
 };
 
 /* ══════════════════════════════════════════════════════════════
@@ -1724,7 +1818,7 @@ var App = {
   },
 
   cargarCatalogos: function() {
-    API.call('getCatalogos', [], function(c) {
+    API.call('getCatalogos', [Auth.ctx()], function(c) {
       STATE.cat = c || {};
       // Si la hoja CAMPOS aún no existe, el formulario igual se arma
       STATE.campos = (c.CAMPOS && c.CAMPOS.length) ? c.CAMPOS : Nueva.camposFallback();
@@ -2082,7 +2176,7 @@ var Nueva = {
 ══════════════════════════════════════════════════════════════ */
 var Curso = {
   cargar: function(manual) {
-    API.call('getManiobrasEnCurso', [], function(res) {
+    API.call('getManiobrasEnCurso', [Auth.ctx()], function(res) {
       STATE.curso = (res && res.maniobras) || [];
       STATE.cursoRecibido = Date.now();
       UI.aviso('curso-aviso', '');
@@ -2154,7 +2248,8 @@ var Curso = {
     var pausada = m.estado === 'en_pausa';
     var master  = Auth.esMaster();
 
-    var etapasHTML = (m.etapas || []).map(function(e) {
+    // Las etapas de otros departamentos se ocultan; el total las sigue contando
+    var etapasHTML = (m.etapas || []).filter(function(e) { return e.visible !== false; }).map(function(e) {
       var activa = e.estado === 'en_curso' || e.estado === 'en_pausa';
       var hecha  = e.estado === 'finalizada';
       var skip   = e.estado === 'no_aplica';
@@ -2180,18 +2275,30 @@ var Curso = {
               (d > 0 ? ' · +' + UI.fmtMin(d) : ' · a tiempo') + '</span>';
       }
 
+      var depto = e.departamento
+        ? '<span class="eta-depto">' + UI.esc(e.departamento) + '</span>' : '';
+
       return '<div class="eta-item ' + cls + '">' +
         '<div class="eta-icon ' + cls + '">' + icono + '</div>' +
-        '<div class="eta-body"><div class="eta-name ' + cls + '">' + UI.esc(e.nombre) + '</div>' + sub + '</div>' +
+        '<div class="eta-body"><div class="eta-name ' + cls + '">' + UI.esc(e.nombre) + depto + '</div>' +
+          sub + '</div>' +
         tiempo + '</div>';
     }).join('');
 
-    var acciones = eta
-      ? '<button class="' + (pausada ? 'ghost' : 'warn') + ' sm" onclick="Curso.pausar(\'' + eta.id + '\')">' +
+    var puedeOperar = m.puede_operar !== false;
+    var acciones;
+    if (!eta) {
+      acciones = '<span class="muted">Sin etapa abierta · usa "Forzar cierre"</span>';
+    } else if (!puedeOperar) {
+      acciones = '<span class="muted">La etapa "' + UI.esc(eta.nombre) + '" la opera ' +
+                 UI.esc(eta.departamento || 'otro departamento') + '</span>';
+    } else {
+      acciones =
+        '<button class="' + (pausada ? 'ghost' : 'warn') + ' sm" onclick="Curso.pausar(\'' + eta.id + '\')">' +
           (pausada ? '▶ Reanudar' : '⏸ Pausar') + '</button>' +
         '<button class="ghost sm" onclick="Curso.noAplica(\'' + eta.id + '\')">No aplica</button>' +
-        '<button class="success sm" onclick="Curso.abrirModal(\'' + eta.id + '\')">Finalizar etapa ›</button>'
-      : '<span class="muted">Sin etapa abierta · usa "Forzar cierre"</span>';
+        '<button class="success sm" onclick="Curso.abrirModal(\'' + eta.id + '\')">Finalizar etapa ›</button>';
+    }
 
     var accionesMaster = master
       ? '<span class="spacer"></span>' +
@@ -2347,10 +2454,19 @@ var Curso = {
 
   abrirModal: function(idEtapa) {
     STATE.modalEtapa = idEtapa;
-    var nombre = '';
+    var nombre = '', esUltima = false, libPrevia = '';
     STATE.curso.forEach(function(m) {
-      if (m.etapa_actual && m.etapa_actual.id === idEtapa) nombre = m.etapa_actual.nombre;
+      if (!m.etapa_actual || m.etapa_actual.id !== idEtapa) return;
+      nombre = m.etapa_actual.nombre;
+      esUltima = m.etapa_actual.num >= (m.etapas || []).length;
+      libPrevia = m.hora_liberacion || '';
     });
+    STATE.modalUltima = esUltima;
+    // En la última etapa se cierra la maniobra: la liberación deja de ser opcional
+    $('modal-lib-req').style.display = (esUltima && !libPrevia) ? '' : 'none';
+    $('modal-lib-hint').textContent = esUltima
+      ? 'Obligatoria: al cerrar esta etapa se cierra la maniobra.'
+      : 'Opcional en esta etapa.';
     $('modal-titulo').textContent = 'Finalizar: ' + nombre;
     $('modal-demora').value = '0';
     $('modal-obs').value = '';
@@ -2380,11 +2496,20 @@ var Curso = {
       $('wrap-modal-causa').classList.add('campo-invalido');
       return;
     }
+    var liberacion = $('modal-liberacion').value;
+    if (STATE.modalUltima && $('modal-lib-req').style.display !== 'none' && !liberacion) {
+      UI.aviso('modal-aviso', 'Captura la hora de liberación del furgón: al cerrar esta ' +
+        'etapa se cierra la maniobra y ese dato mide la ocupación del spot.', 'err');
+      $('wrap-modal-lib').classList.add('campo-invalido');
+      return;
+    }
+    $('wrap-modal-lib').classList.remove('campo-invalido');
+
     var id = STATE.modalEtapa;
     var extras = {
       demora_min:         paro,
       causa_demora:       causa,
-      hora_liberacion:    $('modal-liberacion').value,
+      hora_liberacion:    liberacion,
       observaciones:      $('modal-obs').value,
       dano_maniobra:      !!$('modal-dano').value,
       dano_maniobra_desc: $('modal-dano-desc').value
@@ -2491,12 +2616,12 @@ var Lista = {
               });
             } },
           { label: '✔ Validar (quitar revisión)', clase: 'success',
-            confirmar: '¿Validar {n} registro(s)? Volverán a contar en los promedios.',
             fn: function(ids) {
-              API.call('validarRegistros', [ids, (STATE.usr && STATE.usr.nombre) || ''], function(r) {
-                UI.toast('✓ ' + r.validados + ' registro(s) validados', 'ok');
-                Lista.dt.sel = {}; Lista.cargar();
-              });
+              Supervision.abrir(ids, 'validar', function() { Lista.dt.sel = {}; Lista.cargar(); });
+            } },
+          { label: '💬 Comentar', clase: 'ghost',
+            fn: function(ids) {
+              Supervision.abrir(ids, 'comentar', function() { Lista.dt.sel = {}; Lista.cargar(); });
             } },
           { label: '⚠ Marcar revisión', clase: 'warn',
             confirmar: '¿Marcar {n} registro(s) para revisión? Quedarán fuera de los promedios.',
@@ -2581,7 +2706,8 @@ var Lista = {
           { key: 'prueba_controlada',   label: 'Prueba' },
           { key: 'etiqueta_prueba',     label: 'Etiqueta prueba' },
           { key: 'semaforo',            label: 'Semáforo', tipo: 'semaforo' },
-          { key: 'motivo_revision',     label: 'Motivo revisión' }
+          { key: 'motivo_revision',     label: 'Motivo revisión' },
+          { key: 'comentario_supervisor', label: 'Comentario supervisor' }
         ]
       });
     }
@@ -2811,6 +2937,50 @@ var Incidencias = {
       $('i_tipo').value = $('i_desc').value = $('i_resolucion').value = $('i_folio').value = '';
       UI.toast('✓ Incidencia registrada', 'ok');
       Incidencias.cargar();
+    });
+  }
+};
+
+/* ══════════════════════════════════════════════════════════════
+   SUPERVISIÓN — comentario obligatorio antes de validar
+   Validar un registro anómalo es una decisión que alguien tendrá
+   que defender después; el comentario queda como respaldo.
+══════════════════════════════════════════════════════════════ */
+var Supervision = {
+  ids: [], modo: 'validar', alTerminar: null,
+
+  abrir: function(ids, modo, cb) {
+    Supervision.ids = [].concat(ids || []);
+    Supervision.modo = modo || 'validar';
+    Supervision.alTerminar = cb || null;
+    $('sup-titulo').textContent = Supervision.modo === 'validar'
+      ? 'Validar ' + Supervision.ids.length + ' registro(s)'
+      : 'Comentar ' + Supervision.ids.length + ' registro(s)';
+    $('sup-intro').textContent = Supervision.modo === 'validar'
+      ? 'Al validar, estos registros vuelven a contar en los promedios. Explica por qué el dato es correcto.'
+      : 'El comentario se agrega al historial sin cambiar el estado de revisión.';
+    $('sup-texto').value = '';
+    UI.aviso('sup-aviso', '');
+    UI.show('modal-sup');
+    setTimeout(function() { $('sup-texto').focus(); }, 60);
+  },
+
+  cerrar: function() { UI.hide('modal-sup'); Supervision.ids = []; },
+
+  confirmar: function() {
+    var texto = ($('sup-texto').value || '').trim();
+    if (texto.length < 5) {
+      UI.aviso('sup-aviso', 'Escribe al menos una frase que explique la decisión.', 'err');
+      return;
+    }
+    var fn  = Supervision.modo === 'validar' ? 'validarRegistros' : 'comentarManiobra';
+    var ids = Supervision.ids;
+    var cb  = Supervision.alTerminar;
+    Supervision.cerrar();
+
+    API.call(fn, [ids, (STATE.usr && STATE.usr.nombre) || '', texto], function(r) {
+      UI.toast('✓ ' + (r.validados || r.comentados || 0) + ' registro(s) actualizados', 'ok');
+      if (cb) cb();
     });
   }
 };
@@ -3200,12 +3370,12 @@ var Panel = {
         filtros: [{ key: 'tipo_maniobra', label: 'Tipo' }, { key: 'cliente', label: 'Cliente' }],
         acciones: [
           { label: '✔ Validar', clase: 'success',
-            confirmar: '¿Validar {n} registro(s)? Volverán a contar en los promedios.',
             fn: function(ids) {
-              API.call('validarRegistros', [ids, (STATE.usr && STATE.usr.nombre) || ''], function(r) {
-                UI.toast('✓ ' + r.validados + ' registro(s) validados', 'ok');
-                Panel.dtRev.sel = {}; Panel.cargar();
-              });
+              Supervision.abrir(ids, 'validar', function() { Panel.dtRev.sel = {}; Panel.cargar(); });
+            } },
+          { label: '💬 Comentar', clase: 'ghost',
+            fn: function(ids) {
+              Supervision.abrir(ids, 'comentar', function() { Panel.dtRev.sel = {}; Panel.cargar(); });
             } }
         ],
         cols: [
@@ -3219,7 +3389,8 @@ var Panel = {
           { key: 'toneladas_netas',  label: 'Ton netas', tipo: 'num' },
           { key: 'min_por_atado',    label: 'Min/atado', tipo: 'num' },
           { key: 'min_por_tonelada', label: 'Min/ton', tipo: 'num' },
-          { key: 'motivo_revision',  label: 'Motivo' }
+          { key: 'motivo_revision',  label: 'Motivo' },
+          { key: 'comentario_supervisor', label: 'Comentario' }
         ]
       });
     }
@@ -3235,12 +3406,7 @@ var Panel = {
   validarSel: function() {
     var ids = DT.ids(Panel.dtRev);
     if (!ids.length) { UI.toast('Selecciona al menos un registro', 'err'); return; }
-    if (!confirm('¿Validar ' + ids.length + ' registro(s)? Volverán a contar en los promedios.')) return;
-    API.call('validarRegistros', [ids, (STATE.usr && STATE.usr.nombre) || ''], function(r) {
-      UI.toast('✓ ' + r.validados + ' registro(s) validados', 'ok');
-      Panel.dtRev.sel = {};
-      Panel.cargar();
-    });
+    Supervision.abrir(ids, 'validar', function() { Panel.dtRev.sel = {}; Panel.cargar(); });
   },
 
   /* ── Tiempos por etapa: real contra estimado ── */
@@ -3289,18 +3455,197 @@ var Panel = {
 ══════════════════════════════════════════════════════════════ */
 var Admin = {
   campos: [], catalogos: [], catActivo: null, catItems: [], tiempos: [], semaforos: [],
+  flujos: {}, flujoActivo: '', flujoEtapas: [], departamentos: [],
 
   sub: function(s) {
-    ['cam','cat','sem','usr','tem'].forEach(function(k) {
+    ['cam','cat','flu','dep','sem','usr','tem'].forEach(function(k) {
       var el = $('adm-' + k), b = $('adm-btn-' + k);
       if (el) el.classList.toggle('hidden', k !== s);
       if (b)  b.classList.toggle('active', k === s);
     });
     if (s === 'cam') Admin.cargarCampos();
     if (s === 'cat') Admin.cargarCat();
+    if (s === 'flu') Admin.cargarFlujos();
+    if (s === 'dep') Admin.cargarDeps();
     if (s === 'sem') Admin.cargarSem();
     if (s === 'usr') Admin.cargarUsr();
     if (s === 'tem') Admin.cargarTem();
+  },
+
+  /* ── Secuencias de etapas por flujo ── */
+  cargarFlujos: function() {
+    API.call('getDepartamentos', [true], function(deps) {
+      Admin.departamentos = deps || [];
+      API.call('getFlujosEtapas', [], function(mapa) {
+        Admin.flujos = mapa || {};
+        var nombres = Object.keys(Admin.flujos).sort();
+        $('adm-flu-lista').innerHTML = nombres.length
+          ? nombres.map(function(f) {
+              return '<button class="ghost sm" onclick="Admin.editarFlujo(\'' + UI.esc(f) + '\')">' +
+                UI.esc(f) + ' <span style="opacity:.6">(' + Admin.flujos[f].length + ' etapas)</span></button>';
+            }).join('')
+          : '<span class="muted">Sin flujos configurados. Crea el primero.</span>';
+      });
+    });
+  },
+
+  optsDepto: function(sel) {
+    var nombres = Admin.departamentos.map(function(d) { return d.nombre; });
+    return '<option value="">— Cualquiera —</option>' +
+      nombres.map(function(n) {
+        return '<option' + (n === sel ? ' selected' : '') + '>' + UI.esc(n) + '</option>';
+      }).join('');
+  },
+
+  editarFlujo: function(f) {
+    Admin.flujoActivo = f;
+    Admin.flujoEtapas = (Admin.flujos[f] || []).map(function(e) {
+      return { etapa: e.etapa, departamento: e.departamento, tiempo_est: e.tiempo_est };
+    });
+    $('adm-flu-titulo').textContent = 'Flujo: ' + f;
+    $('adm-flu-depto').innerHTML = Admin.optsDepto('');
+    Admin.renderFlujo();
+    UI.show('adm-flu-editor');
+  },
+
+  nuevoFlujo: function() {
+    var f = prompt('Nombre del flujo (ej. ENTRADA, SALIDA, TRANSBORDO):');
+    if (!f || !f.trim()) return;
+    Admin.flujoActivo = f.trim().toUpperCase().replace(/\s+/g, '_');
+    Admin.flujoEtapas = [];
+    $('adm-flu-titulo').textContent = 'Nuevo flujo: ' + Admin.flujoActivo;
+    $('adm-flu-depto').innerHTML = Admin.optsDepto('');
+    Admin.renderFlujo();
+    UI.show('adm-flu-editor');
+    $('adm-flu-etapa').focus();
+  },
+
+  renderFlujo: function() {
+    $('adm-tabla-flu').innerHTML =
+      '<tr><th>#</th><th>Etapa</th><th>Departamento responsable</th><th>Min. estimados</th><th>Orden</th><th></th></tr>' +
+      (Admin.flujoEtapas.length
+        ? Admin.flujoEtapas.map(function(e, i) {
+            return '<tr>' +
+              '<td><b>' + (i + 1) + '</b></td>' +
+              '<td><input value="' + UI.esc(e.etapa) + '" style="min-width:150px" ' +
+                'oninput="Admin.flujoEtapas[' + i + '].etapa=this.value"></td>' +
+              '<td><select onchange="Admin.flujoEtapas[' + i + '].departamento=this.value" style="min-width:130px">' +
+                Admin.optsDepto(e.departamento) + '</select></td>' +
+              '<td><input type="number" min="0" value="' + (e.tiempo_est || 0) + '" style="width:90px" ' +
+                'oninput="Admin.flujoEtapas[' + i + '].tiempo_est=Number(this.value)"></td>' +
+              '<td style="white-space:nowrap">' +
+                '<button class="ghost xs" ' + (i === 0 ? 'disabled' : '') +
+                  ' onclick="Admin.moverEtapa(' + i + ',-1)">↑</button> ' +
+                '<button class="ghost xs" ' + (i === Admin.flujoEtapas.length - 1 ? 'disabled' : '') +
+                  ' onclick="Admin.moverEtapa(' + i + ',1)">↓</button></td>' +
+              '<td><button class="danger xs" onclick="Admin.flujoEtapas.splice(' + i + ',1);Admin.renderFlujo()">✕</button></td>' +
+            '</tr>';
+          }).join('')
+        : '<tr><td colspan="6" class="dt-empty">Sin etapas. Agrega la primera abajo.</td></tr>');
+  },
+
+  moverEtapa: function(i, d) {
+    var j = i + d;
+    if (j < 0 || j >= Admin.flujoEtapas.length) return;
+    var tmp = Admin.flujoEtapas[i];
+    Admin.flujoEtapas[i] = Admin.flujoEtapas[j];
+    Admin.flujoEtapas[j] = tmp;
+    Admin.renderFlujo();
+  },
+
+  agregarEtapaFlujo: function() {
+    var e = ($('adm-flu-etapa').value || '').trim();
+    if (!e) { $('adm-flu-etapa').focus(); return; }
+    Admin.flujoEtapas.push({
+      etapa: e,
+      departamento: $('adm-flu-depto').value,
+      tiempo_est: Number($('adm-flu-min').value || 0)
+    });
+    Admin.renderFlujo();
+    $('adm-flu-etapa').value = ''; $('adm-flu-min').value = '';
+    $('adm-flu-etapa').focus();
+  },
+
+  guardarFlujo: function() {
+    if (!Admin.flujoActivo) return;
+    API.call('guardarFlujoEtapas', [Admin.flujoActivo, Admin.flujoEtapas], function(r) {
+      UI.toast('✓ Flujo guardado con ' + r.etapas + ' etapa(s)', 'ok');
+      Admin.cargarFlujos();
+      App.cargarCatalogos();
+    });
+  },
+
+  eliminarFlujo: function() {
+    if (!Admin.flujoActivo) return;
+    if (!confirm('¿Eliminar la secuencia del flujo "' + Admin.flujoActivo + '"? ' +
+                 'Las maniobras ya registradas no se tocan.')) return;
+    API.call('eliminarFlujoEtapas', [Admin.flujoActivo], function() {
+      UI.toast('Flujo eliminado', 'ok');
+      Admin.cerrarFlujo();
+      Admin.cargarFlujos();
+      App.cargarCatalogos();
+    });
+  },
+
+  cerrarFlujo: function() { Admin.flujoActivo = ''; Admin.flujoEtapas = []; UI.hide('adm-flu-editor'); },
+
+  /* ── Departamentos ── */
+  cargarDeps: function() {
+    API.call('getDepartamentos', [false], function(lista) {
+      Admin.departamentos = lista || [];
+      $('adm-tabla-dep').innerHTML =
+        '<tr><th>Nombre</th><th>Descripción</th><th>Estado</th><th></th></tr>' +
+        (Admin.departamentos.length
+          ? Admin.departamentos.map(function(d) {
+              return '<tr><td><b>' + UI.esc(d.nombre) + '</b></td>' +
+                '<td style="white-space:normal">' + UI.esc(d.descripcion || '—') + '</td>' +
+                '<td><span class="badge ' + (d.activo ? 'VERDE' : 'ROJO') + '">' +
+                  (d.activo ? 'Activo' : 'Inactivo') + '</span></td>' +
+                '<td style="white-space:nowrap">' +
+                  '<button class="ghost xs" onclick="Admin.editarDep(\'' + d.id + '\')">Editar</button> ' +
+                  '<button class="danger xs" onclick="Admin.eliminarDep(\'' + d.id + '\')">Eliminar</button>' +
+                '</td></tr>';
+            }).join('')
+          : '<tr><td colspan="4" class="dt-empty">Sin departamentos</td></tr>');
+    });
+  },
+
+  editarDep: function(id) {
+    var d = null;
+    Admin.departamentos.forEach(function(x) { if (x.id === id) d = x; });
+    if (!d) return;
+    $('dep-id').value = d.id;
+    $('dep-nombre').value = d.nombre;
+    $('dep-desc').value = d.descripcion;
+    $('dep-nombre').focus();
+  },
+
+  guardarDep: function() {
+    var d = {
+      id: $('dep-id').value,
+      nombre: ($('dep-nombre').value || '').trim(),
+      descripcion: $('dep-desc').value
+    };
+    if (!d.nombre) { UI.toast('El nombre es obligatorio', 'err'); return; }
+    API.call('guardarDepartamento', [d], function() {
+      UI.toast('✓ Departamento guardado', 'ok');
+      Admin.limpiarDep();
+      Admin.cargarDeps();
+      App.cargarCatalogos();
+    });
+  },
+
+  limpiarDep: function() {
+    $('dep-id').value = $('dep-nombre').value = $('dep-desc').value = '';
+  },
+
+  eliminarDep: function(id) {
+    if (!confirm('¿Eliminar este departamento? Las etapas y campos asignados a él quedarán sin restricción.')) return;
+    API.call('eliminarDepartamento', [id], function() {
+      UI.toast('Departamento eliminado', 'ok');
+      Admin.cargarDeps();
+      App.cargarCatalogos();
+    });
   },
 
   /* ── Semáforos por tipo de maniobra ── */
@@ -3348,9 +3693,12 @@ var Admin = {
 
   /* ── Campos obligatorios / visibles ── */
   cargarCampos: function() {
-    API.call('getCamposConfig', [], function(rows) {
-      Admin.campos = rows || [];
-      Admin.renderCampos();
+    API.call('getDepartamentos', [true], function(deps) {
+      Admin.departamentos = deps || [];
+      API.call('getCamposConfig', [null], function(rows) {
+        Admin.campos = rows || [];
+        Admin.renderCampos();
+      });
     });
   },
 
@@ -3364,6 +3712,14 @@ var Admin = {
       html += '<h2 style="margin:16px 0 8px">' + secciones[sec] + '</h2>';
       html += items.map(function(c) {
         var i = Admin.campos.indexOf(c);
+        var sel = {};
+        String(c.departamentos || '').split(';').forEach(function(d) { sel[d.trim()] = true; });
+        var deptos = Admin.departamentos.map(function(d) {
+          return '<label class="campo-sw"><input type="checkbox" ' + (sel[d.nombre] ? 'checked' : '') +
+            ' onchange="Admin.toggleDeptoCampo(' + i + ',\'' + UI.esc(d.nombre) + '\',this.checked)"> ' +
+            UI.esc(d.nombre) + '</label>';
+        }).join('');
+
         return '<div class="campo-row">' +
           '<div class="nom"><b>' + UI.esc(c.etiqueta) + '</b>' +
             '<div class="sec">' + UI.esc(c.campo) + '</div></div>' +
@@ -3371,10 +3727,24 @@ var Admin = {
             ' onchange="Admin.campos[' + i + '].obligatorio=this.checked"> Obligatorio</label>' +
           '<label class="campo-sw"><input type="checkbox" ' + (c.visible ? 'checked' : '') +
             ' onchange="Admin.campos[' + i + '].visible=this.checked"> Visible</label>' +
+          (deptos
+            ? '<div class="campo-deptos"><span class="sec">Solo lo ven</span>' + deptos +
+              '<span class="muted" style="font-size:10.5px">Sin marcar ninguno: lo ven todos</span></div>'
+            : '') +
         '</div>';
       }).join('');
     });
     $('adm-cam-lista').innerHTML = html || '<p class="muted">Sin campos configurados.</p>';
+  },
+
+  toggleDeptoCampo: function(i, nombre, on) {
+    var c = Admin.campos[i];
+    if (!c) return;
+    var lista = String(c.departamentos || '').split(';')
+      .map(function(s) { return s.trim(); }).filter(Boolean)
+      .filter(function(s) { return s !== nombre; });
+    if (on) lista.push(nombre);
+    c.departamentos = lista.join('; ');
   },
 
   guardarCampos: function() {
@@ -3473,9 +3843,17 @@ var Admin = {
 
   /* ── Usuarios ── */
   cargarUsr: function() {
+    API.call('getDepartamentos', [true], function(deps) {
+      Admin.departamentos = deps || [];
+      $('adm-u-depto').innerHTML = Admin.optsDepto('');
+      Admin._pintarUsr();
+    });
+  },
+
+  _pintarUsr: function() {
     API.call('getUsuarios', [], function(lista) {
       $('adm-tabla-usr').innerHTML =
-        '<tr><th>Email</th><th>Nombre</th><th>Rol</th><th>Estado</th><th>Acciones</th></tr>' +
+        '<tr><th>Email</th><th>Nombre</th><th>Rol</th><th>Departamento</th><th>Estado</th><th>Acciones</th></tr>' +
         ((lista && lista.length)
           ? lista.map(function(u) {
               var uid = UI.esc(u.id);
@@ -3486,6 +3864,8 @@ var Admin = {
                   ['OPERADOR','DASHBOARD','MASTER'].map(function(r) {
                     return '<option' + (u.rol === r ? ' selected' : '') + '>' + r + '</option>';
                   }).join('') + '</select></td>' +
+                '<td><select id="u-dep-' + uid + '" style="min-width:120px">' +
+                  Admin.optsDepto(u.departamento) + '</select></td>' +
                 '<td><span class="badge ' + (u.activo ? 'VERDE' : 'ROJO') + '">' +
                   (u.activo ? 'Activo' : 'Inactivo') + '</span></td>' +
                 '<td style="white-space:nowrap">' +
@@ -3496,7 +3876,7 @@ var Admin = {
                   '<button class="danger xs" onclick="Admin.eliminarUsr(\'' + uid + '\')">Eliminar</button>' +
                 '</td></tr>';
             }).join('')
-          : '<tr><td colspan="5" class="dt-empty">Sin usuarios</td></tr>');
+          : '<tr><td colspan="6" class="dt-empty">Sin usuarios</td></tr>');
     });
   },
 
@@ -3512,7 +3892,8 @@ var Admin = {
       email:  ($('adm-u-email').value || '').trim(),
       nombre: ($('adm-u-nombre').value || '').trim(),
       pin:    ($('adm-u-pin').value || '').trim(),
-      rol:    $('adm-u-rol').value
+      rol:    $('adm-u-rol').value,
+      departamento: $('adm-u-depto').value
     };
     if (!d.email || !d.nombre || !d.pin) { UI.toast('Email, nombre y PIN son obligatorios', 'err'); return; }
     if (d.pin.length < 4) { UI.toast('PIN mínimo 4 caracteres', 'err'); return; }
@@ -3524,8 +3905,9 @@ var Admin = {
 
   guardarUsr: function(id) {
     API.call('actualizarUsuario', [id, {
-      nombre: $('u-nom-' + id) ? $('u-nom-' + id).value : '',
-      rol:    $('u-rol-' + id) ? $('u-rol-' + id).value : ''
+      nombre:       $('u-nom-' + id) ? $('u-nom-' + id).value : '',
+      rol:          $('u-rol-' + id) ? $('u-rol-' + id).value : '',
+      departamento: $('u-dep-' + id) ? $('u-dep-' + id).value : ''
     }], function() { UI.toast('✓ Usuario actualizado', 'ok'); Admin.cargarUsr(); });
   },
 

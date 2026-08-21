@@ -849,8 +849,15 @@ var Dash = {
     var t = Dash.t.revision;
     var ids = t.datos.filter(function(r) { return t.sel[r._i]; }).map(function(r) { return r.id; });
     if (!ids.length) { UI.toast('Selecciona al menos un registro', 'err'); return; }
-    if (!confirm('¿Validar ' + ids.length + ' registro(s)? Volverán a contar en los promedios.')) return;
-    API.call('validarRegistros', [ids, (STATE.usr && STATE.usr.nombre) || ''], function(r) {
+    // Validar es una decisión que hay que poder defender después
+    var comentario = prompt('Comentario del supervisor (obligatorio):\n\n' +
+      'Explica por qué estos ' + ids.length + ' registro(s) son correctos.');
+    if (comentario === null) return;
+    if (comentario.trim().length < 5) {
+      UI.toast('Escribe al menos una frase que explique la decisión', 'err');
+      return;
+    }
+    API.call('validarRegistros', [ids, (STATE.usr && STATE.usr.nombre) || '', comentario.trim()], function(r) {
       UI.toast('✓ ' + r.validados + ' registro(s) validados', 'ok');
       Dash.cargarRevision();
       Dash.cargarTipos();

@@ -29,6 +29,8 @@ var HOJA_USR  = 'USUARIOS';
 var HOJA_MON  = 'MONTACARGAS';
 var HOJA_CAM  = 'CAMPOS';
 var HOJA_SEM  = 'SEMAFOROS';
+var HOJA_DEP  = 'DEPARTAMENTOS';
+var HOJA_FLU  = 'FLUJOS_ETAPAS';
 
 /* ════════════════════════════════════════════════════════════
    CATÁLOGOS Y ETAPAS POR DEFECTO
@@ -173,7 +175,7 @@ var COLUMNAS = [
   'Min por atado', 'Min por tonelada', 'Min montacargas', 'Min montacargas por ton',
   'Prueba controlada', 'Etiqueta prueba',
   'Revisión', 'Motivo revisión', 'Validado por',
-  'Min por tarima'
+  'Min por tarima', 'Comentario supervisor'
 ];
 
 // Índices de las columnas nuevas (para no contar a mano)
@@ -182,8 +184,11 @@ var C_TIPO_MAN = 40, C_TON = 41, C_ATADOS = 42, C_PZAS = 43, C_ADIT = 44,
     C_MIN_ATADO = 48, C_MIN_TON = 49, C_MIN_MONTA = 50, C_MIN_MONTA_TON = 51,
     C_PRUEBA = 52, C_ETIQ_PRUEBA = 53,
     C_REVISION = 54, C_MOTIVO_REV = 55, C_VALIDADO = 56,
-    C_MIN_TARIMA = 57;
+    C_MIN_TARIMA = 57, C_COMENT_SUP = 58;
 var C_MIN_PIEZA = 30;   // columna original "Min/pieza", ahora sobre piezas sueltas
+
+/** Columnas de MANIOBRAS que guardan una hora "HH:mm" y deben ser texto plano */
+var COLS_HORA_MAN = [24, 25, C_H_POS, C_H_LIB];
 
 // ETAPAS (19 cols)
 // idx: 0=ID 1=ID_man 2=Folio 3=Num 4=Nombre 5=Estado
@@ -194,14 +199,18 @@ var COL_ETA = [
   'ID_etapa', 'ID_maniobra', 'Folio', 'Num_etapa', 'Nombre_etapa', 'Estado',
   'Inicio_dt', 'Hora_inicio', 'Fin_dt', 'Hora_fin',
   'Tiempo_min', 'Tiempo_estimado_min', 'Retraso_min', 'No_aplica',
-  'Pausa_acum_seg', 'Causa_demora', 'Observaciones', 'Registrado_por', 'Timestamp'
+  'Pausa_acum_seg', 'Causa_demora', 'Observaciones', 'Registrado_por', 'Timestamp',
+  'Departamento'
 ];
+var C_ETA_DEPTO = 19;
 
 var COL_EMP = ['ID', 'Nombre', 'Posición', 'Montacargas', 'Activo'];
-var COL_USR = ['ID', 'Email', 'Nombre', 'PIN', 'Rol', 'Activo', 'Timestamp'];
+var COL_USR = ['ID', 'Email', 'Nombre', 'PIN', 'Rol', 'Activo', 'Timestamp', 'Departamento'];
+var COL_DEP = ['ID', 'Nombre', 'Descripción', 'Activo'];
+var COL_FLU = ['Flujo', 'Orden', 'Etapa', 'Departamento', 'Tiempo estimado (min)', 'Activo'];
 var COL_MON = ['ID', 'Código', 'Tipo', 'Marca', 'Modelo', 'Capacidad (ton)',
                'Estado', 'Ubicación', 'Notas', 'Activo', 'Timestamp'];
-var COL_CAM = ['Campo', 'Etiqueta', 'Sección', 'Obligatorio', 'Visible', 'Orden'];
+var COL_CAM = ['Campo', 'Etiqueta', 'Sección', 'Obligatorio', 'Visible', 'Orden', 'Departamentos'];
 var COL_SEM = ['Tipo maniobra', 'Verde hasta (min)', 'Amarillo hasta (min)'];
 var COL_INC = ['ID', 'Fecha', 'Folio maniobra', 'Empleado', 'Tipo', 'Severidad',
                'Descripción', 'Estado', 'Resolución', 'Registrado por', 'Timestamp'];
@@ -286,6 +295,32 @@ function hhmm_(fecha) {
   return Utilities.formatDate(d, Session.getScriptTimeZone(), 'HH:mm');
 }
 
+/**
+ * Devuelve SIEMPRE "HH:mm" a partir de una celda de hora.
+ *
+ * Si la columna quedó con formato de hora, Sheets guarda "10:22" como la
+ * fracción de día sobre su epoch (30/12/1899) y getValues() regresa
+ * "Sat Dec 30 1899 10:22:00". Aquí se recupera solo la hora, sin importar
+ * si la celda venía como texto, como Date o como número.
+ */
+function horaTexto_(v) {
+  if (v === null || v === undefined || v === '') return '';
+  if (v instanceof Date) {
+    if (isNaN(v.getTime())) return '';
+    return Utilities.formatDate(v, Session.getScriptTimeZone(), 'HH:mm');
+  }
+  if (typeof v === 'number') {
+    // Fracción de día: 0.5 = 12:00
+    var mins = Math.round((v - Math.floor(v)) * 24 * 60);
+    return _pad2_(Math.floor(mins / 60) % 24) + ':' + _pad2_(mins % 60);
+  }
+  var s = String(v).trim();
+  var m = s.match(/(\d{1,2}):(\d{2})/);   // sirve igual para "10:22" que para la cadena larga de 1899
+  return m ? _pad2_(Number(m[1])) + ':' + _pad2_(Number(m[2])) : s;
+}
+
+function _pad2_(n) { return (n < 10 ? '0' : '') + n; }
+
 function fechaISO_(v) {
   if (v instanceof Date && !isNaN(v.getTime()))
     return Utilities.formatDate(v, Session.getScriptTimeZone(), 'yyyy-MM-dd');
@@ -369,7 +404,8 @@ function login(email, pin) {
     var matchPin   = String(r[3]).trim() === String(pin).trim();
     if (matchEmail && matchPin) {
       if (!bool_(r[5])) return { ok: false, msg: 'Usuario desactivado' };
-      return { ok: true, email: String(r[1]).trim(), nombre: String(r[2]).trim(), rol: String(r[4]).trim() };
+      return { ok: true, email: String(r[1]).trim(), nombre: String(r[2]).trim(),
+               rol: String(r[4]).trim(), departamento: String(r[7] || '').trim() };
     }
   }
   return { ok: false, msg: 'Email o PIN incorrectos' };
@@ -380,7 +416,7 @@ function getUsuarios() {
   if (sh.getLastRow() < 2) return [];
   return sh.getRange(2, 1, sh.getLastRow() - 1, COL_USR.length).getValues().map(function(r) {
     return { id: String(r[0]), email: String(r[1]), nombre: String(r[2]),
-             rol: String(r[4]), activo: bool_(r[5]) };
+             rol: String(r[4]), activo: bool_(r[5]), departamento: String(r[7] || '') };
   });
 }
 
@@ -396,7 +432,8 @@ function crearUsuario(data) {
         return { ok: false, msg: 'El email ya existe' };
     }
   }
-  sh.appendRow([uuid_(), data.email, data.nombre, pin, data.rol, true, new Date()]);
+  sh.appendRow([uuid_(), data.email, data.nombre, pin, data.rol, true, new Date(),
+                data.departamento || '']);
   return { ok: true };
 }
 
@@ -410,6 +447,7 @@ function actualizarUsuario(id, data) {
     if (String(ids[i][0]) === String(id)) {
       if (data.nombre) sh.getRange(i + 2, 3).setValue(data.nombre);
       if (data.rol)    sh.getRange(i + 2, 5).setValue(data.rol);
+      if (data.departamento !== undefined) sh.getRange(i + 2, 8).setValue(data.departamento);
       return { ok: true };
     }
   }
@@ -515,20 +553,26 @@ function _sembrarCampos_(sh) {
   return nuevos.length;
 }
 
-function getCamposConfig() {
+/**
+ * Configuración de campos. Si se pasa el contexto del usuario (rol y
+ * departamento), se ocultan los campos restringidos a otros departamentos.
+ */
+function getCamposConfig(ctx) {
   var sh = hoja_(HOJA_CAM, COL_CAM);
   _sembrarCampos_(sh);
   if (sh.getLastRow() < 2) return [];
   return sh.getRange(2, 1, sh.getLastRow() - 1, COL_CAM.length).getValues()
     .filter(function(r) { return String(r[0] || '').trim(); })
     .map(function(r) {
+      var visible = r[4] === '' || r[4] === null || r[4] === undefined ? true : bool_(r[4]);
       return {
-        campo:       String(r[0]).trim(),
-        etiqueta:    String(r[1] || r[0]).trim(),
-        seccion:     String(r[2] || 'esenciales').trim(),
-        obligatorio: bool_(r[3]),
-        visible:     r[4] === '' || r[4] === null || r[4] === undefined ? true : bool_(r[4]),
-        orden:       Number(r[5] || 999)
+        campo:         String(r[0]).trim(),
+        etiqueta:      String(r[1] || r[0]).trim(),
+        seccion:       String(r[2] || 'esenciales').trim(),
+        obligatorio:   bool_(r[3]),
+        visible:       visible && _puedeVer_(r[6], ctx),
+        orden:         Number(r[5] || 999),
+        departamentos: String(r[6] || '')
       };
     })
     .sort(function(a, b) { return a.orden - b.orden; });
@@ -542,7 +586,8 @@ function guardarCamposConfig(items) {
     var filas = items.map(function(c, i) {
       return [String(c.campo || ''), String(c.etiqueta || c.campo || ''),
               String(c.seccion || 'esenciales'), !!c.obligatorio, c.visible !== false,
-              Number(c.orden || (i + 1) * 10)];
+              Number(c.orden || (i + 1) * 10),
+              listaTexto_(c.departamentos)];
     });
     sh.getRange(2, 1, filas.length, COL_CAM.length).setValues(filas);
     return { ok: true, guardados: filas.length };
@@ -559,9 +604,9 @@ function restablecerCamposConfig() {
 }
 
 /** Valida un payload de maniobra contra la configuración de campos obligatorios */
-function _validarObligatorios_(data) {
+function _validarObligatorios_(data, ctx) {
   var faltan = [];
-  getCamposConfig().forEach(function(c) {
+  getCamposConfig(ctx).forEach(function(c) {
     if (!c.obligatorio || !c.visible) return;
     var v = data[c.campo];
     var vacio = (v === undefined || v === null || v === '' ||
@@ -756,24 +801,59 @@ function recalcularMetricas(ids) {
 }
 
 /** Un supervisor acepta la fila: deja de estar excluida del dashboard */
-function validarRegistros(ids, quien) {
+function validarRegistros(ids, quien, comentario) {
   return seguro_('validarRegistros', function() {
+    var texto = String(comentario || '').trim();
+    if (!texto) {
+      return { ok: false, requiere_comentario: true,
+        error: 'Escribe un comentario explicando por qué el registro es válido. ' +
+               'Queda como respaldo de la decisión.' };
+    }
     var sh = hoja_(HOJA, COLUMNAS);
     if (sh.getLastRow() < 2) return { ok: true, validados: 0 };
     var set = {};
     [].concat(ids || []).forEach(function(i) { set[String(i)] = true; });
     var rango = sh.getRange(2, 1, sh.getLastRow() - 1, COLUMNAS.length);
     var vals  = rango.getValues();
+    var sello = String(quien || usuario_()) + ' · ' +
+      Utilities.formatDate(new Date(), Session.getScriptTimeZone(), 'dd/MM/yyyy HH:mm');
     var n = 0;
     vals.forEach(function(row) {
       if (!set[String(row[0])]) return;
       row[C_REVISION] = 'VALIDADO';
-      row[C_VALIDADO] = String(quien || usuario_()) + ' · ' +
-        Utilities.formatDate(new Date(), Session.getScriptTimeZone(), 'dd/MM/yyyy HH:mm');
+      row[C_VALIDADO] = sello;
+      // Los comentarios se acumulan: nunca se pisa el historial anterior
+      var previo = String(row[C_COMENT_SUP] || '').trim();
+      row[C_COMENT_SUP] = (previo ? previo + '\n' : '') + '[' + sello + '] ' + texto;
       n++;
     });
     if (n) rango.setValues(vals);
     return { ok: true, validados: n };
+  });
+}
+
+/** Agrega un comentario de supervisión sin cambiar el estado de revisión */
+function comentarManiobra(ids, quien, comentario) {
+  return seguro_('comentarManiobra', function() {
+    var texto = String(comentario || '').trim();
+    if (!texto) return { ok: false, error: 'El comentario no puede ir vacío' };
+    var sh = hoja_(HOJA, COLUMNAS);
+    if (sh.getLastRow() < 2) return { ok: true, comentados: 0 };
+    var set = {};
+    [].concat(ids || []).forEach(function(i) { set[String(i)] = true; });
+    var rango = sh.getRange(2, 1, sh.getLastRow() - 1, COLUMNAS.length);
+    var vals  = rango.getValues();
+    var sello = String(quien || usuario_()) + ' · ' +
+      Utilities.formatDate(new Date(), Session.getScriptTimeZone(), 'dd/MM/yyyy HH:mm');
+    var n = 0;
+    vals.forEach(function(row) {
+      if (!set[String(row[0])]) return;
+      var previo = String(row[C_COMENT_SUP] || '').trim();
+      row[C_COMENT_SUP] = (previo ? previo + '\n' : '') + '[' + sello + '] ' + texto;
+      n++;
+    });
+    if (n) rango.setValues(vals);
+    return { ok: true, comentados: n };
   });
 }
 
@@ -820,21 +900,217 @@ function resaltarRevisiones() {
 }
 
 /** Formato de fecha estricto dd/MM/yyyy para evitar ambigüedades */
+/**
+ * Formato estricto de fechas y, sobre todo, reparación de las horas.
+ *
+ * Las columnas "HH:mm" deben ser TEXTO. Si quedan con formato de hora,
+ * Sheets las guarda como fracción de día sobre el 30/12/1899 y la app
+ * termina mostrando "Sat Dec 30 1899 10:22:00". Aquí se convierten a
+ * texto y se reescriben ya normalizadas.
+ */
 function formatearFechas() {
   return seguro_('formatearFechas', function() {
     var sh = hoja_(HOJA, COLUMNAS);
-    if (sh.getLastRow() < 2) return { ok: true };
-    var n = sh.getLastRow() - 1;
-    sh.getRange(2, 3, n, 1).setNumberFormat('dd/mm/yyyy');
-    sh.getRange(2, 22, n, 1).setNumberFormat('dd/mm/yyyy hh:mm');
-    sh.getRange(2, 23, n, 1).setNumberFormat('dd/mm/yyyy hh:mm');
+    var arregladas = 0;
+
+    if (sh.getLastRow() >= 2) {
+      var n = sh.getLastRow() - 1;
+      sh.getRange(2,  3, n, 1).setNumberFormat('dd/mm/yyyy');
+      sh.getRange(2, 22, n, 1).setNumberFormat('dd/mm/yyyy hh:mm');
+      sh.getRange(2, 23, n, 1).setNumberFormat('dd/mm/yyyy hh:mm');
+
+      COLS_HORA_MAN.forEach(function(idx) {
+        var rng = sh.getRange(2, idx + 1, n, 1);
+        var vals = rng.getValues();
+        var limpias = vals.map(function(f) { return [horaTexto_(f[0])]; });
+        rng.setNumberFormat('@').setValues(limpias);
+        vals.forEach(function(f, i) {
+          if (String(f[0]) !== limpias[i][0]) arregladas++;
+        });
+      });
+    }
+
     var shEta = hoja_(HOJA_ETA, COL_ETA);
     if (shEta.getLastRow() >= 2) {
       var ne = shEta.getLastRow() - 1;
       shEta.getRange(2, 7, ne, 1).setNumberFormat('dd/mm/yyyy hh:mm:ss');
       shEta.getRange(2, 9, ne, 1).setNumberFormat('dd/mm/yyyy hh:mm:ss');
+      [8, 10].forEach(function(col) {          // Hora_inicio y Hora_fin
+        var rng = shEta.getRange(2, col, ne, 1);
+        var vals = rng.getValues();
+        var limpias = vals.map(function(f) { return [horaTexto_(f[0])]; });
+        rng.setNumberFormat('@').setValues(limpias);
+        vals.forEach(function(f, i) {
+          if (String(f[0]) !== limpias[i][0]) arregladas++;
+        });
+      });
     }
-    return { ok: true, msg: 'Formato dd/MM/yyyy aplicado' };
+    return { ok: true, arregladas: arregladas,
+             msg: 'Formato aplicado · ' + arregladas + ' hora(s) corregidas' };
+  });
+}
+
+/* ════════════════════════════════════════════════════════════
+   DEPARTAMENTOS
+   Definen quién es responsable de cada etapa y qué campos ve
+   cada usuario. El rol MASTER siempre ve y opera todo.
+════════════════════════════════════════════════════════════ */
+
+var DEPARTAMENTOS_DEFAULT = [
+  ['Patio',          'Recepción, posicionamiento y liberación de unidades'],
+  ['Almacén',        'Descarga, carga, acomodo y estiba'],
+  ['Documentación',  'Revisión y firma de documentos'],
+  ['Supervisión',    'Validación y cierre de maniobras']
+];
+
+function getDepartamentos(soloActivos) {
+  var sh = hoja_(HOJA_DEP, COL_DEP);
+  if (sh.getLastRow() < 2) {
+    sh.getRange(2, 1, DEPARTAMENTOS_DEFAULT.length, COL_DEP.length).setValues(
+      DEPARTAMENTOS_DEFAULT.map(function(d) { return [uuid_(), d[0], d[1], true]; })
+    );
+  }
+  return sh.getRange(2, 1, Math.max(1, sh.getLastRow() - 1), COL_DEP.length).getValues()
+    .filter(function(r) { return String(r[1] || '').trim(); })
+    .map(function(r) {
+      return { id: String(r[0]), nombre: String(r[1]).trim(),
+               descripcion: String(r[2] || ''),
+               activo: r[3] === '' || r[3] === null || r[3] === undefined ? true : bool_(r[3]) };
+    })
+    .filter(function(d) { return soloActivos ? d.activo : true; });
+}
+
+function guardarDepartamento(data) {
+  return seguro_('guardarDepartamento', function() {
+    var sh = hoja_(HOJA_DEP, COL_DEP);
+    var nombre = String(data.nombre || '').trim();
+    if (!nombre) return { ok: false, error: 'El nombre del departamento es obligatorio' };
+
+    if (sh.getLastRow() >= 2) {
+      var vals = sh.getRange(2, 1, sh.getLastRow() - 1, 2).getValues();
+      for (var i = 0; i < vals.length; i++) {
+        if (String(vals[i][1]).trim().toLowerCase() === nombre.toLowerCase() &&
+            String(vals[i][0]) !== String(data.id || '')) {
+          return { ok: false, error: 'Ya existe el departamento ' + nombre };
+        }
+      }
+    }
+    var id = data.id || uuid_();
+    var row = [id, nombre, data.descripcion || '', data.activo !== false];
+    var fila = data.id ? buscarFila_(sh, data.id) : -1;
+    if (fila > 0) sh.getRange(fila, 1, 1, COL_DEP.length).setValues([row]);
+    else          sh.appendRow(row);
+    return { ok: true, id: id };
+  });
+}
+
+function eliminarDepartamento(id) {
+  return seguro_('eliminarDepartamento', function() {
+    var sh   = hoja_(HOJA_DEP, COL_DEP);
+    var fila = buscarFila_(sh, id);
+    if (fila > 0) sh.deleteRow(fila);
+    return { ok: true };
+  });
+}
+
+/** ¿Este usuario puede ver algo restringido a esta lista de departamentos? */
+function _puedeVer_(deptosPermitidos, ctx) {
+  if (!ctx || ctx.rol === 'MASTER') return true;         // MASTER no tiene límites
+  var lista = textoLista_(deptosPermitidos);
+  if (!lista.length) return true;                        // sin restricción explícita
+  var mio = String((ctx.departamento || '')).trim().toLowerCase();
+  if (!mio) return false;
+  for (var i = 0; i < lista.length; i++) {
+    if (lista[i].toLowerCase() === mio) return true;
+  }
+  return false;
+}
+
+/* ════════════════════════════════════════════════════════════
+   SECUENCIAS DE ETAPAS POR FLUJO
+   Antes estaban fijas en el código; ahora se administran desde
+   la app, con departamento responsable y tiempo estimado.
+════════════════════════════════════════════════════════════ */
+
+function _sembrarFlujos_(sh) {
+  if (sh.getLastRow() >= 2) return 0;
+  var tiempos = getTimeposEstimados();
+  var filas = [];
+  Object.keys(ETAPAS_FLUJO).forEach(function(flujo) {
+    ETAPAS_FLUJO[flujo].forEach(function(etapa, i) {
+      filas.push([flujo, i + 1, etapa, '', Number(tiempos[etapa] || 0), true]);
+    });
+  });
+  if (filas.length) sh.getRange(2, 1, filas.length, COL_FLU.length).setValues(filas);
+  return filas.length;
+}
+
+/** { ENTRADA: [{orden, etapa, departamento, tiempo_est}], ... } */
+function getFlujosEtapas() {
+  var sh = hoja_(HOJA_FLU, COL_FLU);
+  _sembrarFlujos_(sh);
+  var out = {};
+  if (sh.getLastRow() < 2) return out;
+  sh.getRange(2, 1, sh.getLastRow() - 1, COL_FLU.length).getValues().forEach(function(r) {
+    var flujo = String(r[0] || '').trim().toUpperCase();
+    var etapa = String(r[2] || '').trim();
+    if (!flujo || !etapa) return;
+    if (r[5] === false) return;                       // etapa desactivada
+    if (!out[flujo]) out[flujo] = [];
+    out[flujo].push({
+      orden:        Number(r[1] || out[flujo].length + 1),
+      etapa:        etapa,
+      departamento: String(r[3] || ''),
+      tiempo_est:   Number(r[4] || 0)
+    });
+  });
+  Object.keys(out).forEach(function(f) {
+    out[f].sort(function(a, b) { return a.orden - b.orden; });
+  });
+  return out;
+}
+
+/** Guarda la secuencia completa de un flujo, reemplazando la anterior */
+function guardarFlujoEtapas(flujo, items) {
+  return seguro_('guardarFlujoEtapas', function() {
+    var nombre = String(flujo || '').trim().toUpperCase();
+    if (!nombre) return { ok: false, error: 'Falta el nombre del flujo' };
+
+    var limpios = (items || [])
+      .filter(function(i) { return String(i.etapa || '').trim(); })
+      .map(function(i, idx) {
+        return [nombre, idx + 1, String(i.etapa).trim(),
+                String(i.departamento || ''), Number(i.tiempo_est || 0),
+                i.activo !== false];
+      });
+    if (!limpios.length) return { ok: false, error: 'El flujo necesita al menos una etapa' };
+
+    var sh = hoja_(HOJA_FLU, COL_FLU);
+    _borrarFilasFlujo_(sh, nombre);
+    sh.getRange(sh.getLastRow() + 1, 1, limpios.length, COL_FLU.length).setValues(limpios);
+
+    // El flujo debe existir también en el catálogo para poder elegirlo
+    _asegurarValoresCatalogo_('FLUJOS', [nombre]);
+    return { ok: true, etapas: limpios.length };
+  });
+}
+
+function _borrarFilasFlujo_(sh, nombre) {
+  if (sh.getLastRow() < 2) return 0;
+  var vals = sh.getRange(2, 1, sh.getLastRow() - 1, 1).getValues();
+  var n = 0;
+  for (var i = vals.length - 1; i >= 0; i--) {
+    if (String(vals[i][0]).trim().toUpperCase() === nombre) { sh.deleteRow(i + 2); n++; }
+  }
+  return n;
+}
+
+function eliminarFlujoEtapas(flujo) {
+  return seguro_('eliminarFlujoEtapas', function() {
+    var nombre = String(flujo || '').trim().toUpperCase();
+    var sh = hoja_(HOJA_FLU, COL_FLU);
+    var n = _borrarFilasFlujo_(sh, nombre);
+    return { ok: true, eliminadas: n };
   });
 }
 
@@ -1017,6 +1293,10 @@ function setup() {
   // CAMPOS del formulario
   _sembrarCampos_(hoja_(HOJA_CAM, COL_CAM));
 
+  // DEPARTAMENTOS y secuencias de etapas por flujo
+  getDepartamentos(false);
+  _sembrarFlujos_(hoja_(HOJA_FLU, COL_FLU));
+
   // SEMÁFOROS por tipo de maniobra
   var semSh = hoja_(HOJA_SEM, COL_SEM);
   if (semSh.getLastRow() < 2) {
@@ -1146,7 +1426,7 @@ function getTurnoActual() {
    CATÁLOGOS
 ════════════════════════════════════════════════════════════ */
 
-function getCatalogos() {
+function getCatalogos(ctx) {
   var cs = ss_().getSheetByName(HOJA_CAT);
   if (!cs) { setup(); cs = ss_().getSheetByName(HOJA_CAT); }
   var vals = cs.getDataRange().getValues();
@@ -1167,10 +1447,19 @@ function getCatalogos() {
   out.MONTACARGAS  = getMontacargas(true)
     .filter(function(m) { return m.estado !== 'baja'; })
     .map(function(m) { return m.codigo + (m.tipo ? ' · ' + m.tipo : ''); });
-  out.TIEMPOS_EST  = getTimeposEstimados();
-  out.ETAPAS_FLUJO = ETAPAS_FLUJO;
-  out.CAMPOS       = getCamposConfig();
-  out.SEMAFOROS    = getSemaforos();
+  out.TIEMPOS_EST    = getTimeposEstimados();
+  out.ETAPAS_FLUJO   = {};
+  var seq = getFlujosEtapas();
+  Object.keys(seq).forEach(function(f) {
+    out.ETAPAS_FLUJO[f] = seq[f].map(function(e) { return e.etapa; });
+  });
+  Object.keys(ETAPAS_FLUJO).forEach(function(f) {          // respaldo de fábrica
+    if (!out.ETAPAS_FLUJO[f]) out.ETAPAS_FLUJO[f] = ETAPAS_FLUJO[f];
+  });
+  out.SECUENCIAS     = seq;
+  out.DEPARTAMENTOS  = getDepartamentos(true).map(function(d) { return d.nombre; });
+  out.CAMPOS         = getCamposConfig(ctx);
+  out.SEMAFOROS      = getSemaforos();
   // El catálogo de tipos de maniobra es cerrado: si la hoja no lo trae, se usa el maestro
   if (!out.TIPOS_MANIOBRA || !out.TIPOS_MANIOBRA.length) out.TIPOS_MANIOBRA = TIPOS_MANIOBRA_DEFAULT;
   if (!out.ADITAMENTOS   || !out.ADITAMENTOS.length)    out.ADITAMENTOS    = CATALOGOS_DEFAULT.ADITAMENTOS;
@@ -1391,8 +1680,19 @@ function eliminarIncidenciasLote(ids) {
    ETAPAS — LÓGICA INTERNA
 ════════════════════════════════════════════════════════════ */
 
+/** Secuencia configurada del flujo; si la hoja no la tiene, usa la de fábrica */
+function _secuenciaFlujo_(flujo) {
+  var f = String(flujo || '').trim().toUpperCase();
+  var conf = getFlujosEtapas()[f];
+  if (conf && conf.length) return conf;
+  return (ETAPAS_FLUJO[f] || []).map(function(e, i) {
+    return { orden: i + 1, etapa: e, departamento: '', tiempo_est: 0 };
+  });
+}
+
+/** Solo los nombres, para el resto del código que ya trabajaba así */
 function _etapasFlujo(flujo) {
-  return ETAPAS_FLUJO[String(flujo || '').toUpperCase()] || [];
+  return _secuenciaFlujo_(flujo).map(function(s) { return s.etapa; });
 }
 
 /**
@@ -1400,17 +1700,20 @@ function _etapasFlujo(flujo) {
  * de la celda a datetime para que getValues() siempre devuelva un Date.
  * Ésta era la causa raíz de que el cronómetro no arrancara.
  */
-function _crearEtapa(shEta, idManiobra, folio, numEtapa, nombreEtapa, tiempoEst) {
+function _crearEtapa(shEta, idManiobra, folio, numEtapa, nombreEtapa, tiempoEst, departamento) {
   var ahora = new Date();
   var id    = uuid_();
   shEta.appendRow([
     id, idManiobra, folio, numEtapa, nombreEtapa, 'en_curso',
     ahora, hhmm_(ahora), '', '',
     '', tiempoEst || 0, '', 'NO',
-    0, '', '', usuario_(), ahora
+    0, '', '', usuario_(), ahora,
+    departamento || ''
   ]);
   var fila = shEta.getLastRow();
   shEta.getRange(fila, 7).setNumberFormat('yyyy-mm-dd hh:mm:ss').setValue(ahora);
+  // La hora va como texto: con formato de hora Sheets la guardaría sobre 1899
+  shEta.getRange(fila, 8).setNumberFormat('@').setValue(hhmm_(ahora));
   SpreadsheetApp.flush();
   return id;
 }
@@ -1447,15 +1750,16 @@ function iniciarManiobra(data) {
     var tz      = Session.getScriptTimeZone();
     var fecha   = data.fecha || Utilities.formatDate(ahora, tz, 'yyyy-MM-dd');
     var flujo   = String(data.flujo || '').toUpperCase();
-    var lista   = _etapasFlujo(flujo);
-    if (!lista.length) return { ok: false, error: 'Flujo sin etapas definidas: ' + flujo };
+    var secuencia = _secuenciaFlujo_(flujo);
+    if (!secuencia.length) return { ok: false, error: 'Flujo sin etapas definidas: ' + flujo };
 
-    var primera = lista[0];
+    var lista   = secuencia.map(function(s) { return s.etapa; });
+    var primera = secuencia[0];
     var folio   = generarFolio(data.cliente, fecha, data.no_unidad);
     var monta   = listaTexto_(data.montacargas);
 
     sh.appendRow([
-      id, folio, fecha, data.turno, data.flujo, primera,
+      id, folio, fecha, data.turno, data.flujo, primera.etapa,
       data.cliente, data.no_unidad, data.tipo_equipo,
       Number(data.cant_equipos || 1), data.material, data.presentacion,
       data.cant_piezas || '', data.unidad_medida, data.tarimas || '', data.peso_tons || '',
@@ -1477,14 +1781,15 @@ function iniciarManiobra(data) {
       '', '', ''
     ]);
 
-    var tiempoEst = tiempos[primera] || 0;
-    var idEtapa   = _crearEtapa(shEta, id, folio, 1, primera, tiempoEst);
+    var tiempoEst = primera.tiempo_est || tiempos[primera.etapa] || 0;
+    var idEtapa   = _crearEtapa(shEta, id, folio, 1, primera.etapa, tiempoEst, primera.departamento);
 
     // El montacargas queda ocupado mientras la maniobra esté activa
     _setEstadoPorCodigo_(_codigosMontacargas_(monta), 'en_uso');
 
     return { ok: true, id: id, folio: folio,
-      etapa: { id: idEtapa, num: 1, nombre: primera, total: lista.length, tiempo_estimado_min: tiempoEst }
+      etapa: { id: idEtapa, num: 1, nombre: primera.etapa, total: lista.length,
+               tiempo_estimado_min: tiempoEst, departamento: primera.departamento }
     };
   });
 }
@@ -1663,7 +1968,7 @@ function forzarCierreManiobrasLote(ids) {
         r[5]  = 'finalizada';
         r[8]  = ahora;
         r[9]  = hhmm_(ahora);
-        if (!r[10]) r[10] = minutosEntre(String(r[7] || ''), hhmm_(ahora));
+        if (!r[10]) r[10] = minutosEntre(horaTexto_(r[7]), hhmm_(ahora));
         r[18] = ahora;
         props.deleteProperty('pe_' + String(r[0]));
         shEta.getRange(i + 2, 1, 1, COL_ETA.length).setValues([r]);
@@ -1724,8 +2029,8 @@ function getManiobras(filtros) {
         estado:              String(r[20] || ''),
         iniciado_en:         fechaHora_(r[21]),
         finalizado_en:       fechaHora_(r[22]),
-        hora_inicio:         String(r[24] || ''),
-        hora_fin:            String(r[25] || ''),
+        hora_inicio:         horaTexto_(r[24]),
+        hora_fin:            horaTexto_(r[25]),
         tiempo_total_min:    r[26] === '' ? '' : Number(r[26] || 0),
         demora_min:          r[27] === '' ? '' : Number(r[27] || 0),
         causa_demora:        String(r[28] || ''),
@@ -1745,8 +2050,8 @@ function getManiobras(filtros) {
         atados:              r[C_ATADOS] === '' ? '' : Number(r[C_ATADOS] || 0),
         piezas_sueltas:      r[C_PZAS]   === '' ? '' : Number(r[C_PZAS] || 0),
         aditamento:          String(r[C_ADIT] || ''),
-        hora_posicionamiento:String(r[C_H_POS] || ''),
-        hora_liberacion:     String(r[C_H_LIB] || ''),
+        hora_posicionamiento:horaTexto_(r[C_H_POS]),
+        hora_liberacion:     horaTexto_(r[C_H_LIB]),
         ocupacion_spot_min:  r[C_OCUPACION] === '' ? '' : Number(r[C_OCUPACION] || 0),
         min_por_atado:       r[C_MIN_ATADO] === '' ? '' : Number(r[C_MIN_ATADO] || 0),
         min_por_tonelada:    r[C_MIN_TON]   === '' ? '' : Number(r[C_MIN_TON] || 0),
@@ -1758,7 +2063,8 @@ function getManiobras(filtros) {
         etiqueta_prueba:     String(r[C_ETIQ_PRUEBA] || ''),
         revision:            String(r[C_REVISION] || ''),
         motivo_revision:     String(r[C_MOTIVO_REV] || ''),
-        validado_por:        String(r[C_VALIDADO] || '')
+        validado_por:        String(r[C_VALIDADO] || ''),
+        comentario_supervisor: String(r[C_COMENT_SUP] || '')
       });
       if (out.length >= limite) break;
     }
@@ -1777,7 +2083,7 @@ function getManiobras(filtros) {
  * más un server_now_ms global para corregir la desviación del reloj local.
  * Con eso el cronómetro corre 100 % en el navegador, sin depender de refrescos.
  */
-function getManiobrasEnCurso() {
+function getManiobrasEnCurso(ctx) {
   return seguro_('getManiobrasEnCurso', function() {
     var shM   = hoja_(HOJA, COLUMNAS);
     var shEta = hoja_(HOJA_ETA, COL_ETA);
@@ -1823,13 +2129,16 @@ function getManiobrasEnCurso() {
           estado:              estado,
           inicio_ms:           inicioMs,
           fin_ms:              toMs_(r[8]),
-          hora_inicio:         String(r[7] || ''),
-          hora_fin:            String(r[9] || ''),
+          hora_inicio:         horaTexto_(r[7]),
+          hora_fin:            horaTexto_(r[9]),
           tiempo_min:          Number(r[10] || 0),
           tiempo_estimado_min: Number(r[11] || 0),
           pausa_acum_seg:      pausaAcum,
           pausa_desde_ms:      pausaDesde,
           elapsed_seg:         elapsed,
+          departamento:        String(r[C_ETA_DEPTO] || ''),
+          // Un operador solo ve y opera las etapas de su departamento
+          visible:             _puedeVer_(r[C_ETA_DEPTO], ctx),
           sin_inicio:          activa && !inicioMs   // bandera para reparación
         });
       });
@@ -1878,11 +2187,13 @@ function getManiobrasEnCurso() {
         piezas_sueltas:  Number(r[C_PZAS]   || 0) || Number(r[12] || 0),
         num_montacargas: _numMontacargas_(r),
         aditamento:      String(r[C_ADIT] || ''),
-        hora_posicionamiento: String(r[C_H_POS] || ''),
-        hora_liberacion:      String(r[C_H_LIB] || ''),
+        hora_posicionamiento: horaTexto_(r[C_H_POS]),
+        hora_liberacion:      horaTexto_(r[C_H_LIB]),
         prueba_controlada:    String(r[C_PRUEBA] || 'NO'),
         completado_seg:  completadoSeg,
         etapa_actual:    etapaActual,
+        // Puede operar el cronómetro solo si la etapa activa es de su área
+        puede_operar:    !etapaActual || etapaActual.visible !== false,
         etapas:          etapas
       };
     });
@@ -1942,10 +2253,22 @@ function finalizarEtapa(idEtapa, extras) {
     var idManiobra = String(rowData[1]  || '');
     var folio      = String(rowData[2]  || '');
     var numEtapa   = Number(rowData[3]  || 0);
-    var horaInicio = String(rowData[7]  || '');
+    var horaInicio = horaTexto_(rowData[7]);
     var inicioMs   = toMs_(rowData[6]);
     var tiempoEst  = Number(rowData[11] || 0);
     var acum       = Number(rowData[14] || 0);
+
+    // Si ésta es la última etapa, el furgón no puede cerrarse sin hora de liberación
+    var esUltima = numEtapa >= _secuenciaFlujo_(_flujoDe_(idManiobra)).length;
+    if (esUltima) {
+      var libGuardada = _horaLiberacionDe_(idManiobra);
+      var libNueva    = String((extras.hora_liberacion || '')).trim();
+      if (!libGuardada && !libNueva) {
+        return { ok: false, requiere_liberacion: true,
+          error: 'Captura la hora de liberación del furgón antes de cerrar la maniobra. ' +
+                 'Es el dato que mide la ocupación del spot.' };
+      }
+    }
 
     var props   = PropertiesService.getScriptProperties();
     var propKey = 'pe_' + idEtapa;
@@ -1999,6 +2322,33 @@ function marcarEtapaNoAplica(idEtapa) {
   });
 }
 
+/** Flujo de una maniobra, por id */
+function _flujoDe_(idManiobra) {
+  var sh   = hoja_(HOJA, COLUMNAS);
+  var fila = buscarFila_(sh, idManiobra);
+  return fila > 0 ? String(sh.getRange(fila, 5).getValue() || '') : '';
+}
+
+/** Hora de liberación ya capturada, si la hay */
+function _horaLiberacionDe_(idManiobra) {
+  var sh   = hoja_(HOJA, COLUMNAS);
+  var fila = buscarFila_(sh, idManiobra);
+  return fila > 0 ? horaTexto_(sh.getRange(fila, C_H_LIB + 1).getValue()) : '';
+}
+
+/** Guarda la hora de liberación desde la tarjeta, sin cerrar nada */
+function registrarLiberacion(idManiobra, hora) {
+  return seguro_('registrarLiberacion', function() {
+    var h = horaTexto_(hora);
+    if (!h) return { ok: false, error: 'Hora de liberación no válida' };
+    var sh   = hoja_(HOJA, COLUMNAS);
+    var fila = buscarFila_(sh, idManiobra);
+    if (fila < 0) return { ok: false, error: 'Maniobra no encontrada' };
+    sh.getRange(fila, C_H_LIB + 1).setNumberFormat('@').setValue(h);
+    return { ok: true, hora: h };
+  });
+}
+
 /**
  * Repara una etapa activa cuya hora de inicio se perdió o quedó en texto.
  * Es la salida de emergencia cuando un cronómetro no arranca.
@@ -2027,19 +2377,20 @@ function _avanzarOManiobra(idManiobra, folio, numActual, extras) {
   if (filaM < 0) return { ok: false, error: 'Maniobra no encontrada: ' + idManiobra };
 
   var flujo  = String(shM.getRange(filaM, 5).getValue() || '');
-  var lista  = _etapasFlujo(flujo);
+  var secuencia = _secuenciaFlujo_(flujo);
   var sigNum = numActual + 1;
   var shEta  = hoja_(HOJA_ETA, COL_ETA);
 
-  if (sigNum <= lista.length) {
-    var nombreSig = lista[sigNum - 1];
+  if (sigNum <= secuencia.length) {
+    var sig       = secuencia[sigNum - 1];
     var tiempos   = getTimeposEstimados();
-    var tiempoEst = tiempos[nombreSig] || 0;
-    var idSig     = _crearEtapa(shEta, idManiobra, folio, sigNum, nombreSig, tiempoEst);
-    shM.getRange(filaM,  6).setValue(nombreSig);
+    var tiempoEst = sig.tiempo_est || tiempos[sig.etapa] || 0;
+    var idSig     = _crearEtapa(shEta, idManiobra, folio, sigNum, sig.etapa, tiempoEst, sig.departamento);
+    shM.getRange(filaM,  6).setValue(sig.etapa);
     shM.getRange(filaM, 21).setValue('en_curso');
     return { ok: true, maniobra_finalizada: false,
-      siguiente: { id: idSig, num: sigNum, nombre: nombreSig, total: lista.length, tiempo_estimado_min: tiempoEst }
+      siguiente: { id: idSig, num: sigNum, nombre: sig.etapa, total: secuencia.length,
+                   tiempo_estimado_min: tiempoEst, departamento: sig.departamento }
     };
   }
 
@@ -2057,7 +2408,7 @@ function _cerrarManiobra(idManiobra, filaM, shM, shEta, extras) {
     shEta.getRange(2, 1, shEta.getLastRow() - 1, COL_ETA.length).getValues().forEach(function(r) {
       if (String(r[1]) !== String(idManiobra)) return;
       etapas.push({ num: Number(r[3]), estado: String(r[5]),
-        hora_inicio: String(r[7] || ''), hora_fin: String(r[9] || ''),
+        hora_inicio: horaTexto_(r[7]), hora_fin: horaTexto_(r[9]),
         tiempo_min: Number(r[10] || 0), pausa_acum_seg: Number(r[14] || 0) });
     });
   }
@@ -2438,7 +2789,8 @@ function getRegistrosEnRevision() {
         toneladas_netas: r[C_TON]    === '' ? '' : Number(r[C_TON] || 0),
         min_por_atado:   r[C_MIN_ATADO] === '' ? '' : Number(r[C_MIN_ATADO] || 0),
         min_por_tonelada:r[C_MIN_TON]   === '' ? '' : Number(r[C_MIN_TON] || 0),
-        motivo_revision: String(r[C_MOTIVO_REV] || '')
+        motivo_revision: String(r[C_MOTIVO_REV] || ''),
+        comentario_supervisor: String(r[C_COMENT_SUP] || '')
       });
     });
     return { ok: true, filas: filas };
@@ -2563,7 +2915,8 @@ function diagnostico() {
     var esperadas = [
       [HOJA, COLUMNAS], [HOJA_ETA, COL_ETA], [HOJA_CAT, null], [HOJA_TEMS, COL_TEM],
       [HOJA_EMP, COL_EMP], [HOJA_MON, COL_MON], [HOJA_CAM, COL_CAM],
-      [HOJA_SEM, COL_SEM], [HOJA_INC, COL_INC], [HOJA_CFG, COL_CFG], [HOJA_USR, COL_USR]
+      [HOJA_SEM, COL_SEM], [HOJA_DEP, COL_DEP], [HOJA_FLU, COL_FLU],
+      [HOJA_INC, COL_INC], [HOJA_CFG, COL_CFG], [HOJA_USR, COL_USR]
     ];
 
     esperadas.forEach(function(par) {
