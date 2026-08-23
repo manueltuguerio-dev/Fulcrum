@@ -1,0 +1,218 @@
+<style>
+  :root { color-scheme: light dark; }
+
+  body { -webkit-tap-highlight-color: transparent; }
+
+  /* Toda la navegación de la app se apoya en esta clase: las pantallas, las
+     pestañas, el modal y el chat se muestran quitándola. Tailwind la trae, pero
+     llega por CDN, y si esa petición falla la aplicación aparecería entera de
+     golpe con el login y los datos encimados. Definirla aquí, en la hoja que
+     viaja dentro del propio HTML, hace que la app siga siendo navegable aunque
+     no haya CDN: se verá sin formato, pero cada pantalla en su lugar. */
+  .hidden { display: none !important; }
+
+  .tarjeta {
+    border-radius: 1rem;
+    background: #ffffff;
+    border: 1px solid rgba(15, 23, 42, .07);
+    box-shadow: 0 1px 2px rgba(15, 23, 42, .04), 0 8px 24px -16px rgba(15, 23, 42, .18);
+  }
+  .dark .tarjeta {
+    background: #1e293b;
+    border-color: rgba(255, 255, 255, .08);
+    box-shadow: none;
+  }
+
+  .campo {
+    width: 100%;
+    border-radius: .625rem;
+    border: 1px solid #cbd5e1;
+    background: #ffffff;
+    padding: .625rem .75rem;
+    font-size: .95rem;
+    color: inherit;
+    transition: border-color .15s, box-shadow .15s;
+  }
+  .campo:focus {
+    outline: none;
+    border-color: #2f9160;
+    box-shadow: 0 0 0 3px rgba(47, 145, 96, .18);
+  }
+  .dark .campo { background: #0f172a; border-color: #334155; }
+
+  .etiqueta {
+    display: block;
+    margin-bottom: .3rem;
+    font-size: .78rem;
+    font-weight: 600;
+    color: #64748b;
+  }
+  .dark .etiqueta { color: #94a3b8; }
+
+  .boton-primario {
+    border-radius: .625rem;
+    background: #1f6f4f;
+    padding: .7rem 1rem;
+    font-weight: 600;
+    font-size: .95rem;
+    color: #ffffff;
+    transition: background .15s, transform .05s;
+  }
+  .boton-primario:hover:not(:disabled) { background: #175840; }
+  .boton-primario:active:not(:disabled) { transform: translateY(1px); }
+  .boton-primario:disabled { opacity: .45; cursor: not-allowed; }
+
+  .boton-secundario {
+    border-radius: .625rem;
+    border: 1px solid #1f6f4f;
+    padding: .7rem 1rem;
+    font-weight: 600;
+    font-size: .95rem;
+    color: #1f6f4f;
+    background: transparent;
+    transition: background .15s;
+  }
+  .boton-secundario:hover { background: rgba(31, 111, 79, .08); }
+  .dark .boton-secundario { color: #8fc9ac; border-color: #8fc9ac; }
+
+  .boton-icono {
+    display: inline-flex;
+    height: 2.25rem;
+    width: 2.25rem;
+    align-items: center;
+    justify-content: center;
+    border-radius: .5rem;
+    font-size: 1.05rem;
+    transition: background .15s;
+  }
+  .boton-icono:hover { background: rgba(255, 255, 255, .18); }
+
+  .tab-nav {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: .1rem;
+    padding: .55rem .25rem calc(.55rem + env(safe-area-inset-bottom));
+    font-size: .7rem;
+    font-weight: 500;
+    color: #94a3b8;
+    transition: color .15s;
+  }
+  .tab-nav span { font-size: 1.25rem; line-height: 1.4; }
+  .tab-nav[data-activo="si"] { color: #1f6f4f; }
+  .dark .tab-nav[data-activo="si"] { color: #8fc9ac; }
+
+  .zona-carga {
+    display: flex;
+    cursor: pointer;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    border-radius: .75rem;
+    border: 2px dashed #cbd5e1;
+    padding: 1.25rem .75rem;
+    text-align: center;
+    transition: border-color .15s, background .15s;
+  }
+  .zona-carga:hover { border-color: #2f9160; background: rgba(47, 145, 96, .05); }
+  .dark .zona-carga { border-color: #475569; }
+
+  .fila-lista {
+    display: flex;
+    width: 100%;
+    align-items: center;
+    justify-content: space-between;
+    gap: .75rem;
+    border-radius: .625rem;
+    padding: .6rem .75rem;
+    text-align: left;
+    transition: background .15s;
+  }
+  .fila-lista:hover { background: #f1f5f9; }
+  .dark .fila-lista:hover { background: rgba(255, 255, 255, .05); }
+  .fila-lista[data-activo="si"] { background: #d9ece1; }
+  .dark .fila-lista[data-activo="si"] { background: rgba(47, 145, 96, .22); }
+
+  .chip-tiempo {
+    border-radius: .625rem;
+    border: 1px solid #cbd5e1;
+    padding: .6rem .3rem;
+    font-size: .8rem;
+    font-weight: 600;
+    transition: all .15s;
+  }
+  .chip-tiempo[data-activo="si"] {
+    background: #1f6f4f;
+    border-color: #1f6f4f;
+    color: #ffffff;
+  }
+  .dark .chip-tiempo { border-color: #475569; }
+
+  .anillo-carga {
+    height: 2.5rem;
+    width: 2.5rem;
+    border-radius: 9999px;
+    border: 3px solid #d9ece1;
+    border-top-color: #1f6f4f;
+    animation: girar .8s linear infinite;
+  }
+  @keyframes girar { to { transform: rotate(360deg); } }
+
+  .aviso {
+    border-radius: .75rem;
+    padding: .75rem 1rem;
+    font-size: .875rem;
+    font-weight: 500;
+    color: #ffffff;
+    box-shadow: 0 10px 25px -10px rgba(15, 23, 42, .5);
+    animation: entrar .2s ease-out;
+  }
+  .aviso[data-tipo="ok"] { background: #1f6f4f; }
+  .aviso[data-tipo="error"] { background: #b91c1c; }
+  .aviso[data-tipo="info"] { background: #334155; }
+  @keyframes entrar { from { opacity: 0; transform: translateY(-8px); } }
+
+  .barra-macro {
+    height: .5rem;
+    overflow: hidden;
+    border-radius: 9999px;
+    background: #e2e8f0;
+  }
+  .dark .barra-macro { background: #334155; }
+  .barra-macro > div { height: 100%; border-radius: 9999px; transition: width .6s ease-out; }
+
+  .nivel-piramide {
+    margin: 0 auto;
+    border-radius: .375rem;
+    padding: .5rem;
+    text-align: center;
+    font-size: .75rem;
+    font-weight: 600;
+  }
+
+  .burbuja {
+    max-width: 85%;
+    border-radius: 1rem;
+    padding: .6rem .85rem;
+    font-size: .9rem;
+    line-height: 1.4;
+  }
+  /* El lado lo decide quién está mirando, no el rol: el paciente ve sus
+     mensajes a la derecha y el nutriólogo ve los suyos a la derecha. */
+  .burbuja[data-lado="propio"] {
+    margin-left: auto;
+    background: #1f6f4f;
+    color: #ffffff;
+    border-bottom-right-radius: .25rem;
+  }
+  .burbuja[data-lado="ajeno"] {
+    background: #f1f5f9;
+    border-bottom-left-radius: .25rem;
+  }
+  .dark .burbuja[data-lado="ajeno"] { background: #334155; }
+
+  @media print {
+    nav, #btn-chat, .boton-icono { display: none !important; }
+  }
+</style>

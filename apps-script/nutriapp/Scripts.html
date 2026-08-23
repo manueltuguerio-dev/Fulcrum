@@ -1,0 +1,1362 @@
+<script>
+/**
+ * NutriApp · Fulcrum
+ * Lógica de la interfaz. Todo el estado vive en memoria; el token de sesión se
+ * guarda en sessionStorage para que recargar la página no obligue a entrar otra
+ * vez, y se borra al cerrar la pestaña.
+ */
+
+var estado = {
+  token: null,
+  rol: null,
+  perfil: null,
+  plan: null,
+  resumen: null,
+  alimentos: [],
+  platillos: {},
+  evidencia: [],
+  chat: [],
+  tiempoComida: 'Desayuno',
+  platilloActual: [],
+  ultimaMetrica: null,
+  urlsOcr: {},
+  pacientes: [],
+  pacienteActivo: null,
+  graficas: {}
+};
+
+var CIRCUNFERENCIA_ANILLO = 2 * Math.PI * 52;
+
+var COLORES_MACRO = {
+  proteinas: { etiqueta: 'Proteína', color: '#2f9160' },
+  carbohidratos: { etiqueta: 'Carbohidratos', color: '#d97706' },
+  grasas: { etiqueta: 'Grasas', color: '#7c3aed' },
+  fibra: { etiqueta: 'Fibra', color: '#0891b2' }
+};
+
+/* ===================================================================
+   PUENTE CON EL SERVIDOR
+   =================================================================== */
+
+/**
+ * Envuelve google.script.run en una promesa.
+ * @param {string} funcion Nombre de la función del backend.
+ * @param {...*} args Los argumentos que recibe.
+ * @return {Promise} El valor que devuelve el backend.
+ */
+function api(funcion) {
+  var args = Array.prototype.slice.call(arguments, 1);
+  return new Promise(function (resolve, reject) {
+    google.script.run
+      .withSuccessHandler(resolve)
+      .withFailureHandler(function (err) {
+        reject(new Error(err && err.message ? err.message : 'No se pudo conectar con el servidor.'));
+      })[funcion].apply(null, args);
+  });
+}
+
+/* ===================================================================
+   UTILIDADES DE PANTALLA
+   =================================================================== */
+
+function $(selector, raiz) { return (raiz || document).querySelector(selector); }
+function $$(selector, raiz) { return Array.prototype.slice.call((raiz || document).querySelectorAll(selector)); }
+
+/**
+ * Muestra un aviso flotante que se va solo.
+ * @param {string} texto El mensaje.
+ * @param {string=} tipo "ok", "error" o "info".
+ */
+function avisar(texto, tipo) {
+  var caja = document.createElement('div');
+  caja.className = 'aviso';
+  caja.setAttribute('data-tipo', tipo || 'ok');
+  caja.textContent = texto;
+  $('#avisos').appendChild(caja);
+  setTimeout(function () {
+    caja.style.transition = 'opacity .3s';
+    caja.style.opacity = '0';
+    setTimeout(function () { caja.remove(); }, 300);
+  }, tipo === 'error' ? 5000 : 3000);
+}
+
+/**
+ * Escapa texto antes de meterlo en innerHTML.
+ * @param {*} texto El texto original.
+ * @return {string} El texto seguro.
+ */
+function esc(texto) {
+  var div = document.createElement('div');
+  div.textContent = texto === undefined || texto === null ? '' : String(texto);
+  return div.innerHTML;
+}
+
+/**
+ * Abre el modal con un título y contenido HTML.
+ * @param {string} titulo El encabezado.
+ * @param {string} html El contenido.
+ */
+function abrirModal(titulo, html) {
+  $('#modal-titulo').textContent = titulo;
+  $('#modal-cuerpo').innerHTML = html;
+  $('#modal').classList.remove('hidden');
+  $('#modal').classList.add('flex');
+}
+
+function cerrarModal() {
+  $('#modal').classList.add('hidden');
+  $('#modal').classList.remove('flex');
+}
+
+/**
+ * Cambia entre las pantallas principales.
+ * @param {string} cual "login", "paciente" o "nutriologo".
+ */
+function mostrarPantalla(cual) {
+  ['login', 'paciente', 'nutriologo'].forEach(function (nombre) {
+    var seccion = $('#pantalla-' + nombre);
+    var activa = nombre === cual;
+    seccion.classList.toggle('hidden', !activa);
+    seccion.classList.toggle(nombre === 'login' ? 'flex' : 'flex', activa);
+  });
+  $('#cargando').classList.add('hidden');
+}
+
+/**
+ * Cambia de pestaña dentro de la vista del paciente.
+ * @param {string} vista El nombre de la vista.
+ */
+function irA(vista) {
+  $$('.vista-paciente').forEach(function (bloque) {
+    bloque.classList.toggle('hidden', bloque.getAttribute('data-vista') !== vista);
+  });
+  $$('.tab-nav').forEach(function (tab) {
+    tab.setAttribute('data-activo', tab.getAttribute('data-ir') === vista ? 'si' : 'no');
+  });
+  window.scrollTo({ top: 0, behavior: 'smooth' });
+}
+
+/**
+ * Aplica el tema guardado y devuelve el que quedó activo.
+ * @param {boolean=} alternar Si se pidió cambiarlo.
+ */
+function aplicarTema(alternar) {
+  var guardado = null;
+  try { guardado = localStorage.getItem('nutriapp-tema'); } catch (e) { guardado = null; }
+  var oscuro = guardado ? guardado === 'oscuro' : window.matchMedia('(prefers-color-scheme: dark)').matches;
+  if (alternar) { oscuro = !oscuro; }
+  document.documentElement.classList.toggle('dark', oscuro);
+  try { localStorage.setItem('nutriapp-tema', oscuro ? 'oscuro' : 'claro'); } catch (e) { /* sin almacenamiento */ }
+}
+
+function hoyISO() {
+  var d = new Date();
+  return d.getFullYear() + '-' + ('0' + (d.getMonth() + 1)).slice(-2) + '-' + ('0' + d.getDate()).slice(-2);
+}
+
+/* ===================================================================
+   SESIÓN
+   =================================================================== */
+
+function guardarToken(token) {
+  estado.token = token;
+  try { sessionStorage.setItem('nutriapp-token', token); } catch (e) { /* sin almacenamiento */ }
+}
+
+function leerToken() {
+  try { return sessionStorage.getItem('nutriapp-token'); } catch (e) { return null; }
+}
+
+function borrarToken() {
+  estado.token = null;
+  try { sessionStorage.removeItem('nutriapp-token'); } catch (e) { /* sin almacenamiento */ }
+}
+
+/**
+ * Entra a la aplicación con el token vigente y arma la vista que toque.
+ */
+function cargarAplicacion() {
+  $('#cargando').classList.remove('hidden');
+  return api('getEstadoInicial', estado.token).then(function (datos) {
+    estado.rol = datos.rol;
+    estado.perfil = datos.perfil;
+    estado.evidencia = datos.evidencia || [];
+
+    if (datos.rol === 'Nutriologo') {
+      estado.pacientes = datos.pacientes || [];
+      $('#nutriologo-nombre').textContent = datos.perfil.nombre || datos.perfil.email;
+      mostrarPantalla('nutriologo');
+      pintarListaPacientes();
+      return;
+    }
+
+    estado.plan = datos.plan;
+    estado.resumen = datos.resumenHoy;
+    estado.alimentos = datos.alimentos || [];
+    estado.platillos = datos.platillos || {};
+    estado.chat = datos.chat || [];
+    estado.ultimaMetrica = datos.ultimaMetrica;
+
+    $('#paciente-nombre').textContent = datos.perfil.nombre || datos.perfil.email;
+    mostrarPantalla('paciente');
+    pintarTodoPaciente();
+    irA('hoy');
+  }).catch(function (err) {
+    borrarToken();
+    mostrarPantalla('login');
+    avisar(err.message, 'error');
+  });
+}
+
+function cerrarSesion() {
+  var token = estado.token;
+  borrarToken();
+  estado = Object.assign({}, estado, { rol: null, perfil: null, pacienteActivo: null, graficas: {} });
+  mostrarPantalla('login');
+  if (token) { api('logoutUser', token).catch(function () { /* da igual */ }); }
+}
+
+/* ===================================================================
+   VISTA DEL PACIENTE · RESUMEN
+   =================================================================== */
+
+function pintarTodoPaciente() {
+  pintarResumen();
+  pintarPlan();
+  pintarSelectorTiempo();
+  pintarPlatillos();
+  pintarBusqueda('');
+  pintarPlatilloActual();
+  pintarActividades();
+  pintarEvidencia();
+  pintarChat();
+  cargarTiposActividad();
+
+  if (!$('#m-fecha').value) { $('#m-fecha').value = hoyISO(); }
+  if (estado.ultimaMetrica) {
+    $('#peso-actual').textContent = (estado.ultimaMetrica.Peso_kg || '—') + (estado.ultimaMetrica.Peso_kg ? ' kg' : '');
+  }
+}
+
+function pintarResumen() {
+  var resumen = estado.resumen;
+  if (!resumen) { return; }
+
+  var meta = resumen.meta || 1700;
+  var consumidas = resumen.consumido.calorias || 0;
+  var proporcion = Math.min(consumidas / meta, 1);
+
+  $('#kcal-consumidas').textContent = Math.round(consumidas);
+  $('#kcal-meta').textContent = Math.round(meta);
+  $('#kcal-quemadas').textContent = Math.round(resumen.quemado || 0);
+
+  var restantes = Math.round(resumen.restante);
+  var etiqueta = $('#kcal-restantes');
+  etiqueta.textContent = restantes >= 0 ? restantes + ' restantes' : Math.abs(restantes) + ' de más';
+  etiqueta.className = 'mt-1 text-xs font-medium ' + (restantes >= 0
+    ? 'text-verde-600 dark:text-verde-300'
+    : 'text-amber-600 dark:text-amber-400');
+
+  var anillo = $('#anillo-progreso');
+  anillo.setAttribute('stroke-dasharray', CIRCUNFERENCIA_ANILLO.toFixed(1));
+  anillo.setAttribute('stroke-dashoffset', (CIRCUNFERENCIA_ANILLO * (1 - proporcion)).toFixed(1));
+  anillo.classList.toggle('stroke-verde-500', restantes >= 0);
+  anillo.classList.toggle('stroke-amber-500', restantes < 0);
+
+  var objetivos = resumen.macrosObjetivo || {};
+  Object.keys(COLORES_MACRO).forEach(function (llave) {
+    var caja = $('[data-macro="' + llave + '"]');
+    if (!caja) { return; }
+    var actual = resumen.consumido[llave] || 0;
+    var objetivo = objetivos[llave === 'proteinas' ? 'proteinas_g'
+      : llave === 'carbohidratos' ? 'carbohidratos_g'
+      : llave === 'grasas' ? 'grasas_g' : 'fibra_g'] || 0;
+    var pct = objetivo > 0 ? Math.min((actual / objetivo) * 100, 100) : 0;
+
+    caja.innerHTML =
+      '<div class="mb-1 flex items-baseline justify-between text-xs">' +
+        '<span class="font-medium">' + COLORES_MACRO[llave].etiqueta + '</span>' +
+        '<span class="text-slate-500 dark:text-slate-400">' + Math.round(actual) + ' / ' + Math.round(objetivo) + ' g</span>' +
+      '</div>' +
+      '<div class="barra-macro"><div style="width:' + pct.toFixed(1) + '%;background:' + COLORES_MACRO[llave].color + '"></div></div>';
+  });
+
+  pintarComidasHoy();
+}
+
+function pintarComidasHoy() {
+  var caja = $('#lista-comidas-hoy');
+  var comidas = (estado.resumen && estado.resumen.comidas) || [];
+
+  if (!comidas.length) {
+    caja.innerHTML = '<p class="py-4 text-center text-sm text-slate-400">Todavía no registras nada hoy.</p>';
+    return;
+  }
+
+  caja.innerHTML = comidas.map(function (c) {
+    var alimentos = (c.alimentos || []).map(function (a) {
+      return esc(a.alimento) + ' (' + a.gramos + ' g)';
+    }).join(' · ');
+    return '' +
+      '<div class="rounded-xl border border-slate-100 p-3 dark:border-slate-700">' +
+        '<div class="flex items-start justify-between gap-2">' +
+          '<div class="min-w-0">' +
+            '<p class="font-medium">' + esc(c.tiempoComida) + '</p>' +
+            '<p class="mt-.5 truncate text-xs text-slate-500 dark:text-slate-400">' + alimentos + '</p>' +
+          '</div>' +
+          '<div class="shrink-0 text-right">' +
+            '<p class="font-semibold">' + Math.round(c.calorias) + '</p>' +
+            '<p class="text-xs text-slate-400">kcal</p>' +
+          '</div>' +
+        '</div>' +
+        '<div class="mt-2 flex items-center justify-between">' +
+          '<p class="text-xs text-slate-400">P ' + Math.round(c.proteinas) + ' · C ' + Math.round(c.carbohidratos) +
+            ' · G ' + Math.round(c.grasas) + ' · F ' + Math.round(c.fibra) + '</p>' +
+          '<button class="text-xs text-red-600 hover:underline" data-borrar-registro="' + esc(c.id) + '">Quitar</button>' +
+        '</div>' +
+      '</div>';
+  }).join('');
+}
+
+function pintarPlan() {
+  var plan = estado.plan;
+  if (!plan) { return; }
+
+  var colorEstado = {
+    'en-rango': 'bg-verde-50 text-verde-700 dark:bg-verde-900/30 dark:text-verde-300',
+    'estancado': 'bg-amber-50 text-amber-700 dark:bg-amber-900/30 dark:text-amber-300',
+    'muy-rapido': 'bg-amber-50 text-amber-700 dark:bg-amber-900/30 dark:text-amber-300',
+    'perdiendo-musculo': 'bg-red-50 text-red-700 dark:bg-red-900/30 dark:text-red-300',
+    'manual': 'bg-slate-100 text-slate-700 dark:bg-slate-700 dark:text-slate-200'
+  }[plan.estado] || 'bg-slate-100 text-slate-700 dark:bg-slate-700 dark:text-slate-200';
+
+  var datos = '';
+  if (plan.tmb) {
+    datos = '<div class="mt-4 grid grid-cols-3 gap-2 border-t border-slate-100 pt-3 text-center dark:border-slate-700">' +
+      '<div><p class="text-lg font-semibold">' + Math.round(plan.tmb) + '</p><p class="text-xs text-slate-400">TMB</p></div>' +
+      '<div><p class="text-lg font-semibold">' + Math.round(plan.get) + '</p><p class="text-xs text-slate-400">Gasto total</p></div>' +
+      '<div><p class="text-lg font-semibold">' + (plan.masaLibreGrasa_kg || 0).toFixed(1) + '</p><p class="text-xs text-slate-400">kg sin grasa</p></div>' +
+      '</div>';
+  }
+
+  var nota = plan.macros && plan.macros.nota
+    ? '<p class="mt-3 text-xs text-slate-500 dark:text-slate-400">' + esc(plan.macros.nota) + '</p>'
+    : '';
+
+  $('#tarjeta-plan').innerHTML = '' +
+    '<div class="flex items-start justify-between gap-3">' +
+      '<h2 class="font-semibold">Tu plan de hoy</h2>' +
+      '<span class="rounded-full px-2.5 py-1 text-xs font-medium ' + colorEstado + '">' + Math.round(plan.caloriasObjetivo) + ' kcal</span>' +
+    '</div>' +
+    '<p class="mt-2 text-sm text-slate-600 dark:text-slate-300">' + esc(plan.diagnostico) + '</p>' +
+    '<p class="mt-3 text-xs text-slate-500 dark:text-slate-400">Método del plato: 60 % carbohidratos · 20 % proteínas · 20 % grasas insaturadas.</p>' +
+    nota +
+    datos;
+}
+
+/* ===================================================================
+   VISTA DEL PACIENTE · ARMADOR DE PLATILLOS
+   =================================================================== */
+
+function pintarSelectorTiempo() {
+  var tiempos = ['Desayuno', 'Comida', 'Cena', 'Colacion'];
+  $('#selector-tiempo').innerHTML = tiempos.map(function (t) {
+    return '<button class="chip-tiempo" data-tiempo="' + t + '" data-activo="' +
+      (t === estado.tiempoComida ? 'si' : 'no') + '">' + (t === 'Colacion' ? 'Colación' : t) + '</button>';
+  }).join('');
+}
+
+function pintarPlatillos() {
+  var lista = estado.platillos[estado.tiempoComida] || [];
+  var caja = $('#lista-platillos');
+
+  if (!lista.length) {
+    caja.innerHTML = '<p class="py-4 text-center text-sm text-slate-400">No hay platillos cargados para este tiempo.</p>';
+    return;
+  }
+
+  caja.innerHTML = lista.map(function (p, indice) {
+    var t = p.totales;
+    return '' +
+      '<div class="rounded-xl border border-slate-100 p-4 dark:border-slate-700">' +
+        '<div class="flex items-start justify-between gap-3">' +
+          '<h3 class="font-medium">' + esc(p.nombre) + '</h3>' +
+          '<span class="shrink-0 rounded-full bg-verde-50 px-2.5 py-1 text-xs font-semibold text-verde-700 dark:bg-slate-700 dark:text-verde-300">' +
+            Math.round(t.calorias) + ' kcal</span>' +
+        '</div>' +
+        '<p class="mt-1.5 text-sm text-slate-500 dark:text-slate-400">' + esc(p.descripcion) + '</p>' +
+        '<p class="mt-2 text-xs text-slate-400">P ' + Math.round(t.proteinas) + ' g · C ' + Math.round(t.carbohidratos) +
+          ' g · G ' + Math.round(t.grasas) + ' g · Fibra ' + Math.round(t.fibra) + ' g</p>' +
+        (p.alternativa ? '<p class="mt-2 rounded-lg bg-arena-50 px-3 py-2 text-xs text-slate-600 dark:bg-slate-700/50 dark:text-slate-300">💡 ' +
+          esc(p.alternativa) + '</p>' : '') +
+        '<div class="mt-3 flex gap-2">' +
+          '<button class="boton-secundario flex-1 py-2 text-sm" data-ver-platillo="' + indice + '">Ingredientes</button>' +
+          '<button class="boton-primario flex-1 py-2 text-sm" data-usar-platillo="' + indice + '">Elegir</button>' +
+        '</div>' +
+      '</div>';
+  }).join('');
+}
+
+function pintarBusqueda(texto) {
+  var buscado = normalizar(texto);
+  var lista = !buscado
+    ? estado.alimentos.slice(0, 12)
+    : estado.alimentos.filter(function (a) {
+        return normalizar(a.alimento).indexOf(buscado) >= 0 || normalizar(a.categoria).indexOf(buscado) >= 0;
+      }).slice(0, 30);
+
+  var caja = $('#resultados-alimentos');
+  if (!lista.length) {
+    caja.innerHTML = '<p class="py-3 text-center text-sm text-slate-400">Sin coincidencias.</p>';
+    return;
+  }
+
+  caja.innerHTML = lista.map(function (a) {
+    return '' +
+      '<button class="fila-lista" data-agregar-alimento="' + esc(a.id) + '">' +
+        '<span class="min-w-0">' +
+          '<span class="block truncate text-sm font-medium">' + esc(a.alimento) + '</span>' +
+          '<span class="block text-xs text-slate-400">' + esc(a.categoria) + ' · ' + a.calorias + ' kcal / 100 g</span>' +
+        '</span>' +
+        '<span class="shrink-0 text-lg text-verde-600 dark:text-verde-300">+</span>' +
+      '</button>';
+  }).join('');
+}
+
+function normalizar(texto) {
+  return String(texto || '').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').trim();
+}
+
+function agregarAlPlatillo(idAlimento, gramos) {
+  var base = estado.alimentos.filter(function (a) { return a.id === idAlimento; })[0];
+  if (!base) { return; }
+
+  var existente = estado.platilloActual.filter(function (i) { return i.idAlimento === idAlimento; })[0];
+  if (existente) {
+    existente.gramos += gramos || 100;
+  } else {
+    estado.platilloActual.push({ idAlimento: idAlimento, alimento: base.alimento, gramos: gramos || 100 });
+  }
+  pintarPlatilloActual();
+}
+
+function pintarPlatilloActual() {
+  var caja = $('#platillo-actual');
+  var totales = $('#totales-platillo');
+  var boton = $('#btn-guardar-comida');
+
+  if (!estado.platilloActual.length) {
+    caja.innerHTML = '<p class="py-4 text-center text-sm text-slate-400">Elige un platillo sugerido o busca alimentos para armar el tuyo.</p>';
+    totales.classList.add('hidden');
+    boton.disabled = true;
+    return;
+  }
+
+  var suma = { calorias: 0, proteinas: 0, grasas: 0, carbohidratos: 0, fibra: 0 };
+
+  caja.innerHTML = estado.platilloActual.map(function (item, indice) {
+    var base = estado.alimentos.filter(function (a) { return a.id === item.idAlimento; })[0] || {};
+    var factor = item.gramos / 100;
+    suma.calorias += (base.calorias || 0) * factor;
+    suma.proteinas += (base.proteina || 0) * factor;
+    suma.grasas += (base.grasa || 0) * factor;
+    suma.carbohidratos += (base.carbohidratos || 0) * factor;
+    suma.fibra += (base.fibra || 0) * factor;
+
+    return '' +
+      '<div class="flex items-center gap-2 rounded-xl border border-slate-100 p-2.5 dark:border-slate-700">' +
+        '<span class="min-w-0 flex-1">' +
+          '<span class="block truncate text-sm font-medium">' + esc(item.alimento) + '</span>' +
+          '<span class="block text-xs text-slate-400">' + Math.round((base.calorias || 0) * factor) + ' kcal</span>' +
+        '</span>' +
+        '<input type="number" min="1" step="5" value="' + item.gramos + '" data-gramos="' + indice + '" ' +
+          'class="w-20 rounded-lg border border-slate-300 px-2 py-1 text-right text-sm dark:border-slate-600 dark:bg-slate-900">' +
+        '<span class="text-xs text-slate-400">g</span>' +
+        '<button class="px-1 text-lg text-red-500" data-quitar="' + indice + '" title="Quitar">×</button>' +
+      '</div>';
+  }).join('');
+
+  totales.classList.remove('hidden');
+  totales.innerHTML = '' +
+    '<div class="flex items-baseline justify-between">' +
+      '<span class="font-semibold">Total del platillo</span>' +
+      '<span class="text-2xl font-bold text-verde-700 dark:text-verde-300">' + Math.round(suma.calorias) + ' kcal</span>' +
+    '</div>' +
+    '<p class="mt-1 text-xs text-slate-600 dark:text-slate-300">Proteína ' + suma.proteinas.toFixed(1) +
+      ' g · Carbohidratos ' + suma.carbohidratos.toFixed(1) + ' g · Grasas ' + suma.grasas.toFixed(1) +
+      ' g · Fibra ' + suma.fibra.toFixed(1) + ' g</p>';
+
+  boton.disabled = false;
+}
+
+/* ===================================================================
+   VISTA DEL PACIENTE · OCR
+   =================================================================== */
+
+/**
+ * Corre Tesseract sobre la imagen elegida y prellena el formulario.
+ * @param {File} archivo La imagen.
+ * @param {string} tipo "pesa" o "estudios".
+ */
+function procesarOcr(archivo, tipo) {
+  if (!archivo) { return; }
+  if (typeof Tesseract === 'undefined') {
+    avisar('No se pudo cargar el lector de imágenes. Captura los datos a mano.', 'error');
+    return;
+  }
+
+  var lector = new FileReader();
+  lector.onload = function (evento) {
+    var dataUrl = evento.target.result;
+    $('#imagen-ocr').src = dataUrl;
+    $('#vista-previa-ocr').classList.remove('hidden');
+    $('#progreso-ocr').classList.remove('hidden');
+    $('#ocr-etapa').textContent = 'Leyendo la imagen…';
+
+    Tesseract.recognize(dataUrl, 'spa+eng', {
+      logger: function (info) {
+        if (info.status === 'recognizing text') {
+          var pct = Math.round(info.progress * 100);
+          $('#ocr-barra').style.width = pct + '%';
+          $('#ocr-porcentaje').textContent = pct + ' %';
+        } else {
+          $('#ocr-etapa').textContent = 'Preparando el lector…';
+        }
+      }
+    }).then(function (resultado) {
+      var texto = resultado.data.text || '';
+      $('#texto-ocr').textContent = texto;
+      $('#ocr-etapa').textContent = 'Listo';
+      $('#progreso-ocr').classList.add('hidden');
+
+      var encontrados = tipo === 'pesa' ? extraerDatosBascula(texto) : extraerDatosLaboratorio(texto);
+      var cuantos = aplicarDatosOcr(encontrados);
+
+      avisar(cuantos
+        ? 'Se leyeron ' + cuantos + ' valores. Revísalos antes de guardar.'
+        : 'No se reconocieron números. Captúralos a mano.', cuantos ? 'ok' : 'info');
+
+      subirImagen(dataUrl, archivo, tipo);
+    }).catch(function (err) {
+      $('#progreso-ocr').classList.add('hidden');
+      avisar('No se pudo leer la imagen: ' + err.message, 'error');
+      subirImagen(dataUrl, archivo, tipo);
+    });
+  };
+  lector.readAsDataURL(archivo);
+}
+
+/**
+ * Sube la imagen a Drive y guarda la URL para adjuntarla a la medición.
+ * @param {string} dataUrl La imagen en base64.
+ * @param {File} archivo El archivo original.
+ * @param {string} tipo "pesa" o "estudios".
+ */
+function subirImagen(dataUrl, archivo, tipo) {
+  api('uploadFileToDrive', estado.token, {
+    nombre: archivo.name,
+    mimeType: archivo.type,
+    base64: dataUrl,
+    tipo: tipo
+  }).then(function (res) {
+    estado.urlsOcr[tipo] = res.url;
+    avisar('Imagen guardada en Drive.', 'ok');
+  }).catch(function (err) {
+    avisar('La imagen no se pudo guardar: ' + err.message, 'error');
+  });
+}
+
+/**
+ * Busca un número cerca de alguna de las palabras dadas.
+ * @param {string} texto El texto leído por OCR, ya normalizado.
+ * @param {Array<string>} palabras Las etiquetas a buscar.
+ * @param {number} minimo Valor plausible mínimo.
+ * @param {number} maximo Valor plausible máximo.
+ * @return {number|null} El número encontrado o null.
+ */
+function buscarValor(texto, palabras, minimo, maximo) {
+  for (var i = 0; i < palabras.length; i++) {
+    var patron = new RegExp(palabras[i] + '[^0-9\\n]{0,18}([0-9]{1,3}(?:[.,][0-9]{1,2})?)', 'i');
+    var coincidencia = texto.match(patron);
+    if (coincidencia) {
+      var valor = parseFloat(coincidencia[1].replace(',', '.'));
+      if (!isNaN(valor) && valor >= minimo && valor <= maximo) { return valor; }
+    }
+  }
+  return null;
+}
+
+/**
+ * Extrae los valores típicos de una báscula de bioimpedancia.
+ * @param {string} textoCrudo El texto leído.
+ * @return {Object} Los valores reconocidos.
+ */
+function extraerDatosBascula(textoCrudo) {
+  var texto = normalizar(textoCrudo);
+  var datos = {
+    peso: buscarValor(texto, ['peso', 'weight', 'kg'], 25, 300),
+    porcentajeGrasa: buscarValor(texto, ['grasa corporal', 'porcentaje de grasa', 'grasa', 'body fat', 'fat'], 3, 70),
+    masaMuscular: buscarValor(texto, ['masa muscular', 'musculo', 'muscle'], 10, 120),
+    agua: buscarValor(texto, ['agua corporal', 'agua', 'water'], 25, 80),
+    grasaVisceral: buscarValor(texto, ['visceral'], 1, 60)
+  };
+
+  /* Muchas básculas muestran el peso solo, sin etiqueta. Si no apareció, se
+     toma el número más grande dentro de un rango plausible. */
+  if (!datos.peso) {
+    var numeros = (textoCrudo.match(/[0-9]{2,3}[.,][0-9]/g) || []).map(function (n) {
+      return parseFloat(n.replace(',', '.'));
+    }).filter(function (n) { return n >= 30 && n <= 250; });
+    if (numeros.length) { datos.peso = Math.max.apply(null, numeros); }
+  }
+  return datos;
+}
+
+/**
+ * Extrae los valores típicos de un estudio de sangre.
+ * @param {string} textoCrudo El texto leído.
+ * @return {Object} Los valores reconocidos.
+ */
+function extraerDatosLaboratorio(textoCrudo) {
+  var texto = normalizar(textoCrudo);
+  return {
+    trigliceridos: buscarValor(texto, ['triglicerid', 'trigliserid', 'tg'], 20, 1500),
+    colesterol: buscarValor(texto, ['colesterol total', 'colesterol', 'cholesterol'], 60, 500),
+    glucosa: buscarValor(texto, ['glucosa', 'glucose', 'glicemia'], 40, 600)
+  };
+}
+
+/**
+ * Escribe en el formulario los valores que se reconocieron.
+ * @param {Object} datos Los valores extraídos.
+ * @return {number} Cuántos campos se llenaron.
+ */
+function aplicarDatosOcr(datos) {
+  var mapa = {
+    peso: '#m-peso',
+    porcentajeGrasa: '#m-grasa',
+    masaMuscular: '#m-musculo',
+    agua: '#m-agua',
+    grasaVisceral: '#m-visceral',
+    trigliceridos: '#m-trigliceridos',
+    colesterol: '#m-colesterol',
+    glucosa: '#m-glucosa'
+  };
+
+  var cuantos = 0;
+  Object.keys(mapa).forEach(function (llave) {
+    if (datos[llave] !== null && datos[llave] !== undefined) {
+      var campo = $(mapa[llave]);
+      campo.value = datos[llave];
+      campo.classList.add('ring-2', 'ring-verde-300');
+      setTimeout(function () { campo.classList.remove('ring-2', 'ring-verde-300'); }, 2500);
+      cuantos++;
+    }
+  });
+  return cuantos;
+}
+
+/* ===================================================================
+   VISTA DEL PACIENTE · ACTIVIDAD
+   =================================================================== */
+
+function cargarTiposActividad() {
+  if ($('#a-tipo').options.length) { return; }
+  api('getTiposActividad', estado.token).then(function (tipos) {
+    $('#a-tipo').innerHTML = tipos.map(function (t) {
+      return '<option value="' + esc(t) + '">' + esc(t) + '</option>';
+    }).join('');
+  }).catch(function () { /* el selector queda vacío */ });
+}
+
+function pintarActividades() {
+  var caja = $('#lista-actividades');
+  var lista = (estado.resumen && estado.resumen.actividades) || [];
+
+  if (!lista.length) {
+    caja.innerHTML = '<p class="py-4 text-center text-sm text-slate-400">Sin actividad registrada hoy.</p>';
+    return;
+  }
+
+  caja.innerHTML = lista.map(function (a) {
+    return '' +
+      '<div class="flex items-center justify-between rounded-xl border border-slate-100 p-3 dark:border-slate-700">' +
+        '<div><p class="font-medium">' + esc(a.tipo) + '</p>' +
+        '<p class="text-xs text-slate-400">' + a.minutos + ' minutos</p></div>' +
+        '<p class="font-semibold text-verde-600 dark:text-verde-300">-' + Math.round(a.calorias) + ' kcal</p>' +
+      '</div>';
+  }).join('');
+}
+
+/* ===================================================================
+   VISTA DEL PACIENTE · EVIDENCIA
+   =================================================================== */
+
+function pintarEvidencia() {
+  /* Los dos niveles de abajo llevan tinta oscura: sobre esos verdes claros el
+     texto blanco queda por debajo del contraste mínimo legible. */
+  var niveles = [
+    { texto: 'Metaanálisis y revisiones sistemáticas', ancho: 60, fondo: '#0c3327', tinta: '#ffffff' },
+    { texto: 'Ensayos clínicos aleatorizados', ancho: 72, fondo: '#175840', tinta: '#ffffff' },
+    { texto: 'Estudios de cohorte', ancho: 84, fondo: '#1f6f4f', tinta: '#ffffff' },
+    { texto: 'Casos y controles', ancho: 92, fondo: '#8fc9ac', tinta: '#0c3327' },
+    { texto: 'Opinión de expertos y anécdotas', ancho: 100, fondo: '#d9ece1', tinta: '#0c3327' }
+  ];
+
+  $('#piramide').innerHTML = niveles.map(function (n) {
+    return '<div class="nivel-piramide" style="width:' + n.ancho + '%;background:' + n.fondo +
+      ';color:' + n.tinta + '">' + n.texto + '</div>';
+  }).join('');
+
+  var caja = $('#lista-evidencia');
+  if (!estado.evidencia.length) {
+    caja.innerHTML = '<p class="py-4 text-center text-sm text-slate-400">Sin fichas cargadas.</p>';
+    return;
+  }
+
+  caja.innerHTML = estado.evidencia.map(function (e) {
+    return '' +
+      '<details class="rounded-xl border border-slate-100 p-3 dark:border-slate-700">' +
+        '<summary class="cursor-pointer list-none">' +
+          '<span class="block text-xs font-semibold uppercase tracking-wide text-verde-600 dark:text-verde-300">' + esc(e.Tema) + '</span>' +
+          '<span class="mt-0.5 block text-sm font-medium">' + esc(e.Titulo) + '</span>' +
+        '</summary>' +
+        '<p class="mt-2 text-sm text-slate-600 dark:text-slate-300">' + esc(e.Resumen) + '</p>' +
+        '<p class="mt-2 text-xs text-slate-400">Nivel de evidencia: ' + esc(e.NivelEvidencia) + '</p>' +
+        '<a href="' + esc(e.Enlace) + '" target="_blank" rel="noopener" ' +
+          'class="mt-2 inline-block text-sm font-medium text-verde-600 hover:underline dark:text-verde-300">Ver en PubMed ↗</a>' +
+      '</details>';
+  }).join('');
+}
+
+/* ===================================================================
+   VISTA DEL PACIENTE · CHAT
+   =================================================================== */
+
+function pintarChat() {
+  var caja = $('#mensajes-chat');
+  if (!estado.chat.length) {
+    caja.innerHTML = '<p class="py-8 text-center text-sm text-slate-400">Escribe tu primera duda. Tu nutriólogo recibe un aviso al momento.</p>';
+    return;
+  }
+
+  caja.innerHTML = estado.chat.map(function (m) {
+    var fecha = new Date(m.fecha);
+    var hora = isNaN(fecha.getTime()) ? '' : fecha.toLocaleString('es-MX', { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' });
+    var propio = m.enviadoPor === 'Paciente';
+    return '' +
+      '<div>' +
+        '<div class="burbuja" data-lado="' + (propio ? 'propio' : 'ajeno') + '">' + esc(m.mensaje) + '</div>' +
+        '<p class="mt-1 text-xs text-slate-400 ' + (propio ? 'text-right' : '') + '">' + hora + '</p>' +
+      '</div>';
+  }).join('');
+  caja.scrollTop = caja.scrollHeight;
+}
+
+/* ===================================================================
+   PANEL DEL NUTRIÓLOGO
+   =================================================================== */
+
+function pintarListaPacientes(filtro) {
+  var buscado = normalizar(filtro);
+  var lista = estado.pacientes.filter(function (p) {
+    return !buscado || normalizar(p.nombre).indexOf(buscado) >= 0 || normalizar(p.email).indexOf(buscado) >= 0;
+  });
+
+  $('#conteo-pacientes').textContent = estado.pacientes.length + ' en total';
+  var caja = $('#lista-pacientes');
+
+  if (!lista.length) {
+    caja.innerHTML = '<p class="py-6 text-center text-sm text-slate-400">' +
+      (estado.pacientes.length ? 'Sin coincidencias.' : 'Todavía no hay pacientes. Usa el botón ➕ para dar de alta.') + '</p>';
+    return;
+  }
+
+  caja.innerHTML = lista.map(function (p) {
+    var pendientes = p.mensajesPendientes
+      ? '<span class="ml-1 rounded-full bg-red-500 px-1.5 text-xs font-semibold text-white">' + p.mensajesPendientes + '</span>'
+      : '';
+    return '' +
+      '<button class="fila-lista" data-paciente="' + esc(p.id) + '" data-activo="' +
+        (estado.pacienteActivo === p.id ? 'si' : 'no') + '">' +
+        '<span class="min-w-0">' +
+          '<span class="block truncate text-sm font-medium">' + esc(p.nombre) + pendientes + '</span>' +
+          '<span class="block truncate text-xs text-slate-400">' +
+            (p.ultimoPeso ? p.ultimoPeso + ' kg · ' + esc(p.ultimaMedicion) : 'sin mediciones') + '</span>' +
+        '</span>' +
+        '<span class="shrink-0 text-xs font-semibold text-verde-600 dark:text-verde-300">' + Math.round(p.caloriasObjetivo) + '</span>' +
+      '</button>';
+  }).join('');
+}
+
+function abrirExpediente(idPaciente) {
+  estado.pacienteActivo = idPaciente;
+  pintarListaPacientes($('#buscador-pacientes').value);
+  $('#expediente').innerHTML = '<div class="tarjeta flex min-h-[16rem] items-center justify-center p-8"><div class="anillo-carga"></div></div>';
+
+  api('getExpediente', estado.token, idPaciente).then(function (exp) {
+    pintarExpediente(exp);
+  }).catch(function (err) {
+    $('#expediente').innerHTML = '<div class="tarjeta p-8 text-center text-red-600">' + esc(err.message) + '</div>';
+  });
+}
+
+function pintarExpediente(exp) {
+  var p = exp.paciente;
+  var plan = exp.plan;
+  var ultima = exp.metricas.length ? exp.metricas[exp.metricas.length - 1] : null;
+
+  var tarjetasMetricas = ultima ? [
+    ['Peso', ultima.peso, 'kg'],
+    ['Masa muscular', ultima.masaMuscular, 'kg'],
+    ['Grasa corporal', ultima.porcentajeGrasa, '%'],
+    ['Agua', ultima.agua, '%'],
+    ['Grasa visceral', ultima.grasaVisceral, ''],
+    ['Triglicéridos', ultima.trigliceridos, 'mg/dL'],
+    ['Colesterol', ultima.colesterol, 'mg/dL'],
+    ['Glucosa', ultima.glucosa, 'mg/dL']
+  ].map(function (m) {
+    return '<div class="rounded-xl border border-slate-100 p-3 text-center dark:border-slate-700">' +
+      '<p class="text-lg font-semibold">' + (m[1] || '—') + '</p>' +
+      '<p class="text-xs text-slate-400">' + m[0] + (m[2] ? ' (' + m[2] + ')' : '') + '</p></div>';
+  }).join('') : '<p class="col-span-full py-4 text-center text-sm text-slate-400">Sin mediciones registradas.</p>';
+
+  var imagenes = exp.imagenes.length
+    ? exp.imagenes.map(function (img) {
+        return '<a href="' + esc(img.url) + '" target="_blank" rel="noopener" ' +
+          'class="flex items-center justify-between rounded-xl border border-slate-100 p-3 hover:bg-slate-50 dark:border-slate-700 dark:hover:bg-slate-700/50">' +
+          '<span><span class="block text-sm font-medium">' + esc(img.tipo) + '</span>' +
+          '<span class="block text-xs text-slate-400">' + esc(img.fecha) + '</span></span>' +
+          '<span class="text-verde-600 dark:text-verde-300">Abrir ↗</span></a>';
+      }).join('')
+    : '<p class="py-4 text-center text-sm text-slate-400">El paciente no ha subido imágenes.</p>';
+
+  var registros = exp.registros.length
+    ? exp.registros.slice(0, 12).map(function (r) {
+        return '<div class="flex items-center justify-between border-b border-slate-100 py-2 text-sm last:border-0 dark:border-slate-700">' +
+          '<span><span class="font-medium">' + esc(r.tiempoComida) + '</span> ' +
+          '<span class="text-xs text-slate-400">' + esc(r.fecha) + '</span></span>' +
+          '<span class="text-slate-500 dark:text-slate-400">' + Math.round(r.calorias) + ' kcal · P ' + Math.round(r.proteinas) + ' g</span></div>';
+      }).join('')
+    : '<p class="py-4 text-center text-sm text-slate-400">Sin registros de alimentos.</p>';
+
+  var chat = exp.chat.length
+    ? exp.chat.map(function (m) {
+        var fecha = new Date(m.fecha);
+        var hora = isNaN(fecha.getTime()) ? '' : fecha.toLocaleString('es-MX', { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' });
+        var propio = m.enviadoPor === 'Nutriologo';
+        return '<div><div class="burbuja" data-lado="' + (propio ? 'propio' : 'ajeno') + '">' + esc(m.mensaje) + '</div>' +
+          '<p class="mt-1 text-xs text-slate-400 ' + (propio ? 'text-right' : '') + '">' + hora + '</p></div>';
+      }).join('')
+    : '<p class="py-6 text-center text-sm text-slate-400">Sin mensajes.</p>';
+
+  $('#expediente').innerHTML = '' +
+    '<div class="tarjeta p-5">' +
+      '<div class="flex flex-wrap items-start justify-between gap-3">' +
+        '<div><h2 class="text-lg font-semibold">' + esc(p.nombre) + '</h2>' +
+        '<p class="text-sm text-slate-500 dark:text-slate-400">' + esc(p.email) + '</p></div>' +
+        '<div class="text-right"><p class="text-2xl font-bold text-verde-700 dark:text-verde-300">' +
+          Math.round(plan.caloriasObjetivo) + '</p><p class="text-xs text-slate-400">kcal objetivo</p></div>' +
+      '</div>' +
+      '<p class="mt-3 rounded-xl bg-arena-50 p-3 text-sm text-slate-600 dark:bg-slate-700/50 dark:text-slate-300">' +
+        esc(plan.diagnostico) + '</p>' +
+      '<div class="mt-4 grid grid-cols-2 gap-3 sm:grid-cols-4">' + tarjetasMetricas + '</div>' +
+    '</div>' +
+
+    '<div class="tarjeta p-5">' +
+      '<h3 class="mb-3 font-semibold">Ajustar la meta calórica</h3>' +
+      '<form id="form-meta" class="grid gap-3 sm:grid-cols-[1fr_1fr_auto]">' +
+        '<div><label class="etiqueta" for="meta-calorias">Calorías objetivo</label>' +
+        '<input id="meta-calorias" type="number" min="1200" max="5000" step="10" class="campo" value="' +
+          Math.round(plan.caloriasObjetivo) + '"></div>' +
+        '<div><label class="etiqueta" for="meta-factor">Factor de actividad</label>' +
+        '<select id="meta-factor" class="campo">' +
+          [['1.2', 'Sedentario'], ['1.375', 'Ligero'], ['1.55', 'Moderado'], ['1.725', 'Intenso'], ['1.9', 'Muy intenso']].map(function (f) {
+            var actual = String(exp.config.FactorActividad || '1.375');
+            return '<option value="' + f[0] + '"' + (actual === f[0] ? ' selected' : '') + '>' + f[1] + ' (' + f[0] + ')</option>';
+          }).join('') +
+        '</select></div>' +
+        '<div class="flex items-end"><button type="submit" class="boton-primario w-full">Guardar</button></div>' +
+        '<label class="flex items-start gap-2 text-sm sm:col-span-3">' +
+          '<input id="meta-manual" type="checkbox"' + (plan.ajusteManual ? ' checked' : '') + ' class="mt-0.5 h-4 w-4 rounded">' +
+          '<span>Fijar esta meta a mano.<span class="block text-xs text-slate-500 dark:text-slate-400">' +
+          'Si la desmarcas, la meta vuelve a calcularse sola con el historial de mediciones ' +
+          'y el número que escribas se ignora.</span></span></label>' +
+      '</form>' +
+    '</div>' +
+
+    '<div class="tarjeta p-5">' +
+      '<h3 class="mb-4 font-semibold">Composición corporal</h3>' +
+      '<div class="h-64"><canvas id="grafica-composicion"></canvas></div>' +
+    '</div>' +
+
+    '<div class="tarjeta p-5">' +
+      '<h3 class="mb-4 font-semibold">Química sanguínea</h3>' +
+      '<div class="h-64"><canvas id="grafica-laboratorio"></canvas></div>' +
+    '</div>' +
+
+    '<div class="grid gap-5 lg:grid-cols-2">' +
+      '<div class="tarjeta p-5"><h3 class="mb-3 font-semibold">Últimos registros</h3>' + registros + '</div>' +
+      '<div class="tarjeta p-5"><h3 class="mb-3 font-semibold">Imágenes en Drive</h3>' +
+        '<div class="space-y-2">' + imagenes + '</div></div>' +
+    '</div>' +
+
+    '<div class="tarjeta p-5">' +
+      '<h3 class="mb-3 font-semibold">Conversación</h3>' +
+      '<div class="max-h-80 space-y-3 overflow-y-auto">' + chat + '</div>' +
+      '<form id="form-respuesta" class="mt-3 flex gap-2">' +
+        '<input id="respuesta-texto" type="text" class="campo flex-1" placeholder="Responder al paciente…">' +
+        '<button type="submit" class="boton-primario px-5">Enviar</button>' +
+      '</form>' +
+    '</div>';
+
+  dibujarGraficas(exp.metricas);
+}
+
+/**
+ * Dibuja las dos gráficas históricas con Chart.js.
+ * @param {Array<Object>} metricas Las mediciones ordenadas por fecha.
+ */
+function dibujarGraficas(metricas) {
+  if (typeof Chart === 'undefined' || !metricas.length) { return; }
+
+  Object.keys(estado.graficas).forEach(function (llave) {
+    if (estado.graficas[llave]) { estado.graficas[llave].destroy(); }
+  });
+  estado.graficas = {};
+
+  var etiquetas = metricas.map(function (m) { return m.fecha; });
+  var oscuro = document.documentElement.classList.contains('dark');
+  var colorTexto = oscuro ? '#cbd5e1' : '#475569';
+  var colorRejilla = oscuro ? 'rgba(255,255,255,.08)' : 'rgba(15,23,42,.07)';
+
+  var opciones = {
+    responsive: true,
+    maintainAspectRatio: false,
+    interaction: { mode: 'index', intersect: false },
+    plugins: { legend: { labels: { color: colorTexto, boxWidth: 12, usePointStyle: true } } },
+    scales: {
+      x: { ticks: { color: colorTexto, maxRotation: 0, autoSkip: true }, grid: { color: colorRejilla } },
+      y: { ticks: { color: colorTexto }, grid: { color: colorRejilla } }
+    }
+  };
+
+  function serie(etiqueta, llave, color) {
+    return {
+      label: etiqueta,
+      data: metricas.map(function (m) { return m[llave] || null; }),
+      borderColor: color,
+      backgroundColor: color + '22',
+      tension: .3,
+      spanGaps: true,
+      pointRadius: 3
+    };
+  }
+
+  estado.graficas.composicion = new Chart($('#grafica-composicion'), {
+    type: 'line',
+    data: {
+      labels: etiquetas,
+      datasets: [
+        serie('Peso (kg)', 'peso', '#1f6f4f'),
+        serie('Masa muscular (kg)', 'masaMuscular', '#2f9160'),
+        serie('Grasa corporal (%)', 'porcentajeGrasa', '#d97706'),
+        serie('Agua (%)', 'agua', '#0891b2'),
+        serie('Grasa visceral', 'grasaVisceral', '#b91c1c')
+      ]
+    },
+    options: opciones
+  });
+
+  estado.graficas.laboratorio = new Chart($('#grafica-laboratorio'), {
+    type: 'line',
+    data: {
+      labels: etiquetas,
+      datasets: [
+        serie('Triglicéridos', 'trigliceridos', '#7c3aed'),
+        serie('Colesterol', 'colesterol', '#d97706'),
+        serie('Glucosa', 'glucosa', '#0891b2')
+      ]
+    },
+    options: opciones
+  });
+}
+
+function abrirAltaPaciente() {
+  abrirModal('Alta de paciente',
+    '<form id="form-nuevo-paciente" class="space-y-3">' +
+      '<div><label class="etiqueta" for="np-nombre">Nombre completo</label>' +
+      '<input id="np-nombre" class="campo" required></div>' +
+      '<div><label class="etiqueta" for="np-email">Correo</label>' +
+      '<input id="np-email" type="email" class="campo" required></div>' +
+      '<div class="grid grid-cols-2 gap-3">' +
+        '<div><label class="etiqueta" for="np-estatura">Estatura (cm)</label>' +
+        '<input id="np-estatura" type="number" class="campo"></div>' +
+        '<div><label class="etiqueta" for="np-sexo">Sexo</label>' +
+        '<select id="np-sexo" class="campo"><option value="">Sin especificar</option>' +
+        '<option value="Mujer">Mujer</option><option value="Hombre">Hombre</option></select></div>' +
+      '</div>' +
+      '<div><label class="etiqueta" for="np-factor">Factor de actividad</label>' +
+      '<select id="np-factor" class="campo">' +
+        '<option value="1.2">Sedentario (1.2)</option>' +
+        '<option value="1.375" selected>Ligero (1.375)</option>' +
+        '<option value="1.55">Moderado (1.55)</option>' +
+        '<option value="1.725">Intenso (1.725)</option>' +
+      '</select></div>' +
+      '<p class="text-xs text-slate-500 dark:text-slate-400">Se le envía por correo una contraseña temporal.</p>' +
+      '<button type="submit" class="boton-primario w-full">Crear cuenta</button>' +
+    '</form>');
+}
+
+/* ===================================================================
+   EVENTOS
+   =================================================================== */
+
+document.addEventListener('DOMContentLoaded', function () {
+  aplicarTema(false);
+  avisarSiFaltaCDN();
+
+  var token = leerToken();
+  if (token) {
+    estado.token = token;
+    cargarAplicacion();
+  } else {
+    mostrarPantalla('login');
+  }
+
+  $('#form-login').addEventListener('submit', function (evento) {
+    evento.preventDefault();
+    var boton = evento.target.querySelector('button[type="submit"]');
+    boton.disabled = true;
+    boton.textContent = 'Entrando…';
+
+    api('loginUser', $('#login-email').value.trim(), $('#login-password').value)
+      .then(function (sesion) {
+        guardarToken(sesion.token);
+        $('#login-password').value = '';
+        return cargarAplicacion();
+      })
+      .catch(function (err) { avisar(err.message, 'error'); })
+      .then(function () {
+        boton.disabled = false;
+        boton.textContent = 'Entrar';
+      });
+  });
+
+  $('#btn-mostrar-recuperar').addEventListener('click', function () {
+    $('#panel-recuperar').classList.toggle('hidden');
+  });
+
+  $('#form-recuperar-envio').addEventListener('submit', function (evento) {
+    evento.preventDefault();
+    api('recoverPassword', $('#recuperar-email').value.trim())
+      .then(function (res) { avisar(res.mensaje, 'info'); })
+      .catch(function (err) { avisar(err.message, 'error'); });
+  });
+
+  $('#form-recuperar-reset').addEventListener('submit', function (evento) {
+    evento.preventDefault();
+    api('resetPassword', $('#recuperar-token').value.trim(), $('#recuperar-password').value)
+      .then(function (res) {
+        avisar(res.mensaje, 'ok');
+        $('#panel-recuperar').classList.add('hidden');
+      })
+      .catch(function (err) { avisar(err.message, 'error'); });
+  });
+
+  document.addEventListener('click', function (evento) {
+    var objetivo = evento.target.closest('[data-ir], [data-tema], [data-accion], [data-tiempo], [data-usar-platillo], ' +
+      '[data-ver-platillo], [data-agregar-alimento], [data-quitar], [data-borrar-registro], [data-paciente], ' +
+      '[data-cerrar-modal], [data-cerrar-chat]');
+    if (!objetivo) { return; }
+
+    if (objetivo.hasAttribute('data-ir')) { irA(objetivo.getAttribute('data-ir')); return; }
+    if (objetivo.hasAttribute('data-tema')) { aplicarTema(true); if (estado.pacienteActivo) { abrirExpediente(estado.pacienteActivo); } return; }
+    if (objetivo.hasAttribute('data-cerrar-modal')) { cerrarModal(); return; }
+    if (objetivo.hasAttribute('data-cerrar-chat')) { $('#panel-chat').classList.add('hidden'); return; }
+
+    if (objetivo.hasAttribute('data-accion')) {
+      var accion = objetivo.getAttribute('data-accion');
+      if (accion === 'salir') { cerrarSesion(); }
+      if (accion === 'nuevo-paciente') { abrirAltaPaciente(); }
+      if (accion === 'perfil') { abrirCambioPassword(); }
+      return;
+    }
+
+    if (objetivo.hasAttribute('data-tiempo')) {
+      estado.tiempoComida = objetivo.getAttribute('data-tiempo');
+      pintarSelectorTiempo();
+      pintarPlatillos();
+      return;
+    }
+
+    if (objetivo.hasAttribute('data-ver-platillo')) {
+      var verIndice = parseInt(objetivo.getAttribute('data-ver-platillo'), 10);
+      var platilloVer = (estado.platillos[estado.tiempoComida] || [])[verIndice];
+      if (platilloVer) {
+        abrirModal(platilloVer.nombre,
+          '<ul class="space-y-2">' + platilloVer.alimentos.map(function (a) {
+            return '<li class="flex justify-between border-b border-slate-100 pb-2 text-sm dark:border-slate-700">' +
+              '<span>' + esc(a.alimento) + '</span>' +
+              '<span class="text-slate-500 dark:text-slate-400">' + a.gramos + ' g · ' + Math.round(a.calorias) + ' kcal</span></li>';
+          }).join('') + '</ul>');
+      }
+      return;
+    }
+
+    if (objetivo.hasAttribute('data-usar-platillo')) {
+      var usarIndice = parseInt(objetivo.getAttribute('data-usar-platillo'), 10);
+      var platillo = (estado.platillos[estado.tiempoComida] || [])[usarIndice];
+      if (platillo) {
+        estado.platilloActual = platillo.alimentos.map(function (a) {
+          return { idAlimento: a.idAlimento, alimento: a.alimento, gramos: a.gramos };
+        });
+        pintarPlatilloActual();
+        avisar('Platillo cargado. Ajusta los gramos si hace falta.', 'ok');
+        $('#platillo-actual').scrollIntoView({ behavior: 'smooth', block: 'center' });
+      }
+      return;
+    }
+
+    if (objetivo.hasAttribute('data-agregar-alimento')) {
+      agregarAlPlatillo(objetivo.getAttribute('data-agregar-alimento'), 100);
+      return;
+    }
+
+    if (objetivo.hasAttribute('data-quitar')) {
+      estado.platilloActual.splice(parseInt(objetivo.getAttribute('data-quitar'), 10), 1);
+      pintarPlatilloActual();
+      return;
+    }
+
+    if (objetivo.hasAttribute('data-borrar-registro')) {
+      api('borrarRegistroDiario', estado.token, objetivo.getAttribute('data-borrar-registro'))
+        .then(function (resumen) {
+          estado.resumen = resumen;
+          pintarResumen();
+          avisar('Registro eliminado.', 'ok');
+        })
+        .catch(function (err) { avisar(err.message, 'error'); });
+      return;
+    }
+
+    if (objetivo.hasAttribute('data-paciente')) {
+      abrirExpediente(objetivo.getAttribute('data-paciente'));
+    }
+  });
+
+  document.addEventListener('input', function (evento) {
+    if (evento.target.id === 'buscador-alimentos') {
+      pintarBusqueda(evento.target.value);
+    }
+    if (evento.target.id === 'buscador-pacientes') {
+      pintarListaPacientes(evento.target.value);
+    }
+    if (evento.target.hasAttribute && evento.target.hasAttribute('data-gramos')) {
+      var indice = parseInt(evento.target.getAttribute('data-gramos'), 10);
+      var gramos = parseFloat(evento.target.value);
+      if (estado.platilloActual[indice] && gramos > 0) {
+        estado.platilloActual[indice].gramos = gramos;
+        var foco = document.activeElement;
+        pintarPlatilloActual();
+        var nuevo = $('[data-gramos="' + indice + '"]');
+        if (nuevo && foco && foco.hasAttribute('data-gramos')) { nuevo.focus(); }
+      }
+    }
+  });
+
+  document.addEventListener('change', function (evento) {
+    if (evento.target.hasAttribute && evento.target.hasAttribute('data-ocr')) {
+      procesarOcr(evento.target.files[0], evento.target.getAttribute('data-ocr'));
+    }
+  });
+
+  $('#btn-guardar-comida').addEventListener('click', function () {
+    var boton = this;
+    boton.disabled = true;
+    boton.textContent = 'Guardando…';
+
+    api('guardarRegistroDiario', estado.token, {
+      fecha: hoyISO(),
+      tiempoComida: estado.tiempoComida,
+      alimentos: estado.platilloActual.map(function (i) {
+        return { idAlimento: i.idAlimento, gramos: i.gramos };
+      })
+    }).then(function (resumen) {
+      estado.resumen = resumen;
+      estado.platilloActual = [];
+      pintarPlatilloActual();
+      pintarResumen();
+      avisar('Registro guardado.', 'ok');
+      irA('hoy');
+    }).catch(function (err) {
+      avisar(err.message, 'error');
+    }).then(function () {
+      boton.disabled = false;
+      boton.textContent = 'Guardar en mi registro';
+    });
+  });
+
+  $('#form-metricas').addEventListener('submit', function (evento) {
+    evento.preventDefault();
+    var boton = evento.target.querySelector('button[type="submit"]');
+    boton.disabled = true;
+    boton.textContent = 'Guardando…';
+
+    api('guardarMetricas', estado.token, {
+      fecha: $('#m-fecha').value || hoyISO(),
+      peso: $('#m-peso').value,
+      porcentajeGrasa: $('#m-grasa').value,
+      masaMuscular: $('#m-musculo').value,
+      agua: $('#m-agua').value,
+      grasaVisceral: $('#m-visceral').value,
+      trigliceridos: $('#m-trigliceridos').value,
+      colesterol: $('#m-colesterol').value,
+      glucosa: $('#m-glucosa').value,
+      notas: $('#m-notas').value,
+      fotoPesaUrl: estado.urlsOcr.pesa || '',
+      fotoEstudiosUrl: estado.urlsOcr.estudios || ''
+    }).then(function (plan) {
+      estado.plan = plan;
+      estado.urlsOcr = {};
+      pintarPlan();
+      avisar('Medición guardada. Tu plan se actualizó.', 'ok');
+      evento.target.reset();
+      $('#m-fecha').value = hoyISO();
+      return api('getResumenDiario', estado.token, hoyISO());
+    }).then(function (resumen) {
+      if (resumen) { estado.resumen = resumen; pintarResumen(); }
+      irA('hoy');
+    }).catch(function (err) {
+      avisar(err.message, 'error');
+    }).then(function () {
+      boton.disabled = false;
+      boton.textContent = 'Guardar medición';
+    });
+  });
+
+  $('#form-actividad').addEventListener('submit', function (evento) {
+    evento.preventDefault();
+    api('guardarActividad', estado.token, {
+      tipo: $('#a-tipo').value,
+      minutos: $('#a-minutos').value,
+      fecha: hoyISO()
+    }).then(function (resumen) {
+      estado.resumen = resumen;
+      pintarResumen();
+      pintarActividades();
+      $('#a-minutos').value = '';
+      avisar('Actividad registrada.', 'ok');
+    }).catch(function (err) { avisar(err.message, 'error'); });
+  });
+
+  $('#btn-chat').addEventListener('click', function () {
+    $('#panel-chat').classList.remove('hidden');
+    pintarChat();
+  });
+
+  $('#form-chat').addEventListener('submit', function (evento) {
+    evento.preventDefault();
+    var texto = $('#chat-mensaje').value.trim();
+    if (!texto) { return; }
+    $('#chat-mensaje').value = '';
+
+    api('guardarMensajeChat', estado.token, texto).then(function (res) {
+      estado.chat = res.chat;
+      pintarChat();
+      avisar(res.alertaWhatsApp ? 'Enviado. Tu nutriólogo recibió la alerta.' : 'Enviado. Tu nutriólogo recibirá un correo.', 'ok');
+    }).catch(function (err) { avisar(err.message, 'error'); });
+  });
+
+  document.addEventListener('submit', function (evento) {
+    if (evento.target.id === 'form-meta') {
+      evento.preventDefault();
+      /* Mandar calorías equivale a fijar la meta. Si la casilla está
+         desmarcada se envía solo el factor de actividad, para soltarla. */
+      var fijar = $('#meta-manual').checked;
+      api('actualizarMetaPaciente', estado.token, estado.pacienteActivo, {
+        calorias: fijar ? $('#meta-calorias').value : 0,
+        factorActividad: $('#meta-factor').value,
+        manual: fijar
+      }).then(function () {
+        avisar('Meta actualizada.', 'ok');
+        return api('listarPacientes', estado.token);
+      }).then(function (pacientes) {
+        estado.pacientes = pacientes;
+        abrirExpediente(estado.pacienteActivo);
+      }).catch(function (err) { avisar(err.message, 'error'); });
+    }
+
+    if (evento.target.id === 'form-respuesta') {
+      evento.preventDefault();
+      var texto = $('#respuesta-texto').value.trim();
+      if (!texto) { return; }
+      api('responderChat', estado.token, estado.pacienteActivo, texto).then(function () {
+        $('#respuesta-texto').value = '';
+        avisar('Respuesta enviada.', 'ok');
+        abrirExpediente(estado.pacienteActivo);
+      }).catch(function (err) { avisar(err.message, 'error'); });
+    }
+
+    if (evento.target.id === 'form-nuevo-paciente') {
+      evento.preventDefault();
+      api('crearPaciente', estado.token, {
+        nombre: $('#np-nombre').value.trim(),
+        email: $('#np-email').value.trim(),
+        estatura: $('#np-estatura').value,
+        sexo: $('#np-sexo').value,
+        factorActividad: $('#np-factor').value
+      }).then(function (res) {
+        abrirModal('Paciente creado',
+          '<p class="text-sm">Se envió el acceso por correo. Por si el mensaje no llega, esta es la contraseña temporal:</p>' +
+          '<p class="my-4 rounded-lg bg-arena-50 p-4 text-center font-mono text-lg dark:bg-slate-700">' +
+          esc(res.passwordTemporal) + '</p>' +
+          '<button class="boton-primario w-full" data-cerrar-modal>Entendido</button>');
+        return api('listarPacientes', estado.token);
+      }).then(function (pacientes) {
+        estado.pacientes = pacientes;
+        pintarListaPacientes($('#buscador-pacientes').value);
+      }).catch(function (err) { avisar(err.message, 'error'); });
+    }
+
+    if (evento.target.id === 'form-cambio-password') {
+      evento.preventDefault();
+      api('cambiarPassword', estado.token, $('#cp-actual').value, $('#cp-nueva').value)
+        .then(function (res) { avisar(res.mensaje, 'ok'); cerrarModal(); })
+        .catch(function (err) { avisar(err.message, 'error'); });
+    }
+  });
+});
+
+/**
+ * Comprueba que las bibliotecas externas hayan cargado y lo dice si no.
+ *
+ * Tailwind, Tesseract y Chart.js llegan por CDN. En una red que bloquee esos
+ * dominios la aplicación sigue funcionando (los estilos propios y todo el
+ * backend son locales), pero se ve sin formato y el escaneo de imágenes deja
+ * de estar disponible. Vale más decirlo que dejar a la persona adivinando.
+ */
+function avisarSiFaltaCDN() {
+  var faltantes = [];
+  if (typeof tailwind === 'undefined') { faltantes.push('los estilos'); }
+  if (typeof Tesseract === 'undefined') { faltantes.push('el escaneo de imágenes'); }
+  if (typeof Chart === 'undefined') { faltantes.push('las gráficas'); }
+  if (!faltantes.length) { return; }
+
+  setTimeout(function () {
+    avisar('Tu red bloqueó ' + faltantes.join(' y ') + '. Lo demás funciona; captura los datos a mano.', 'info');
+  }, 1200);
+}
+
+function abrirCambioPassword() {
+  abrirModal('Mi cuenta',
+    '<p class="mb-4 text-sm text-slate-500 dark:text-slate-400">' + esc(estado.perfil ? estado.perfil.email : '') + '</p>' +
+    '<form id="form-cambio-password" class="space-y-3">' +
+      '<div><label class="etiqueta" for="cp-actual">Contraseña actual</label>' +
+      '<input id="cp-actual" type="password" class="campo" required></div>' +
+      '<div><label class="etiqueta" for="cp-nueva">Contraseña nueva</label>' +
+      '<input id="cp-nueva" type="password" class="campo" minlength="8" required></div>' +
+      '<button type="submit" class="boton-primario w-full">Cambiar contraseña</button>' +
+    '</form>');
+}
+</script>
