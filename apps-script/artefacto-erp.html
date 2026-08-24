@@ -137,7 +137,10 @@
   .overlay{position:fixed;inset:0;background:rgba(10,16,14,.5);backdrop-filter:blur(3px);display:none;place-items:center;padding:20px;z-index:50}
   .overlay.on{display:grid}
   .modal{background:var(--surface);border:1px solid var(--border);border-radius:16px;box-shadow:0 24px 70px rgba(0,0,0,.35);width:100%;max-width:460px;max-height:92vh;overflow:auto}
-  .modal.wide{max-width:660px}
+  .modal.wide{max-width:900px}
+  .ana-tit{margin-top:8px;padding-top:8px;border-top:1px solid var(--border);font-size:11px;
+    text-transform:uppercase;letter-spacing:.05em;color:var(--text-faint);font-weight:650}
+  .ana-row{display:flex;justify-content:space-between;font-size:12.5px;color:var(--text-dim)}
   .modal-head{display:flex;align-items:center;justify-content:space-between;padding:18px 20px 6px}
   .modal-head h3{margin:0;font-size:17px;font-weight:700;letter-spacing:-.02em}
   .modal-head button{background:none;border:0;color:var(--text-faint);font-size:22px;cursor:pointer;line-height:1;padding:2px 6px;border-radius:6px}
@@ -155,7 +158,8 @@
   form .primary{margin-top:4px;justify-content:center;width:100%}
   .hintline{font-size:12px;color:var(--text-faint);margin:-4px 0 0}
 
-  .lhead,.lrow{display:grid;gap:6px;align-items:center}
+  .lhead,.lrow{display:grid;gap:6px;align-items:center;min-width:640px}
+  .field .llist,.field .lhead{overflow:visible}
   .lhead{font-size:10px;text-transform:uppercase;letter-spacing:.03em;color:var(--text-faint);font-weight:650;padding:0 2px 5px}
   .lhead span:nth-child(n+2){text-align:right}
   .lrow{margin-bottom:6px}
@@ -179,6 +183,31 @@
   .checklist input{width:auto;margin:0}
   .checklist .mono{color:var(--text-dim)}
   .checklist .none{color:var(--text-faint);font-size:12.5px;padding:6px 7px}
+  .divhead,.divrow{display:grid;grid-template-columns:1fr 110px 130px 22px;gap:8px;align-items:center}
+  .divhead{font-size:10px;text-transform:uppercase;letter-spacing:.03em;color:var(--text-faint);font-weight:650;padding:0 2px 5px}
+  .divhead span:nth-child(2),.divhead span:nth-child(3){text-align:right}
+  .divrow{margin-bottom:6px}
+  .divrow select,.divrow input{background:var(--bg);border:1px solid var(--border);border-radius:8px;padding:7px 8px;font-size:13px;color:var(--text);font-family:inherit;width:100%}
+  .divrow input{text-align:right}
+  .divrow select:focus,.divrow input:focus{outline:none;border-color:var(--accent);box-shadow:0 0 0 3px var(--accent-soft)}
+  .divmonto{text-align:right;font-size:13px;font-weight:650}
+  .searchbar{position:relative;display:flex;align-items:center;gap:8px;margin-bottom:14px;max-width:520px}
+  .searchbar input{flex:1;background:var(--surface);border:1px solid var(--border);border-radius:10px;
+    padding:9px 34px 9px 34px;font-size:13.5px;color:var(--text);font-family:inherit;width:100%}
+  .searchbar input:focus{outline:none;border-color:var(--accent);box-shadow:0 0 0 3px var(--accent-soft)}
+  .searchbar .s-ico{position:absolute;left:11px;color:var(--text-faint);display:flex;pointer-events:none}
+  .searchbar .s-x{position:absolute;right:96px;background:none;border:0;color:var(--text-faint);font-size:18px;
+    cursor:pointer;line-height:1;padding:0 4px}
+  .searchbar .s-x:hover{color:var(--text)}
+  .searchbar .s-n{font-size:12px;color:var(--text-faint);white-space:nowrap}
+  th.thsort{cursor:pointer;user-select:none}
+  th.thsort:hover{color:var(--text)}
+  th.thsort.on{color:var(--accent-strong)}
+  th .flecha{margin-left:4px;font-size:9px}
+  .csv-cols{font-size:12.5px;color:var(--text-dim);background:var(--surface-2);border-radius:9px;padding:10px 12px;line-height:1.6}
+  .csv-ok{background:var(--good-soft);color:var(--good);border-radius:9px;padding:12px 14px;font-size:13.5px}
+  .csv-err{background:var(--bad-soft);color:var(--bad);border-radius:9px;padding:12px 14px;font-size:13.5px}
+  .csv-avisos{margin-top:8px;font-size:12px;opacity:.85}
   .paylist{max-height:230px}
   .payrow{display:grid;grid-template-columns:auto 1fr 116px;gap:10px;align-items:center;padding:7px 8px;border-radius:7px;cursor:default}
   .payrow:hover{background:var(--surface-2)}
@@ -670,7 +699,17 @@ function(t){t.__bidiEngine__=t.prototype.__bidiEngine__=function(t){var r,n,i,a,
   function fmtDate(s){if(!s)return "—";const t=new Date(s+"T00:00:00");return t.toLocaleDateString("es-MX",{day:"2-digit",month:"short",year:"numeric"});}
   const monthKey=s=>String(s||"").slice(0,7);
   function monthLabel(k){if(!k)return "—";const[y,m]=k.split("-");return new Date(y,m-1,1).toLocaleDateString("es-MX",{month:"short",year:"numeric"});}
-  function nextFolio(pref,arr){let mx=0;arr.forEach(x=>{const n=+String(x.folio).split("-")[1];if(n>mx)mx=n;});return pref+"-"+String(mx+1).padStart(4,"0");}
+  // Continúa la nomenclatura del último folio capturado: CPXO-0046 -> CPXO-0047.
+  function nextFolio(pref,arr){
+    for(let i=arr.length-1;i>=0;i--){
+      const f=String((arr[i]||{}).folio||"").trim();
+      const m=f.match(/^([\s\S]*?)(\d+)(\D*)$/);
+      if(m)return m[1]+String(+m[2]+1).padStart(m[2].length,"0")+m[3];
+    }
+    return pref+"-0001";
+  }
+  const folioRepetido=(arr,folio,id)=>arr.some(x=>x.id!==id&&String(x.folio||"").trim().toLowerCase()===String(folio||"").trim().toLowerCase());
+  const campoFolio=(valor)=>`<div class="field"><label for="f-folio">Folio</label><input id="f-folio" required value="${escAttr(valor)}" placeholder="COT-0001"></div>`;
   const uid=()=>Math.random().toString(36).slice(2,9);
 
   /* ---------- especificación de líneas ---------- */
@@ -679,26 +718,34 @@ function(t){t.__bidiEngine__=t.prototype.__bidiEngine__=function(t){var r,n,i,a,
   const LINESPEC={
     cotizacion:{cols:[
       {k:"desc",h:"Descripción",t:"text",ph:"Concepto",w:"1fr"},
+      {k:"unidad",h:"Unidad",t:"text",v:"PZ",lista:"fx-uni",w:"70px"},
+      {k:"analitica",h:"Analítica",t:"text",ph:"Centro de costo",lista:"fx-ana",w:"124px"},
       {k:"cantidad",h:"Cant.",t:"num",v:1,step:"1",w:"52px"},
       {k:"costo",h:"Costo U.",t:"num",ph:"0.00",w:"88px"},
       {k:"margen",h:"Margen%",t:"num",v:30,step:"0.5",w:"66px"}],
       imp:lineaImporte},
     factura:{cols:[
       {k:"desc",h:"Descripción",t:"text",ph:"Concepto",w:"1fr"},
+      {k:"unidad",h:"Unidad",t:"text",v:"PZ",lista:"fx-uni",w:"70px"},
+      {k:"analitica",h:"Analítica",t:"text",ph:"Centro de costo",lista:"fx-ana",w:"120px"},
       {k:"cantidad",h:"Cant.",t:"num",v:1,step:"1",w:"50px"},
-      {k:"costo",h:"Costo U.",t:"num",ph:"0.00",w:"88px"},
-      {k:"precio",h:"Precio U.",t:"num",ph:"0.00",w:"92px"}],
+      {k:"costo",h:"Costo U.",t:"num",ph:"0.00",w:"86px"},
+      {k:"precio",h:"Precio U.",t:"num",ph:"0.00",w:"90px"}],
       imp:l=>(+l.precio||0)*(+l.cantidad||0)},
     venta:{cols:[
       {k:"desc",h:"Descripción",t:"text",ph:"Concepto",w:"1fr"},
+      {k:"unidad",h:"Unidad",t:"text",v:"PZ",lista:"fx-uni",w:"70px"},
+      {k:"analitica",h:"Analítica",t:"text",ph:"Centro de costo",lista:"fx-ana",w:"120px"},
       {k:"cantidad",h:"Cant.",t:"num",v:1,step:"1",w:"50px"},
-      {k:"costo",h:"Costo U.",t:"num",ph:"0.00",w:"88px"},
-      {k:"precio",h:"Precio U.",t:"num",ph:"0.00",w:"92px"}],
+      {k:"costo",h:"Costo U.",t:"num",ph:"0.00",w:"86px"},
+      {k:"precio",h:"Precio U.",t:"num",ph:"0.00",w:"90px"}],
       imp:l=>(+l.precio||0)*(+l.cantidad||0)},
     orden:{cols:[
       {k:"desc",h:"Descripción",t:"text",ph:"Concepto",w:"1fr"},
+      {k:"unidad",h:"Unidad",t:"text",v:"PZ",lista:"fx-uni",w:"70px"},
+      {k:"analitica",h:"Analítica",t:"text",ph:"Centro de costo",lista:"fx-ana",w:"124px"},
       {k:"cantidad",h:"Cant.",t:"num",v:1,step:"1",w:"52px"},
-      {k:"costo",h:"Costo U.",t:"num",ph:"0.00",w:"100px"}],
+      {k:"costo",h:"Costo U.",t:"num",ph:"0.00",w:"96px"}],
       imp:l=>(+l.costo||0)*(+l.cantidad||0)},
   };
   const sumLineas=(type,ls)=>(ls||[]).reduce((a,l)=>a+LINESPEC[type].imp(l),0);
@@ -789,6 +836,10 @@ function(t){t.__bidiEngine__=t.prototype.__bidiEngine__=function(t){var r,n,i,a,
           conceptos:[{desc:"Tablero de control",unidad:"PZ",cantidad:1,costo:26000,importe:26000},{desc:"Variador de frecuencia 40 HP",unidad:"PZ",cantidad:1,costo:15000,importe:15000}]},
       ],
       config:{iva:16},
+      integrantes:[
+        {id:uid(),nombre:"Juan Manuel Rodríguez",email:"jm@comercializadorafulcrum.com.mx"},
+        {id:uid(),nombre:"Socio operativo",email:""},
+      ],
       clientes:[
         {id:uid(),nombre:"Transportes del Bajío S.A.",rfc:"TBA150420AB1",margen:30,ivaPct:16,emails:"compras@transportesbajio.com",retenciones:[{concepto:"Retención ISR",tasa:1.25},{concepto:"Retención IVA",tasa:10.6667}]},
         {id:uid(),nombre:"Combustibles del Norte",rfc:"CNO051130QT4",margen:25,ivaPct:16,emails:"pagos@combustiblesnorte.mx",retenciones:[{concepto:"Retención ISR",tasa:1.25}]},
@@ -812,21 +863,81 @@ function(t){t.__bidiEngine__=t.prototype.__bidiEngine__=function(t){var r,n,i,a,
     ];
     return s;
   }
-  const COLL={cotizacion:"cotizaciones",orden:"ordenes",factura:"facturas",pago:"pagos",proyecto:"proyectos",proveedor:"proveedores",venta:"ventas",gasto:"gastos",cliente:"clientes"};
+  const COLL={cotizacion:"cotizaciones",orden:"ordenes",factura:"facturas",pago:"pagos",proyecto:"proyectos",proveedor:"proveedores",venta:"ventas",gasto:"gastos",cliente:"clientes",integrante:"integrantes"};
+  const EMPRESA="empresa";   // pagador por defecto de los gastos
+  const nombreIntegrante=id=>{if(!id||id===EMPRESA)return "Empresa";
+    const i=state.integrantes.find(x=>x.id===id);return i?i.nombre:"—";};
   let state;
   function load(){let s;try{const r=localStorage.getItem(STORE);if(r)s=JSON.parse(r);}catch(e){}if(!s)s=seed();
-    ["cotizaciones","ventas","facturas","pagos","ordenes","proveedores","gastos","proyectos","clientes"].forEach(k=>{if(!Array.isArray(s[k]))s[k]=[];});
+    ["cotizaciones","ventas","facturas","pagos","ordenes","proveedores","gastos","proyectos","clientes","integrantes"].forEach(k=>{if(!Array.isArray(s[k]))s[k]=[];});
     if(!s.config||typeof s.config!=="object")s.config={iva:16};
     if(s.config.iva==null)s.config.iva=16;
     return s;}
   function persist(){try{localStorage.setItem(STORE,JSON.stringify(state));}catch(e){}}
   state=load();
-  const ui={cotFilter:"all",ocFilter:"all",facFilter:"all",ovFilter:"all",proyMonth:"all",contaMonth:null,provSel:[]};
+  const ui={cotFilter:"all",ocFilter:"all",facFilter:"all",ovFilter:"all",proyMonth:"all",contaMonth:null,provSel:[],
+    q:{},sort:{}};   // q: texto de búsqueda por módulo · sort: {col,dir} por módulo
   (function(){const pm=state.pagos.map(p=>monthKey(p.fecha)).filter(Boolean).sort();ui.contaMonth=pm.length?pm[pm.length-1]:monthKey(todayStr());})();
   const SNAPS="fulcrum_erp_snaps_v1";
   let snaps=[];try{const r=localStorage.getItem(SNAPS);if(r)snaps=JSON.parse(r);}catch(e){}
   function saveSnaps(){try{localStorage.setItem(SNAPS,JSON.stringify(snaps));}catch(e){}}
   function fmtDateTime(iso){const d=new Date(iso);return d.toLocaleDateString("es-MX",{day:"2-digit",month:"short",year:"numeric"})+" · "+d.toLocaleTimeString("es-MX",{hour:"2-digit",minute:"2-digit"});}
+
+  /* ---------- búsqueda y ordenamiento por módulo ---------- */
+  // Aplana un registro a texto para poder buscar en todos sus campos.
+  function textoDe(o){
+    const partes=[];
+    const recorrer=v=>{
+      if(v==null)return;
+      if(Array.isArray(v)){v.forEach(recorrer);return;}
+      if(typeof v==="object"){Object.keys(v).forEach(k=>{if(k!=="id")recorrer(v[k]);});return;}
+      partes.push(String(v));
+    };
+    Object.keys(o).forEach(k=>{if(k!=="id")recorrer(o[k]);});
+    return partes.join(" ").toLowerCase();
+  }
+  const sinAcentos=s=>String(s||"").toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g,"");
+  function buscarEn(arr,scope,extra){
+    const q=sinAcentos((ui.q[scope]||"").trim());
+    if(!q)return arr;
+    const terminos=q.split(/\s+/);
+    return arr.filter(r=>{
+      const t=sinAcentos(textoDe(r)+" "+(extra?extra(r):""));
+      return terminos.every(x=>t.indexOf(x)>=0);
+    });
+  }
+  // Orden por defecto: descendente por folio (del más reciente al más antiguo).
+  function ordenarPor(arr,scope,cols){
+    const s=ui.sort[scope]||{col:"folio",dir:"desc"};
+    const def=cols&&cols[s.col];
+    const valor=r=>def?def(r):r[s.col];
+    const copia=arr.slice();
+    copia.sort((a,b)=>{
+      let x=valor(a),y=valor(b);
+      if(typeof x==="number"||typeof y==="number"){x=+x||0;y=+y||0;return s.dir==="asc"?x-y:y-x;}
+      x=String(x==null?"":x);y=String(y==null?"":y);
+      const c=x.localeCompare(y,"es",{numeric:true,sensitivity:"base"});
+      return s.dir==="asc"?c:-c;
+    });
+    return copia;
+  }
+  const listaDe=(arr,scope,cols,extra)=>ordenarPor(buscarEn(arr,scope,extra),scope,cols);
+
+  function barraBusqueda(scope,texto,total,mostrados){
+    const q=ui.q[scope]||"";
+    return `<div class="searchbar">
+      <span class="s-ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" width="15" height="15"><circle cx="11" cy="11" r="7" stroke-width="1.8"/><path d="M20 20l-3.5-3.5" stroke-width="1.8"/></svg></span>
+      <input id="buscador" data-scope="${scope}" value="${escAttr(q)}" placeholder="${texto||"Buscar…"}" autocomplete="off">
+      ${q?`<button class="s-x" data-action="buscar-limpiar" data-scope="${scope}" aria-label="Limpiar">&times;</button>`:""}
+      ${q?`<span class="s-n">${mostrados} de ${total}</span>`:""}
+    </div>`;
+  }
+  // Encabezado que ordena al hacer clic.
+  function th(scope,col,etiqueta,clase){
+    const s=ui.sort[scope]||{col:"folio",dir:"desc"};
+    const act=s.col===col;
+    return `<th class="${clase||""} thsort ${act?"on":""}" data-action="ordenar" data-scope="${scope}" data-col="${col}">${etiqueta}<span class="flecha">${act?(s.dir==="asc"?"▲":"▼"):""}</span></th>`;
+  }
 
   /* ---------- derivados globales ---------- */
   function totals(){
@@ -861,8 +972,14 @@ function(t){t.__bidiEngine__=t.prototype.__bidiEngine__=function(t){var r,n,i,a,
     const venta=ventaFac>0?ventaFac:(ventaOV>0?ventaOV:cots.reduce((a,c)=>a+cotSubtotal(c),0));
     const costoOrd=ordenes.reduce((a,o)=>a+ocSubtotal(o),0);
     const costo=costoOrd>0?costoOrd:(facturas.reduce((a,f)=>a+facCosto(f),0)||ventas.reduce((a,v)=>a+ovCosto(v),0)||cots.reduce((a,c)=>a+cotCosto(c),0));
-    const margen=venta>0?(venta-costo)/venta*100:0;
-    return {facturas,ventas,ordenes,cots,venta,costo,margen};
+    const costosXml=state.proveedores.filter(x=>x.proyectoId===p.id);
+    const gastosP=state.gastos.filter(g=>g.proyectoId===p.id);
+    const costoXml=costosXml.reduce((a,x)=>a+(+x.subtotal||0),0);
+    const gastoOp=gastosP.reduce((a,g)=>a+(+g.importe||0),0);
+    // Margen neto = ingresos − costos XML − gastos operativos
+    const neto=venta-costoXml-gastoOp;
+    const margen=venta>0?neto/venta*100:0;
+    return {facturas,ventas,ordenes,cots,venta,costo,costosXml,gastosP,costoXml,gastoOp,neto,margen};
   }
   function tasaResico(x){if(x<=25000)return 0.01;if(x<=50000)return 0.011;if(x<=83333.33)return 0.015;if(x<=208333.33)return 0.02;return 0.025;}
   const RESICO_TBL=[["Hasta $25,000","1.00%",0,25000,.01],["$25,000 – $50,000","1.10%",25000,50000,.011],
@@ -880,6 +997,7 @@ function(t){t.__bidiEngine__=t.prototype.__bidiEngine__=function(t){var r,n,i,a,
     {id:"ordenes",label:"Órdenes de compra",icon:'<path d="M4 5h16M4 12h16M4 19h10" stroke-width="1.7"/><circle cx="19" cy="19" r="2" stroke-width="1.7"/>'},
     {id:"proveedores",label:"Costos (XML)",icon:'<path d="M14 3H6a1 1 0 0 0-1 1v16a1 1 0 0 0 1 1h12a1 1 0 0 0 1-1V8z" stroke-width="1.7"/><path d="M8 13l2 2-2 2M16 13l-2 2 2 2" stroke-width="1.7"/>'},
     {id:"gastos",label:"Gastos",icon:'<circle cx="12" cy="12" r="9" stroke-width="1.7"/><path d="M8 12h8" stroke-width="1.7"/>'},
+    {id:"integrantes",label:"Integrantes",icon:'<circle cx="9" cy="8" r="3" stroke-width="1.7"/><path d="M3 20a6 6 0 0 1 12 0" stroke-width="1.7"/><path d="M16 11a3 3 0 1 0 0-6M18 20a6 6 0 0 0-2-4.5" stroke-width="1.7"/>'},
     {id:"clientes",label:"Clientes",icon:'<circle cx="12" cy="8" r="3.4" stroke-width="1.7"/><path d="M5 20a7 7 0 0 1 14 0" stroke-width="1.7"/>'},
     {id:"proyecciones",label:"Proyecciones",icon:'<path d="M3 3v18h18" stroke-width="1.7"/><path d="M7 14l3-4 3 3 5-7" stroke-width="1.7"/>'},
     {id:"contabilidad",label:"Contabilidad",icon:'<path d="M4 3h16v18H4z" stroke-width="1.7"/><path d="M8 7h8M8 11h8M8 15h5" stroke-width="1.7"/>'},
@@ -888,7 +1006,7 @@ function(t){t.__bidiEngine__=t.prototype.__bidiEngine__=function(t){var r,n,i,a,
   let current="dashboard";
   function renderNav(){
     const c={proyectos:state.proyectos.length,cotizaciones:state.cotizaciones.length,ventas:state.ventas.length,ordenes:state.ordenes.length,
-      facturas:state.facturas.length,pagos:state.pagos.length,proveedores:state.proveedores.length,gastos:state.gastos.length,clientes:state.clientes.length,cierres:snaps.length};
+      facturas:state.facturas.length,pagos:state.pagos.length,proveedores:state.proveedores.length,gastos:state.gastos.length,clientes:state.clientes.length,integrantes:state.integrantes.length,cierres:snaps.length};
     $("#nav").innerHTML=views.map(v=>`<button class="navbtn ${v.id===current?"active":""}" data-action="nav" data-view="${v.id}">
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor">${v.icon}</svg><span>${v.label}</span>
       ${c[v.id]!=null?`<span class="badge num">${c[v.id]}</span>`:""}</button>`).join("");
@@ -897,8 +1015,10 @@ function(t){t.__bidiEngine__=t.prototype.__bidiEngine__=function(t){var r,n,i,a,
   /* ---------- componentes ---------- */
   const printerIcon='<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" width="15" height="15"><path d="M6 9V3h12v6M6 18H4a1 1 0 0 1-1-1v-5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2v5a1 1 0 0 1-1 1h-2M6 14h12v7H6z" stroke-width="1.7"/></svg>';
   const plusIcon='<svg viewBox="0 0 24 24" fill="none" stroke="currentColor"><path d="M12 5v14M5 12h14" stroke-width="2"/></svg>';
-  function headBar(title,sub,addType,addLabel,reportKind){
+  const uploadIcon='<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" width="15" height="15"><path d="M12 16V4M7 9l5-5 5 5M4 20h16" stroke-width="1.7"/></svg>';
+  function headBar(title,sub,addType,addLabel,reportKind,accionExtra){
     return `<div class="head"><div><h2>${title}</h2><p>${sub}</p></div><div class="headacts">
+      ${accionExtra?`<button class="ghost" data-action="${accionExtra}">${uploadIcon}Carga masiva</button>`:""}
       ${reportKind?`<button class="ghost" data-action="report" data-kind="${reportKind}">${printerIcon}Descargar PDF</button>`:""}
       ${addType?`<button class="primary" data-action="add" data-type="${addType}">${plusIcon}${addLabel}</button>`:""}
       </div></div>`;
@@ -971,34 +1091,56 @@ function(t){t.__bidiEngine__=t.prototype.__bidiEngine__=function(t){var r,n,i,a,
 
   function vProyectos(){
     const months=[{v:"all",label:"Todos"}].concat(allMonths().map(m=>({v:m,label:monthLabel(m)})));
-    const list=state.proyectos.filter(p=>ui.proyMonth==="all"||p.mes===ui.proyMonth);
-    let tc=0,tv=0;
-    const body=list.length?list.map(p=>{const d=proyDerived(p);tc+=d.costo;tv+=d.venta;
-      const parts=[];if(d.cots.length)parts.push(d.cots.length+" cot");if(d.ventas.length)parts.push(d.ventas.length+" OV");if(d.ordenes.length)parts.push(d.ordenes.length+" OC");if(d.facturas.length)parts.push(d.facturas.length+" fac");
-      const folios=[...d.cots,...d.ventas,...d.ordenes,...d.facturas].map(x=>x.folio).join(", ");
+    const base=state.proyectos.filter(p=>ui.proyMonth==="all"||p.mes===ui.proyMonth);
+    if(!ui.sort.proy)ui.sort.proy={col:"nombre",dir:"asc"};
+    const list=listaDe(base,"proy",{venta:p=>proyDerived(p).venta,costo:p=>proyDerived(p).costoXml+proyDerived(p).gastoOp,
+      neto:p=>proyDerived(p).neto,margen:p=>proyDerived(p).margen},
+      p=>{const c=state.clientes.find(x=>x.id===p.clienteId);return (c?c.nombre:"")+" "+(p.estado==="cierre"?"cerrado cierre":"abierto");});
+    let tv=0,tc=0,tg=0,tn=0;
+    const cuerpo=list.length?list.map(p=>{
+      const d=proyDerived(p);tv+=d.venta;tc+=d.costoXml;tg+=d.gastoOp;tn+=d.neto;
       const pcli=state.clientes.find(x=>x.id===p.clienteId);
-      return `<tr><td class="strong">${p.nombre}</td><td>${pcli?pcli.nombre:(p.cliente||"—")}</td><td style="text-transform:capitalize">${monthLabel(p.mes)}</td>
-      <td><div>${parts.join(" · ")||"—"}</div><div class="mono" style="color:var(--text-faint);font-size:10.5px">${folios}</div></td>
-      <td class="r num">${money(d.venta)}</td><td class="r num">${money(d.costo)}</td>
-      <td class="r num strong" style="color:${(d.venta-d.costo)>=0?"var(--good)":"var(--bad)"}">${money(d.venta-d.costo)}</td>
-      <td class="r num" style="color:${d.margen>=0?"var(--good)":"var(--bad)"}">${d.margen.toFixed(1)}%</td>
-      <td><div class="rowact"><button class="act" data-action="edit" data-type="proyecto" data-id="${p.id}">Editar</button>
-        <button class="act warnact" data-action="del" data-type="proyectos" data-id="${p.id}">Eliminar</button></div></td></tr>`;}).join(""):emptyRow(9,"Sin proyectos en este periodo");
-    const mg=tv>0?(tv-tc)/tv*100:0;
-    return `${headBar("Proyectos","Agrupa varias órdenes de venta, órdenes de compra y facturas · margen neto por proyecto","proyecto","Nuevo proyecto","rep-proyectos")}
+      const cerrado=p.estado==="cierre";
+      const docs=[];if(d.cots.length)docs.push(d.cots.length+" cot");if(d.ventas.length)docs.push(d.ventas.length+" OV");
+      if(d.ordenes.length)docs.push(d.ordenes.length+" OC");if(d.facturas.length)docs.push(d.facturas.length+" fac");
+      if(d.costosXml.length)docs.push(d.costosXml.length+" XML");if(d.gastosP.length)docs.push(d.gastosP.length+" gastos");
+      return `<tr><td class="strong">${p.nombre}${cerrado&&p.dividendos?`<div style="font-size:10.5px;color:var(--text-faint)">${p.dividendos.length} dividendo(s) · ${fmtDate(p.fechaCierre)}</div>`:""}</td>
+      <td>${pcli?pcli.nombre:(p.cliente||"—")}</td>
+      <td style="text-transform:capitalize">${monthLabel(p.mes)}</td>
+      <td><span class="pill ${cerrado?"p-good":"p-warn"}">${cerrado?"Cierre de proyecto":"Abierto"}</span></td>
+      <td style="font-size:12px;color:var(--text-dim)">${docs.join(" · ")||"—"}</td>
+      <td class="r num">${money(d.venta)}</td>
+      <td class="r num">${money(d.costoXml)}</td>
+      <td class="r num">${money(d.gastoOp)}</td>
+      <td class="r num strong" style="color:${d.neto>=0?"var(--good)":"var(--bad)"}">${money(d.neto)}</td>
+      <td class="r num">${d.margen.toFixed(1)}%</td>
+      <td><div class="rowact">
+        <button class="act ${cerrado?"":"good"}" data-action="proy-cierre" data-id="${p.id}">${cerrado?"Ver dividendos":"Cerrar proyecto"}</button>
+        ${cerrado?`<button class="act" data-action="proy-reabrir" data-id="${p.id}">Reabrir</button>`
+                 :`<button class="act" data-action="edit" data-type="proyecto" data-id="${p.id}">Editar</button>`}
+        <button class="act warnact" data-action="del" data-type="proyectos" data-id="${p.id}">Eliminar</button>
+      </div></td></tr>`;}).join(""):emptyRow(11,"Sin proyectos en este periodo");
+    const mgT=tv>0?tn/tv*100:0;
+    return `${headBar("Proyectos","Ingresos menos costos XML y gastos · cierre con repartición de dividendos","proyecto","Nuevo proyecto","rep-proyectos")}
     <div class="filterbar"><span class="flabel">Mes:</span>${months.map(o=>`<button class="fbtn ${o.v===ui.proyMonth?"on":""}" data-action="filter" data-scope="proyMonth" data-val="${o.v}" style="text-transform:capitalize">${o.label}</button>`).join("")}</div>
+    ${barraBusqueda("proy","Buscar por proyecto, cliente o estado…",base.length,list.length)}
     <div class="panel"><div class="tablewrap"><table>
-      <thead><tr><th>Proyecto</th><th>Cliente</th><th>Mes</th><th>Documentos</th><th class="r">Venta</th><th class="r">Costo</th><th class="r">Ganancia</th><th class="r">Margen neto</th><th></th></tr></thead>
-      <tbody>${body}</tbody>${list.length?`<tfoot><tr><td colspan="4" class="r">Totales</td><td class="r num">${money(tv)}</td><td class="r num">${money(tc)}</td><td class="r num">${money(tv-tc)}</td><td class="r num">${mg.toFixed(1)}%</td><td></td></tr></tfoot>`:""}</table></div></div>`;
+      <thead><tr>${th("proy","nombre","Proyecto")}<th>Cliente</th>${th("proy","mes","Mes")}<th>Estado</th><th>Documentos</th>
+        ${th("proy","venta","Ingresos","r")}<th class="r">Costos XML</th><th class="r">Gastos</th>${th("proy","neto","Margen neto","r")}${th("proy","margen","%","r")}<th></th></tr></thead>
+      <tbody>${cuerpo}</tbody>
+      ${list.length?`<tfoot><tr><td colspan="5" class="r">Totales</td><td class="r num">${money(tv)}</td><td class="r num">${money(tc)}</td>
+        <td class="r num">${money(tg)}</td><td class="r num">${money(tn)}</td><td class="r num">${mgT.toFixed(1)}%</td><td></td></tr></tfoot>`:""}</table></div></div>`;
   }
 
   function vCotizaciones(){
     const opts=[{v:"all",label:"Todos"},{v:"borrador",label:"Borrador"},{v:"enviada",label:"Enviada"},{v:"aceptada",label:"Aceptada"},{v:"rechazada",label:"Rechazada"}];
-    const list=state.cotizaciones.filter(c=>ui.cotFilter==="all"||c.estatus===ui.cotFilter);
-    return `${headBar("Cotizaciones","Propuestas a clientes · margen por línea · convierte las aceptadas en factura","cotizacion","Nueva cotización","rep-cot")}
+    const base=state.cotizaciones.filter(c=>ui.cotFilter==="all"||c.estatus===ui.cotFilter);
+    const list=listaDe(base,"cot",{total:c=>cotTotal(c),margen:c=>cotMargenPct(c),lineas:c=>(c.lineas||[]).length});
+    return `${headBar("Cotizaciones","Propuestas a clientes · margen por línea · convierte las aceptadas en factura","cotizacion","Nueva cotización","rep-cot","cot-masiva")}
     ${filterBar("cotFilter",ui.cotFilter,opts)}
+    ${barraBusqueda("cot","Buscar por folio, cliente o concepto…",base.length,list.length)}
     <div class="panel"><div class="tablewrap"><table>
-    <thead><tr><th>Folio</th><th>Cliente</th><th>Fecha</th><th>Origen (costo)</th><th class="r">Líneas</th><th class="r">Margen</th><th class="r">Total</th><th>Estatus</th><th></th></tr></thead>
+    <thead><tr>${th("cot","folio","Folio")}${th("cot","cliente","Cliente")}${th("cot","fecha","Fecha")}<th>Origen (costo)</th>${th("cot","lineas","Líneas","r")}${th("cot","margen","Margen","r")}${th("cot","total","Total","r")}${th("cot","estatus","Estatus")}<th></th></tr></thead>
     <tbody>${list.length?list.map(c=>`<tr>
       <td class="mono">${c.folio}</td><td>${c.cliente}</td><td>${fmtDate(c.fecha)}</td>
       <td>${(c.origenProveedorIds||[]).length?(c.origenProveedorIds.map(pid=>{const p=state.proveedores.find(x=>x.id===pid);
@@ -1016,11 +1158,13 @@ function(t){t.__bidiEngine__=t.prototype.__bidiEngine__=function(t){var r,n,i,a,
 
   function vVentas(){
     const opts=[{v:"all",label:"Todas"},{v:"abierta",label:"Abierta"},{v:"facturada",label:"Facturada"}];
-    const list=state.ventas.filter(o=>ui.ovFilter==="all"||o.estatus===ui.ovFilter);
+    const base=state.ventas.filter(o=>ui.ovFilter==="all"||o.estatus===ui.ovFilter);
+    const list=listaDe(base,"ov",{total:o=>ovTotal(o)});
     return `${headBar("Órdenes de venta","Flujo: cotización → OC del cliente → orden de venta → factura","venta","Nueva orden de venta","rep-ventas")}
     ${filterBar("ovFilter",ui.ovFilter,opts)}
+    ${barraBusqueda("ov","Buscar por folio, cliente u OC del cliente…",base.length,list.length)}
     <div class="panel"><div class="tablewrap"><table>
-    <thead><tr><th>Folio</th><th>Cliente</th><th>OC cliente</th><th>Cotización</th><th>Fecha</th><th class="r">Total</th><th>Estatus</th><th></th></tr></thead>
+    <thead><tr>${th("ov","folio","Folio")}${th("ov","cliente","Cliente")}${th("ov","ocCliente","OC cliente")}<th>Cotización</th>${th("ov","fecha","Fecha")}${th("ov","total","Total","r")}${th("ov","estatus","Estatus")}<th></th></tr></thead>
     <tbody>${list.length?list.map(o=>{const c=state.cotizaciones.find(x=>x.id===o.cotizacionId),fac=state.facturas.find(x=>x.id===o.facturaId);
       return `<tr><td class="mono">${o.folio}</td><td>${o.cliente}</td><td class="mono">${o.ocCliente||"—"}</td>
       <td class="mono">${c?c.folio:"—"}</td><td>${fmtDate(o.fecha)}</td><td class="r num strong">${money(ovTotal(o))}</td>
@@ -1035,23 +1179,30 @@ function(t){t.__bidiEngine__=t.prototype.__bidiEngine__=function(t){var r,n,i,a,
 
   function vGastos(){
     const total=state.gastos.reduce((a,g)=>a+g.importe,0);
-    const list=[...state.gastos].sort((a,b)=>a.fecha.localeCompare(b.fecha));
-    return `${headBar("Gastos","Gastos operativos que afectan el resultado del mes en Contabilidad","gasto","Nuevo gasto","rep-gastos")}
+    if(!ui.sort.gas)ui.sort.gas={col:"fecha",dir:"desc"};
+    const list=listaDe(state.gastos,"gas",{importe:g=>g.importe},g=>nombreIntegrante(g.pagador));
+    return `${headBar("Gastos","Gastos operativos · pagador y proyecto · afectan el resultado del mes","gasto","Nuevo gasto","rep-gastos")}
+    ${barraBusqueda("gas","Buscar por concepto, pagador o proyecto…",state.gastos.length,list.length)}
     <div class="panel"><div class="tablewrap"><table>
-    <thead><tr><th>Fecha</th><th>Concepto</th><th class="r">Importe</th><th></th></tr></thead>
-    <tbody>${list.length?list.map(g=>`<tr><td>${fmtDate(g.fecha)}</td><td>${g.concepto}</td><td class="r num strong">${money(g.importe)}</td>
+    <thead><tr>${th("gas","fecha","Fecha")}${th("gas","concepto","Concepto")}<th>Pagador</th><th>Proyecto</th>${th("gas","importe","Importe","r")}<th></th></tr></thead>
+    <tbody>${list.length?list.map(g=>`<tr><td>${fmtDate(g.fecha)}</td><td>${g.concepto}</td>
+      <td><span class="pill ${g.pagador&&g.pagador!==EMPRESA?"p-info":"p-mut"}">${nombreIntegrante(g.pagador)}</span></td>
+      <td>${(()=>{const pr=state.proyectos.find(x=>x.id===g.proyectoId);return pr?pr.nombre:'<span style="color:var(--text-faint)">—</span>';})()}</td>
+      <td class="r num strong">${money(g.importe)}</td>
       <td><div class="rowact"><button class="act" data-action="edit" data-type="gasto" data-id="${g.id}">Editar</button>
-        <button class="act warnact" data-action="del" data-type="gastos" data-id="${g.id}">Eliminar</button></div></td></tr>`).join(""):emptyRow(4,"Sin gastos registrados")}</tbody>
-      ${list.length?`<tfoot><tr><td colspan="2" class="r">Total</td><td class="r num">${money(total)}</td><td></td></tr></tfoot>`:""}</table></div></div>`;
+        <button class="act warnact" data-action="del" data-type="gastos" data-id="${g.id}">Eliminar</button></div></td></tr>`).join(""):emptyRow(6,"Sin gastos registrados")}</tbody>
+      ${list.length?`<tfoot><tr><td colspan="4" class="r">Total</td><td class="r num">${money(total)}</td><td></td></tr></tfoot>`:""}</table></div></div>`;
   }
 
   function vOrdenes(){
     const opts=[{v:"all",label:"Todos"},{v:"abierta",label:"Abierta"},{v:"recibida",label:"Recibida"},{v:"pagada",label:"Pagada"}];
-    const list=state.ordenes.filter(o=>ui.ocFilter==="all"||o.estatus===ui.ocFilter);
+    const base=state.ordenes.filter(o=>ui.ocFilter==="all"||o.estatus===ui.ocFilter);
+    const list=listaDe(base,"oc",{total:o=>ocTotal(o)});
     return `${headBar("Órdenes de compra","Compromisos con proveedores","orden","Nueva orden","rep-oc")}
     ${filterBar("ocFilter",ui.ocFilter,opts)}
+    ${barraBusqueda("oc","Buscar por folio, proveedor o concepto…",base.length,list.length)}
     <div class="panel"><div class="tablewrap"><table>
-    <thead><tr><th>Folio</th><th>Proveedor</th><th>Fecha</th><th>Pago prog.</th><th class="r">Total</th><th>Estatus</th><th></th></tr></thead>
+    <thead><tr>${th("oc","folio","Folio")}${th("oc","proveedor","Proveedor")}${th("oc","fecha","Fecha")}${th("oc","fechaPago","Pago prog.")}${th("oc","total","Total","r")}${th("oc","estatus","Estatus")}<th></th></tr></thead>
     <tbody>${list.length?list.map(o=>`<tr>
       <td class="mono">${o.folio}</td><td>${o.proveedor}</td><td>${fmtDate(o.fecha)}</td><td>${fmtDate(o.fechaPago)}</td>
       <td class="r num strong">${money(ocTotal(o))}</td><td><span class="pill ${ocCls[o.estatus]}">${o.estatus}</span></td>
@@ -1066,11 +1217,18 @@ function(t){t.__bidiEngine__=t.prototype.__bidiEngine__=function(t){var r,n,i,a,
 
   function vFacturas(){
     const opts=[{v:"all",label:"Todas"}].concat(FLUJO.map(f=>({v:f.v,label:f.label})));
-    const list=state.facturas.filter(f=>ui.facFilter==="all"||f.flujo===ui.facFilter);
+    const base=state.facturas.filter(f=>ui.facFilter==="all"||f.flujo===ui.facFilter);
+    const list=listaDe(base,"fac",{total:f=>facTotal(f),saldo:f=>facSaldo(f)});
     return `${headBar("Facturas","Flujo: solicitada → creada → cargada al portal → pagada","factura","Nueva factura","rep-fac")}
     ${filterBar("facFilter",ui.facFilter,opts)}
+    <div class="panel" style="padding:16px"><label class="drop" id="dropventa">
+      <input type="file" id="xmlventa" accept=".xml,text/xml,application/xml" multiple hidden>
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor"><path d="M12 16V4M7 9l5-5 5 5M4 20h16" stroke-width="1.6"/></svg>
+      <b>Arrastra o haz clic para cargar el XML (CFDI) de tus facturas</b>
+      <div class="hint">Se llenan cliente, folio, fecha, conceptos, IVA y retenciones</div></label></div>
+    ${barraBusqueda("fac","Buscar por folio, cliente o concepto…",base.length,list.length)}
     <div class="panel"><div class="tablewrap"><table>
-    <thead><tr><th>Folio</th><th>Cliente</th><th>Emisión</th><th>Vence</th><th class="r">Total</th><th class="r">Saldo</th><th>Estatus</th><th></th></tr></thead>
+    <thead><tr>${th("fac","folio","Folio")}${th("fac","cliente","Cliente")}${th("fac","fecha","Emisión")}${th("fac","vencimiento","Vence")}${th("fac","total","Total","r")}${th("fac","saldo","Saldo","r")}${th("fac","flujo","Estatus")}<th></th></tr></thead>
     <tbody>${list.length?list.map(f=>{const e=facEstatus(f),fl=flujoMeta(f.flujo),saldo=facSaldo(f);
       return `<tr><td class="mono">${f.folio}</td><td>${f.cliente}</td><td>${fmtDate(f.fecha)}</td><td>${fmtDate(f.vencimiento)}</td>
       <td class="r num">${money(facTotal(f))}</td><td class="r num strong" style="color:${saldo>0.01&&todayStr()>f.vencimiento?"var(--bad)":"inherit"}">${money(saldo)}</td>
@@ -1085,10 +1243,12 @@ function(t){t.__bidiEngine__=t.prototype.__bidiEngine__=function(t){var r,n,i,a,
   }
 
   function vPagos(){
+    const listaPagos=listaDe(state.pagos,"pag",{});
     return `${headBar("Aplicación de pagos","Cobros registrados y su factura destino","pago","Registrar pago",null)}
+    ${barraBusqueda("pag","Buscar por folio, factura o cliente…",state.pagos.length,listaPagos.length)}
     <div class="panel"><div class="tablewrap"><table>
-    <thead><tr><th>Folio</th><th>Factura</th><th>Cliente</th><th>Fecha</th><th>Método</th><th class="r">Monto</th><th></th></tr></thead>
-    <tbody>${state.pagos.length?state.pagos.map(p=>`<tr><td class="mono">${p.folio}</td>
+    <thead><tr>${th("pag","folio","Folio")}${th("pag","facturaFolio","Factura")}${th("pag","cliente","Cliente")}${th("pag","fecha","Fecha")}${th("pag","metodo","Método")}${th("pag","monto","Monto","r")}<th></th></tr></thead>
+    <tbody>${listaPagos.length?listaPagos.map(p=>`<tr><td class="mono">${p.folio}</td>
       <td class="mono">${p.facturaFolio}${p.aplicaciones&&p.aplicaciones.length>1?`<div style="color:var(--text-faint);font-size:10px">${p.aplicaciones.map(x=>x.facturaFolio+" "+money(x.monto)).join(" · ")}</div>`:""}</td><td>${p.cliente}</td>
       <td>${fmtDate(p.fecha)}</td><td>${p.metodo}</td><td class="r num strong">${money(p.monto)}</td>
       <td><div class="rowact"><button class="act" data-action="edit" data-type="pago" data-id="${p.id}">Editar</button>
@@ -1100,11 +1260,19 @@ function(t){t.__bidiEngine__=t.prototype.__bidiEngine__=function(t){var r,n,i,a,
   function vProveedores(){
     const sel=ui.provSel||[];
     const selCosto=state.proveedores.filter(p=>sel.indexOf(p.id)>=0).reduce((a,p)=>a+p.subtotal,0);
+    const listaProv=listaDe(state.proveedores,"prov",{total:p=>p.total,subtotal:p=>p.subtotal},p=>nombreIntegrante(p.integranteId));
     return `${headBar("Costos · facturas de proveedores","Carga XML (CFDI) y genera la cotización al cliente desde el costo real","proveedor","Agregar manual","rep-traza")}
     <div class="panel" style="padding:16px"><label class="drop" id="drop">
       <input type="file" id="xmlfile" accept=".xml,text/xml,application/xml" multiple hidden>
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor"><path d="M12 16V4M7 9l5-5 5 5M4 20h16" stroke-width="1.6"/></svg>
-      <b>Arrastra o haz clic para cargar XML (CFDI)</b><div class="hint">Se extraen emisor, folio, UUID, importes y los conceptos con su costo unitario</div></label></div>
+      <b>Arrastra o haz clic para cargar XML (CFDI)</b><div class="hint">Se extraen emisor, folio, UUID, importes y los conceptos con su costo unitario</div></label>
+      <div class="field" style="margin-top:14px;max-width:340px"><label for="prov-integrante">Integrante responsable del costo <b style="color:var(--bad)">*</b></label>
+        <select id="prov-integrante" data-action="prov-integrante">
+          <option value="">— selecciona antes de cargar —</option>
+          ${state.integrantes.map(i=>`<option value="${i.id}" ${ui.provIntegrante===i.id?"selected":""}>${escAttr(i.nombre)}</option>`).join("")}
+        </select></div>
+      <p class="hintline">Todo costo cargado por XML queda vinculado a un integrante.</p></div>
+    ${barraBusqueda("prov","Buscar por proveedor, folio, UUID o integrante…",state.proveedores.length,listaProv.length)}
     <div class="selbar">
       <span>${sel.length?sel.length+" factura(s) seleccionada(s) · costo "+money(selCosto):"Marca una o varias facturas para cotizarlas a un cliente"}</span>
       <div class="headacts">
@@ -1113,17 +1281,18 @@ function(t){t.__bidiEngine__=t.prototype.__bidiEngine__=function(t){var r,n,i,a,
       </div></div>
     <div class="panel"><div class="tablewrap"><table>
     <thead><tr><th style="width:34px"><input type="checkbox" data-action="prov-sel-all" ${sel.length&&sel.length===state.proveedores.length?"checked":""}></th>
-      <th>Proveedor</th><th>Folio / UUID</th><th>Fecha</th><th class="r">Subtotal</th><th class="r">IVA</th><th class="r">Total</th><th>Cotizada en</th><th></th></tr></thead>
-    <tbody>${state.proveedores.length?state.proveedores.map(p=>{const cots=cotDeProveedor(p);
+      ${th("prov","proveedor","Proveedor")}${th("prov","folio","Folio / UUID")}${th("prov","fecha","Fecha")}${th("prov","subtotal","Subtotal","r")}<th class="r">IVA</th>${th("prov","total","Total","r")}<th>Integrante</th><th>Cotizada en</th><th></th></tr></thead>
+    <tbody>${listaProv.length?listaProv.map(p=>{const cots=cotDeProveedor(p);
       return `<tr><td><input type="checkbox" data-action="prov-sel" data-id="${p.id}" ${sel.indexOf(p.id)>=0?"checked":""}></td>
       <td class="strong">${p.proveedor}<div style="color:var(--text-faint);font-size:10.5px">${p.rfc||""}${(p.conceptos||[]).length?" · "+p.conceptos.length+" concepto(s)":""}</div></td>
       <td class="mono">${p.folio||"—"}${p.uuid?`<div style="color:var(--text-faint);font-size:10px">${p.uuid.slice(0,18)}…</div>`:""}</td>
       <td>${fmtDate(p.fecha)}</td><td class="r num">${money(p.subtotal)}</td><td class="r num">${money(p.iva)}</td><td class="r num strong">${money(p.total)}</td>
+      <td>${p.integranteId?`<span class="pill p-mut">${nombreIntegrante(p.integranteId)}</span>`:'<span class="pill p-bad">sin asignar</span>'}</td>
       <td>${cots.length?cots.map(c=>`<span class="pill p-info" style="margin:1px 2px">${c.folio}</span>`).join(""):'<span style="color:var(--text-faint)">—</span>'}</td>
       <td><div class="rowact"><button class="act" data-action="edit" data-type="proveedor" data-id="${p.id}">Editar</button>
-        <button class="act warnact" data-action="del" data-type="proveedores" data-id="${p.id}">Eliminar</button></div></td></tr>`;}).join(""):emptyRow(9,"Carga un XML o agrega una factura de proveedor")}</tbody>
-      ${state.proveedores.length?`<tfoot><tr><td colspan="4" class="r">Totales</td><td class="r num">${money(state.proveedores.reduce((a,p)=>a+p.subtotal,0))}</td>
-        <td class="r num">${money(state.proveedores.reduce((a,p)=>a+p.iva,0))}</td><td class="r num">${money(state.proveedores.reduce((a,p)=>a+p.total,0))}</td><td></td><td></td></tr></tfoot>`:""}</table></div></div>`;
+        <button class="act warnact" data-action="del" data-type="proveedores" data-id="${p.id}">Eliminar</button></div></td></tr>`;}).join(""):emptyRow(10,"Carga un XML o agrega una factura de proveedor")}</tbody>
+      ${listaProv.length?`<tfoot><tr><td colspan="4" class="r">Totales</td><td class="r num">${money(state.proveedores.reduce((a,p)=>a+p.subtotal,0))}</td>
+        <td class="r num">${money(state.proveedores.reduce((a,p)=>a+p.iva,0))}</td><td class="r num">${money(state.proveedores.reduce((a,p)=>a+p.total,0))}</td><td></td><td></td><td></td></tr></tfoot>`:""}</table></div></div>`;
   }
 
   function vProyecciones(){
@@ -1186,10 +1355,13 @@ function(t){t.__bidiEngine__=t.prototype.__bidiEngine__=function(t){var r,n,i,a,
   }
 
   function vClientes(){
+    if(!ui.sort.cli)ui.sort.cli={col:"nombre",dir:"asc"};
+    const listaCli=listaDe(state.clientes,"cli",{});
     return `${headBar("Clientes","Perfiles con impuestos y retenciones aplicables · se cargan solos en la cotización","cliente","Nuevo cliente",null)}
+    ${barraBusqueda("cli","Buscar por nombre, RFC o correo…",state.clientes.length,listaCli.length)}
     <div class="panel"><div class="tablewrap"><table>
-    <thead><tr><th>Cliente</th><th>RFC</th><th>Correos</th><th class="r">Margen</th><th class="r">IVA</th><th>Retenciones aplicables</th><th></th></tr></thead>
-    <tbody>${state.clientes.length?state.clientes.map(c=>`<tr><td class="strong">${c.nombre}</td><td class="mono">${c.rfc||"—"}</td>
+    <thead><tr>${th("cli","nombre","Cliente")}${th("cli","rfc","RFC")}<th>Correos</th>${th("cli","margen","Margen","r")}<th class="r">IVA</th><th>Retenciones aplicables</th><th></th></tr></thead>
+    <tbody>${listaCli.length?listaCli.map(c=>`<tr><td class="strong">${c.nombre}</td><td class="mono">${c.rfc||"—"}</td>
       <td style="font-size:12px;color:var(--text-dim)">${c.emails?c.emails:'<span style="color:var(--text-faint)">—</span>'}</td>
       <td class="r num strong" style="color:var(--good)">${c.margen!=null?c.margen+"%":"—"}</td>
       <td class="r num">${c.ivaPct!=null?c.ivaPct+"%":ivaDefPct()+"%"}</td>
@@ -1207,7 +1379,115 @@ function(t){t.__bidiEngine__=t.prototype.__bidiEngine__=function(t){var r,n,i,a,
         <button class="act warnact" data-action="cierre-eliminar" data-id="${s.id}">Eliminar</button></div></div>`).join(""):'<div class="empty">Aún no hay cierres guardados. Usa «Guardar cierre» para respaldar el estado actual y poder regresar después.</div>'}</div>`;
   }
 
-  const viewFns={dashboard:vDashboard,proyectos:vProyectos,cotizaciones:vCotizaciones,ventas:vVentas,ordenes:vOrdenes,
+  function vIntegrantes(){
+    if(!ui.sort.int)ui.sort.int={col:"nombre",dir:"asc"};
+    const lista=listaDe(state.integrantes,"int",{});
+    const usos=i=>state.proveedores.filter(x=>x.integranteId===i.id).length+state.gastos.filter(g=>g.pagador===i.id).length;
+    return `${headBar("Integrantes","Personas que absorben costos y reciben dividendos","integrante","Nuevo integrante",null)}
+    ${barraBusqueda("int","Buscar por nombre o correo…",state.integrantes.length,lista.length)}
+    <div class="panel"><div class="tablewrap"><table>
+    <thead><tr>${th("int","nombre","Nombre")}${th("int","email","Correo")}<th class="r">Movimientos</th><th class="r">Proyectos</th><th></th></tr></thead>
+    <tbody>${lista.length?lista.map(i=>{
+      const proys=state.proyectos.filter(p=>(p.integranteIds||[]).indexOf(i.id)>=0);
+      return `<tr><td class="strong">${i.nombre}</td><td style="color:var(--text-dim)">${i.email||"—"}</td>
+      <td class="r num">${usos(i)}</td><td class="r num">${proys.length}</td>
+      <td><div class="rowact"><button class="act" data-action="edit" data-type="integrante" data-id="${i.id}">Editar</button>
+        <button class="act warnact" data-action="del" data-type="integrantes" data-id="${i.id}">Eliminar</button></div></td></tr>`;}).join("")
+      :emptyRow(5,"Da de alta a los integrantes para asignarles costos y dividendos")}</tbody></table></div></div>`;
+  }
+
+  /* ---------- cierre de proyecto y dividendos ---------- */
+  const proyBloqueado=id=>{const p=state.proyectos.find(x=>x.id===id);return !!(p&&p.estado==="cierre");};
+
+  function abrirCierre(pid){
+    const p=state.proyectos.find(x=>x.id===pid);if(!p)return;
+    const d=proyDerived(p);
+    const miembros=(p.integranteIds||[]).map(id=>state.integrantes.find(i=>i.id===id)).filter(Boolean);
+    const base=miembros.length?miembros:state.integrantes;
+    let reparto=(p.dividendos&&p.dividendos.length)?p.dividendos.slice()
+      :base.map((i,k)=>({integranteId:i.id,pct:base.length?+(100/base.length).toFixed(4):0}));
+
+    const o=document.createElement("div");o.className="overlay on";
+    o.innerHTML=`<div class="modal wide">
+      <div class="modal-head"><h3>Cierre de proyecto · ${escAttr(p.nombre)}</h3><button type="button" aria-label="Cerrar" data-x>&times;</button></div>
+      <div style="padding:8px 20px 20px;display:flex;flex-direction:column;gap:14px">
+        <div class="calc">
+          <div><span>Ingresos</span><span class="num">${money(d.venta)}</span></div>
+          <div><span>Costos XML</span><span class="num">−${money(d.costoXml)}</span></div>
+          <div><span>Gastos operativos</span><span class="num">−${money(d.gastoOp)}</span></div>
+          <div class="tot"><span>Margen neto a repartir</span><span class="num" id="cierre-neto">${money(d.neto)}</span></div>
+        </div>
+        <div class="field"><label>Repartición de dividendos</label>
+          <div class="divhead"><span>Integrante</span><span>%</span><span>Monto</span><span></span></div>
+          <div id="divlist"></div>
+          <button type="button" class="ghost" id="divadd" style="align-self:flex-start;margin-top:6px">+ Agregar integrante</button>
+        </div>
+        <div id="divsum"></div>
+        <div class="pdfacts" style="padding:0">
+          <span class="pdfhint">Al cerrar, el proyecto queda bloqueado: no admite más ingresos, costos ni gastos.</span>
+          <button class="ghost" data-x2>Cancelar</button>
+          <button class="primary" id="divguardar">Guardar y cerrar proyecto</button>
+        </div>
+      </div></div>`;
+    document.body.appendChild(o);
+    const cerrar=()=>o.remove();
+    o.addEventListener("click",e=>{if(e.target===o)cerrar();});
+    o.querySelector("[data-x]").onclick=cerrar;
+    o.querySelector("[data-x2]").onclick=cerrar;
+
+    const lista=o.querySelector("#divlist"),resumen=o.querySelector("#divsum"),btn=o.querySelector("#divguardar");
+    const opciones=sel=>state.integrantes.map(i=>`<option value="${i.id}" ${i.id===sel?"selected":""}>${escAttr(i.nombre)}</option>`).join("");
+    function pinta(){
+      lista.innerHTML=reparto.map((r,k)=>`<div class="divrow" data-k="${k}">
+        <select data-c="integrante">${opciones(r.integranteId)}</select>
+        <input type="number" data-c="pct" min="0" max="100" step="0.0001" value="${r.pct}">
+        <span class="num divmonto"></span>
+        <button type="button" class="l-del" aria-label="Quitar">&times;</button></div>`).join("");
+      calcula();
+    }
+    function leer(){
+      reparto=[...lista.querySelectorAll(".divrow")].map(f=>({
+        integranteId:f.querySelector("[data-c=integrante]").value,
+        pct:+f.querySelector("[data-c=pct]").value||0}));
+    }
+    function calcula(){
+      const neto=proyDerived(p).neto;
+      let suma=0;
+      [...lista.querySelectorAll(".divrow")].forEach(f=>{
+        const pct=+f.querySelector("[data-c=pct]").value||0;suma+=pct;
+        f.querySelector(".divmonto").textContent=money(neto*pct/100);
+      });
+      suma=Math.round(suma*10000)/10000;
+      const exacto=Math.abs(suma-100)<0.0001;
+      const dif=Math.round((100-suma)*10000)/10000;
+      resumen.className=exacto?"csv-ok":"csv-err";
+      resumen.innerHTML=exacto
+        ? `Suma correcta: <b>100%</b> · se repartirán ${money(neto)}`
+        : `La suma es <b>${suma}%</b> — ${dif>0?"faltan "+dif+"%":"sobran "+Math.abs(dif)+"%"}. Debe ser exactamente 100% para poder cerrar.`;
+      btn.disabled=!exacto;
+      btn.style.opacity=exacto?"1":".45";
+      btn.style.cursor=exacto?"pointer":"not-allowed";
+    }
+    lista.addEventListener("input",calcula);
+    lista.addEventListener("change",calcula);
+    lista.addEventListener("click",e=>{if(e.target.closest(".l-del")){leer();
+      const k=+e.target.closest(".divrow").dataset.k;reparto.splice(k,1);pinta();}});
+    o.querySelector("#divadd").onclick=()=>{leer();
+      reparto.push({integranteId:(state.integrantes[0]||{}).id||"",pct:0});pinta();};
+    btn.onclick=()=>{
+      leer();
+      const suma=Math.round(reparto.reduce((a,r)=>a+r.pct,0)*10000)/10000;
+      if(Math.abs(suma-100)>0.0001){toast("La repartición debe sumar exactamente 100%");return;}
+      if(reparto.some(r=>!r.integranteId)){toast("Falta elegir integrante en algún renglón");return;}
+      const neto=proyDerived(p).neto;
+      p.dividendos=reparto.map(r=>({integranteId:r.integranteId,pct:r.pct,monto:neto*r.pct/100}));
+      p.estado="cierre";p.fechaCierre=todayStr();p.netoCierre=neto;
+      persist();cerrar();render();toast("Proyecto cerrado y dividendos guardados");
+    };
+    pinta();
+  }
+
+  const viewFns={dashboard:vDashboard,integrantes:vIntegrantes,proyectos:vProyectos,cotizaciones:vCotizaciones,ventas:vVentas,ordenes:vOrdenes,
     facturas:vFacturas,pagos:vPagos,proveedores:vProveedores,gastos:vGastos,clientes:vClientes,proyecciones:vProyecciones,contabilidad:vContabilidad,cierres:vCierres};
   function render(){renderNav();$("#view").innerHTML=viewFns[current]();window.scrollTo({top:0});}
 
@@ -1229,29 +1509,42 @@ function(t){t.__bidiEngine__=t.prototype.__bidiEngine__=function(t){var r,n,i,a,
   const moneyField=(id,label,val)=>`<div class="field"><label for="${id}">${label}</label><input type="number" id="${id}" min="0" step="0.01" value="${val==null?"":val}" required></div>`;
   const optList=(arr,labelFn,sel)=>'<option value="">— ninguno —</option>'+arr.map(x=>`<option value="${x.id}" ${x.id===sel?"selected":""}>${escAttr(labelFn(x))}</option>`).join("");
 
+  const UNIDADES=["PZ","SERV","LOT","KG","TON","MTR","M2","M3","LT","HR","DIA","CAJA","JGO","ROLLO"];
+  // Valores de analítica ya usados, para sugerirlos en las líneas nuevas.
+  function analiticasUsadas(){
+    const set=new Set();
+    [state.cotizaciones,state.ventas,state.facturas,state.ordenes].forEach(col=>
+      (col||[]).forEach(d=>(d.lineas||[]).forEach(l=>{if(l.analitica)set.add(String(l.analitica).trim());})));
+    return [...set].filter(Boolean).sort();
+  }
   function productList(){
     const map=new Map();
-    const add=(desc,costo,precio,margen)=>{if(!desc)return;const k=desc.trim().toLowerCase();if(!k)return;
-      map.set(k,{desc:desc.trim(),costo:+costo||0,precio:+precio||0,margen:margen==null?null:+margen});};
-    state.cotizaciones.forEach(c=>(c.lineas||[]).forEach(l=>add(l.desc,l.costo,lineaPrecio(l),l.margen)));
-    state.ventas.forEach(o=>(o.lineas||[]).forEach(l=>add(l.desc,l.costo,l.precio,null)));
-    state.facturas.forEach(f=>(f.lineas||[]).forEach(l=>add(l.desc,l.costo,l.precio,null)));
-    state.ordenes.forEach(o=>(o.lineas||[]).forEach(l=>add(l.desc,l.costo,0,null)));
+    const add=(l,precio,margen)=>{if(!l||!l.desc)return;const k=l.desc.trim().toLowerCase();if(!k)return;
+      map.set(k,{desc:l.desc.trim(),costo:+l.costo||0,precio:+precio||0,margen:margen==null?null:+margen,
+        unidad:l.unidad||"",analitica:l.analitica||""});};
+    state.cotizaciones.forEach(c=>(c.lineas||[]).forEach(l=>add(l,lineaPrecio(l),l.margen)));
+    state.ventas.forEach(o=>(o.lineas||[]).forEach(l=>add(l,l.precio,null)));
+    state.facturas.forEach(f=>(f.lineas||[]).forEach(l=>add(l,l.precio,null)));
+    state.ordenes.forEach(o=>(o.lineas||[]).forEach(l=>add(l,0,null)));
     return [...map.values()];
   }
   function makeLineEditor(type,host,initial,onChange,catalog){
     const spec=LINESPEC[type],gt=spec.cols.map(c=>c.w).join(" ")+" 92px 22px";
-    const dl=catalog?`<datalist id="fx-prod">${[...catalog.values()].map(p=>`<option value="${escAttr(p.desc)}"></option>`).join("")}</datalist>`:"";
+    const dl=(catalog?`<datalist id="fx-prod">${[...catalog.values()].map(p=>`<option value="${escAttr(p.desc)}"></option>`).join("")}</datalist>`:"")
+      +`<datalist id="fx-uni">${UNIDADES.map(u=>`<option value="${u}"></option>`).join("")}</datalist>`
+      +`<datalist id="fx-ana">${analiticasUsadas().map(a=>`<option value="${escAttr(a)}"></option>`).join("")}</datalist>`;
     host.innerHTML=`${dl}<div class="lhead" style="grid-template-columns:${gt}">${spec.cols.map(c=>`<span>${c.h}</span>`).join("")}<span>Importe</span><span></span></div><div class="llist"></div><button type="button" class="ghost lineadd">+ Agregar línea</button>`;
     const list=host.querySelector(".llist");
     const rowHtml=l=>`<div class="lrow" style="grid-template-columns:${gt}">${spec.cols.map(c=>{const v=escAttr(l&&l[c.k]!=null?l[c.k]:(c.v!=null?c.v:""));
-      return c.t==="text"?`<input data-k="${c.k}" ${catalog?'list="fx-prod"':""} placeholder="${c.ph||""}" value="${v}">`:`<input data-k="${c.k}" type="number" min="0" step="${c.step||"0.01"}" placeholder="${c.ph||""}" value="${v}">`;}).join("")}<span class="l-imp num">$0.00</span><button type="button" class="l-del" aria-label="Quitar">&times;</button></div>`;
+      const lista=c.lista?` list="${c.lista}"`:(c.k==="desc"&&catalog?' list="fx-prod"':"");
+      return c.t==="text"?`<input data-k="${c.k}"${lista} placeholder="${c.ph||""}" value="${v}">`:`<input data-k="${c.k}" type="number" min="0" step="${c.step||"0.01"}" placeholder="${c.ph||""}" value="${v}">`;}).join("")}<span class="l-imp num">$0.00</span><button type="button" class="l-del" aria-label="Quitar">&times;</button></div>`;
     const read=()=>[...list.querySelectorAll(".lrow")].map(r=>{const o={};spec.cols.forEach(c=>{const el=r.querySelector('[data-k="'+c.k+'"]');o[c.k]=c.t==="text"?el.value.trim():(+el.value||0);});return o;});
     const recalc=()=>{list.querySelectorAll(".lrow").forEach(r=>{const o={};spec.cols.forEach(c=>{const el=r.querySelector('[data-k="'+c.k+'"]');o[c.k]=c.t==="text"?el.value:(+el.value||0);});r.querySelector(".l-imp").textContent=money(spec.imp(o));});onChange(read());};
     host.addEventListener("input",recalc);
     if(catalog)host.addEventListener("change",e=>{const inp=e.target;if(inp.dataset&&inp.dataset.k==="desc"){const p=catalog.get(inp.value.trim().toLowerCase());
       if(p){const row=inp.closest(".lrow"),set=(k,val)=>{const el=row.querySelector('[data-k="'+k+'"]');if(el&&val!=null&&val!=="")el.value=val;};
         set("costo",p.costo||"");if(row.querySelector('[data-k="margen"]')&&p.margen!=null)set("margen",p.margen);
+        if(p.unidad)set("unidad",p.unidad);if(p.analitica)set("analitica",p.analitica);
         if(row.querySelector('[data-k="precio"]'))set("precio",p.precio||"");recalc();}}});
     host.addEventListener("click",e=>{if(e.target.closest(".l-del")){if(list.querySelectorAll(".lrow").length>1)e.target.closest(".lrow").remove();recalc();}else if(e.target.closest(".lineadd")){list.insertAdjacentHTML("beforeend",rowHtml());recalc();}});
     (initial&&initial.length?initial:[null]).forEach(l=>list.insertAdjacentHTML("beforeend",rowHtml(l)));
@@ -1276,7 +1569,8 @@ function(t){t.__bidiEngine__=t.prototype.__bidiEngine__=function(t){var r,n,i,a,
     let title,body,onsubmit,lineType=null,formLines=null,retEd=null,formRets=null;const t=todayStr();
 
     if(type==="cotizacion"){lineType="cotizacion";title=editing?"Editar cotización":"Nueva cotización";
-      body=`<div class="grid2">
+      body=`${campoFolio(rec?rec.folio:nextFolio("COT",state.cotizaciones))}
+        <div class="grid2">
           <div class="field"><label for="f-cli">Cliente</label><input id="f-cli" list="cli-list" required value="${escAttr(rec?rec.cliente:"")}" placeholder="Nombre del cliente">
             <datalist id="cli-list">${state.clientes.map(cl=>`<option value="${escAttr(cl.nombre)}"></option>`).join("")}</datalist></div>
           <div class="field"><label for="f-cliid">Impuestos de cliente</label><select id="f-cliid"><option value="">— personalizado —</option>${state.clientes.map(cl=>`<option value="${cl.id}">${escAttr(cl.nombre)}</option>`).join("")}</select></div></div>
@@ -1288,22 +1582,30 @@ function(t){t.__bidiEngine__=t.prototype.__bidiEngine__=function(t){var r,n,i,a,
         <div class="calc" id="calc"></div>`;
       onsubmit=()=>{const lineas=lineEd.read().filter(l=>l.desc&&l.cantidad>0);
         if(!lineas.length){toast("Agrega al menos una línea con concepto y cantidad.");return false;}
-        const data={cliente:$("#f-cli").value.trim(),fecha:$("#f-fecha").value,vigencia:+$("#f-vig").value,ivaPct:+$("#f-iva").value||0,retenciones:retEd?retEd.read().filter(r=>r.concepto):[],lineas};
-        if(editing)Object.assign(rec,data);else state.cotizaciones.push(Object.assign({id:uid(),folio:nextFolio("COT",state.cotizaciones),estatus:"borrador",facturada:false},data));};
+        const folio=$("#f-folio").value.trim();
+        if(!folio){toast("Escribe el folio.");return false;}
+        if(folioRepetido(state.cotizaciones,folio,editing)){toast("Ya existe la cotización "+folio);return false;}
+        const data={folio,cliente:$("#f-cli").value.trim(),fecha:$("#f-fecha").value,vigencia:+$("#f-vig").value,ivaPct:+$("#f-iva").value||0,retenciones:retEd?retEd.read().filter(r=>r.concepto):[],lineas};
+        if(editing)Object.assign(rec,data);else state.cotizaciones.push(Object.assign({id:uid(),estatus:"borrador",facturada:false},data));};
     }
     else if(type==="orden"){lineType="orden";title=editing?"Editar orden de compra":"Nueva orden de compra";
-      body=`<div class="field"><label for="f-prov">Proveedor</label><input id="f-prov" required value="${escAttr(rec?rec.proveedor:"")}" placeholder="Nombre del proveedor"></div>
+      body=`${campoFolio(rec?rec.folio:nextFolio("OC",state.ordenes))}
+        <div class="field"><label for="f-prov">Proveedor</label><input id="f-prov" required value="${escAttr(rec?rec.proveedor:"")}" placeholder="Nombre del proveedor"></div>
         <div class="grid3"><div class="field"><label for="f-fecha">Fecha</label><input type="date" id="f-fecha" value="${rec?rec.fecha:t}"></div>
         <div class="field"><label for="f-pago">Pago programado</label><input type="date" id="f-pago" value="${rec?rec.fechaPago:addDays(t,30)}"></div>
         <div class="field"><label for="f-iva">IVA (%)</label><input type="number" id="f-iva" min="0" max="100" step="0.5" value="${rec&&rec.ivaPct!=null?rec.ivaPct:ivaDefPct()}"></div></div>
         <div class="field"><label>Conceptos</label><div id="lineas"></div></div><div class="calc" id="calc"></div>`;
       onsubmit=()=>{const lineas=lineEd.read().filter(l=>l.desc&&l.cantidad>0);
         if(!lineas.length){toast("Agrega al menos una línea.");return false;}
-        const data={proveedor:$("#f-prov").value.trim(),fecha:$("#f-fecha").value,fechaPago:$("#f-pago").value,ivaPct:+$("#f-iva").value||0,lineas};
-        if(editing)Object.assign(rec,data);else state.ordenes.push(Object.assign({id:uid(),folio:nextFolio("OC",state.ordenes),estatus:"abierta"},data));};
+        const folio=$("#f-folio").value.trim();
+        if(!folio){toast("Escribe el folio.");return false;}
+        if(folioRepetido(state.ordenes,folio,editing)){toast("Ya existe la orden "+folio);return false;}
+        const data={folio,proveedor:$("#f-prov").value.trim(),fecha:$("#f-fecha").value,fechaPago:$("#f-pago").value,ivaPct:+$("#f-iva").value||0,lineas};
+        if(editing)Object.assign(rec,data);else state.ordenes.push(Object.assign({id:uid(),estatus:"abierta"},data));};
     }
     else if(type==="factura"){lineType="factura";title=editing?"Editar factura":"Nueva factura";
-      body=`<div class="field"><label for="f-cli">Cliente</label><input id="f-cli" required value="${escAttr(rec?rec.cliente:"")}" placeholder="Nombre del cliente"></div>
+      body=`${campoFolio(rec?rec.folio:nextFolio("FAC",state.facturas))}
+        <div class="field"><label for="f-cli">Cliente</label><input id="f-cli" required value="${escAttr(rec?rec.cliente:"")}" placeholder="Nombre del cliente"></div>
         <div class="grid3"><div class="field"><label for="f-fecha">Emisión</label><input type="date" id="f-fecha" value="${rec?rec.fecha:t}"></div>
         <div class="field"><label for="f-venc">Vence</label><input type="date" id="f-venc" value="${rec?rec.vencimiento:addDays(t,30)}"></div>
         <div class="field"><label for="f-flujo">Estatus</label><select id="f-flujo">${FLUJO.map(x=>`<option value="${x.v}" ${(rec?rec.flujo:"solicitada")===x.v?"selected":""}>${x.label}</option>`).join("")}</select></div></div>
@@ -1311,8 +1613,11 @@ function(t){t.__bidiEngine__=t.prototype.__bidiEngine__=function(t){var r,n,i,a,
         <div class="field"><label>Conceptos</label><div id="lineas"></div></div><div class="calc" id="calc"></div>`;
       onsubmit=()=>{const lineas=lineEd.read().filter(l=>l.desc&&l.cantidad>0);
         if(!lineas.length){toast("Agrega al menos una línea.");return false;}
-        const data={cliente:$("#f-cli").value.trim(),fecha:$("#f-fecha").value,vencimiento:$("#f-venc").value,flujo:$("#f-flujo").value,ivaPct:+$("#f-iva").value||0,lineas};
-        if(editing)Object.assign(rec,data);else state.facturas.push(Object.assign({id:uid(),folio:nextFolio("FAC",state.facturas)},data));};
+        const folio=$("#f-folio").value.trim();
+        if(!folio){toast("Escribe el folio.");return false;}
+        if(folioRepetido(state.facturas,folio,editing)){toast("Ya existe la factura "+folio);return false;}
+        const data={folio,cliente:$("#f-cli").value.trim(),fecha:$("#f-fecha").value,vencimiento:$("#f-venc").value,flujo:$("#f-flujo").value,ivaPct:+$("#f-iva").value||0,lineas};
+        if(editing)Object.assign(rec,data);else state.facturas.push(Object.assign({id:uid()},data));};
     }
     else if(type==="pago"){
       const editAps=rec?(rec.aplicaciones&&rec.aplicaciones.length?rec.aplicaciones:(rec.facturaId?[{facturaId:rec.facturaId,monto:rec.monto}]:[])):[];
@@ -1345,7 +1650,9 @@ function(t){t.__bidiEngine__=t.prototype.__bidiEngine__=function(t){var r,n,i,a,
         <div class="grid2"><div class="field"><label for="f-cliid">Cliente</label>
           <select id="f-cliid">${optList(state.clientes,x=>x.nombre,rec?rec.clienteId:null)}</select></div>
         <div class="field"><label for="f-mes">Mes</label><input type="month" id="f-mes" value="${rec?rec.mes:monthKey(t)}"></div></div>
-        <p class="hintline">Marca todos los documentos del proyecto: la venta suma las facturas (u órdenes de venta) y el costo suma las órdenes de compra.</p>
+        <div class="field"><label>Integrantes del proyecto</label>
+          <div class="checklist">${state.integrantes.length?state.integrantes.map(i=>`<label><input type="checkbox" class="c-int" value="${i.id}" ${(rec&&(rec.integranteIds||[]).indexOf(i.id)>=0)?"checked":""}> ${escAttr(i.nombre)}</label>`).join(""):'<div class="none">— da de alta integrantes primero —</div>'}</div></div>
+        <p class="hintline">Marca los documentos del proyecto. El margen neto = ingresos − costos XML − gastos.</p>
         <div class="field"><label>Cotizaciones</label><div class="checklist">${chk("c-cot",state.cotizaciones,x=>x.cliente,sc)}</div></div>
         <div class="field"><label>Órdenes de venta (cliente)</label><div class="checklist">${chk("c-ov",state.ventas,x=>x.cliente,sv)}</div></div>
         <div class="field"><label>Órdenes de compra (proveedor)</label><div class="checklist">${chk("c-oc",state.ordenes,x=>x.proveedor,so)}</div></div>
@@ -1353,9 +1660,18 @@ function(t){t.__bidiEngine__=t.prototype.__bidiEngine__=function(t){var r,n,i,a,
       onsubmit=()=>{const g=cls=>[...md.querySelectorAll("."+cls+":checked")].map(el=>el.value);
         const cid=$("#f-cliid").value||null,cl=state.clientes.find(x=>x.id===cid);
         const data={nombre:$("#f-nom").value.trim(),clienteId:cid,cliente:cl?cl.nombre:"",mes:$("#f-mes").value,
-          cotIds:g("c-cot"),ventaIds:g("c-ov"),ordenIds:g("c-oc"),facturaIds:g("c-fac")};
+          integranteIds:g("c-int"),cotIds:g("c-cot"),ventaIds:g("c-ov"),ordenIds:g("c-oc"),facturaIds:g("c-fac")};
+        if(rec&&rec.estado==="cierre"){toast("El proyecto está cerrado: reábrelo para modificarlo.");return false;}
         if(!data.nombre){toast("Escribe el nombre del proyecto.");return false;}
         if(editing)Object.assign(rec,data);else state.proyectos.push(Object.assign({id:uid()},data));};
+    }
+    else if(type==="integrante"){title=editing?"Editar integrante":"Nuevo integrante";
+      body=`<div class="field"><label for="f-nom">Nombre</label><input id="f-nom" required value="${escAttr(rec?rec.nombre:"")}" placeholder="Nombre completo"></div>
+        <div class="field"><label for="f-mail">Correo</label><input id="f-mail" value="${escAttr(rec?rec.email:"")}" placeholder="correo@empresa.com"></div>
+        <p class="hintline">Los integrantes reciben la asignación de costos XML, gastos y dividendos.</p>`;
+      onsubmit=()=>{const data={nombre:$("#f-nom").value.trim(),email:$("#f-mail").value.trim()};
+        if(!data.nombre){toast("Escribe el nombre.");return false;}
+        if(editing)Object.assign(rec,data);else state.integrantes.push(Object.assign({id:uid()},data));};
     }
     else if(type==="cliente"){title=editing?"Editar cliente":"Nuevo cliente";
       body=`<div class="grid2"><div class="field"><label for="f-nom">Nombre / razón social</label><input id="f-nom" required value="${escAttr(rec?rec.nombre:"")}" placeholder="Cliente"></div>
@@ -1373,7 +1689,8 @@ function(t){t.__bidiEngine__=t.prototype.__bidiEngine__=function(t){var r,n,i,a,
     else if(type==="venta"){lineType="venta";title=editing?"Editar orden de venta":"Nueva orden de venta";
       const src=editing?rec:(opts.fromCot?(function(){const c=state.cotizaciones.find(x=>x.id===opts.fromCot);return c?{cliente:c.cliente,ocCliente:"",fecha:t,cotizacionId:c.id,lineas:(c.lineas||[]).map(l=>({desc:l.desc,cantidad:l.cantidad,costo:l.costo,precio:lineaPrecio(l)}))}:null;})():null);
       const pre=src||{};formLines=pre.lineas||null;
-      body=`<div class="field"><label for="f-cli">Cliente</label><input id="f-cli" required value="${escAttr(pre.cliente||"")}" placeholder="Cliente"></div>
+      body=`${campoFolio(rec?rec.folio:nextFolio("OV",state.ventas))}
+        <div class="field"><label for="f-cli">Cliente</label><input id="f-cli" required value="${escAttr(pre.cliente||"")}" placeholder="Cliente"></div>
         <div class="grid2"><div class="field"><label for="f-occ">OC del cliente</label><input id="f-occ" value="${escAttr(pre.ocCliente||"")}" placeholder="Folio de su orden de compra"></div>
         <div class="field"><label for="f-fecha">Fecha</label><input type="date" id="f-fecha" value="${pre.fecha||t}"></div></div>
         <div class="field" style="max-width:160px"><label for="f-iva">IVA (%)</label><input type="number" id="f-iva" min="0" max="100" step="0.5" value="${(rec&&rec.ivaPct!=null)?rec.ivaPct:ivaDefPct()}"></div>
@@ -1381,8 +1698,11 @@ function(t){t.__bidiEngine__=t.prototype.__bidiEngine__=function(t){var r,n,i,a,
         <div class="field"><label>Conceptos</label><div id="lineas"></div></div><div class="calc" id="calc"></div>`;
       onsubmit=()=>{const lineas=lineEd.read().filter(l=>l.desc&&l.cantidad>0);
         if(!lineas.length){toast("Agrega al menos una línea.");return false;}
-        const data={cliente:$("#f-cli").value.trim(),ocCliente:$("#f-occ").value.trim(),fecha:$("#f-fecha").value,cotizacionId:$("#f-cot").value||null,ivaPct:+$("#f-iva").value||0,lineas};
-        if(editing)Object.assign(rec,data);else{const nv=Object.assign({id:uid(),folio:nextFolio("OV",state.ventas),estatus:"abierta",facturaId:null},data);
+        const folio=$("#f-folio").value.trim();
+        if(!folio){toast("Escribe el folio.");return false;}
+        if(folioRepetido(state.ventas,folio,editing)){toast("Ya existe la orden de venta "+folio);return false;}
+        const data={folio,cliente:$("#f-cli").value.trim(),ocCliente:$("#f-occ").value.trim(),fecha:$("#f-fecha").value,cotizacionId:$("#f-cot").value||null,ivaPct:+$("#f-iva").value||0,lineas};
+        if(editing)Object.assign(rec,data);else{const nv=Object.assign({id:uid(),estatus:"abierta",facturaId:null},data);
           state.ventas.push(nv);if(opts.fromCot){const c=state.cotizaciones.find(x=>x.id===opts.fromCot);if(c){c.ventaId=nv.id;if(c.estatus!=="aceptada")c.estatus="aceptada";}}}};
     }
     else if(type==="cierre"){title="Guardar cierre / respaldo";const def=monthLabel(ui.contaMonth);
@@ -1448,8 +1768,19 @@ function(t){t.__bidiEngine__=t.prototype.__bidiEngine__=function(t){var r,n,i,a,
     else if(type==="gasto"){title=editing?"Editar gasto":"Nuevo gasto";
       body=`<div class="grid2"><div class="field"><label for="f-fecha">Fecha</label><input type="date" id="f-fecha" value="${rec?rec.fecha:t}"></div>
         ${moneyField("f-imp","Importe (MXN)",rec?rec.importe:"")}</div>
-        <div class="field"><label for="f-con">Concepto</label><input id="f-con" required value="${escAttr(rec?rec.concepto:"")}" placeholder="Descripción del gasto"></div>`;
-      onsubmit=()=>{const data={fecha:$("#f-fecha").value,concepto:$("#f-con").value.trim(),importe:+$("#f-imp").value||0};
+        <div class="field"><label for="f-con">Concepto</label><input id="f-con" required value="${escAttr(rec?rec.concepto:"")}" placeholder="Descripción del gasto"></div>
+        <div class="grid2">
+          <div class="field"><label for="f-pagador">Pagador / responsable</label><select id="f-pagador">
+            <option value="${EMPRESA}" ${(!rec||!rec.pagador||rec.pagador===EMPRESA)?"selected":""}>Empresa</option>
+            ${state.integrantes.map(i=>`<option value="${i.id}" ${rec&&rec.pagador===i.id?"selected":""}>${escAttr(i.nombre)}</option>`).join("")}
+          </select></div>
+          <div class="field"><label for="f-proy">Proyecto</label><select id="f-proy">
+            ${optList(state.proyectos,x=>x.nombre,rec?rec.proyectoId:null)}
+          </select></div></div>`;
+      onsubmit=()=>{const data={fecha:$("#f-fecha").value,concepto:$("#f-con").value.trim(),importe:+$("#f-imp").value||0,
+          pagador:$("#f-pagador").value||EMPRESA,proyectoId:$("#f-proy").value||null};
+        const prG=state.proyectos.find(x=>x.id===data.proyectoId);
+        if(prG&&prG.estado==="cierre"){toast("El proyecto "+prG.nombre+" está en cierre: no admite gastos.");return false;}
         if(!data.concepto){toast("Escribe el concepto del gasto.");return false;}
         if(editing)Object.assign(rec,data);else state.gastos.push(Object.assign({id:uid()},data));};
     }
@@ -1457,6 +1788,12 @@ function(t){t.__bidiEngine__=t.prototype.__bidiEngine__=function(t){var r,n,i,a,
       body=`<div class="field"><label for="f-prov">Proveedor</label><input id="f-prov" required value="${escAttr(rec?rec.proveedor:"")}" placeholder="Razón social"></div>
         <div class="grid2"><div class="field"><label for="f-rfc">RFC</label><input id="f-rfc" value="${escAttr(rec?rec.rfc:"")}" placeholder="RFC emisor"></div>
         <div class="field"><label for="f-fol">Folio</label><input id="f-fol" value="${escAttr(rec?rec.folio:"")}" placeholder="Folio / serie"></div></div>
+        <div class="grid2">
+          <div class="field"><label for="f-integrante">Integrante responsable <b style="color:var(--bad)">*</b></label><select id="f-integrante" required>
+            <option value="">— selecciona —</option>
+            ${state.integrantes.map(i=>`<option value="${i.id}" ${rec&&rec.integranteId===i.id?"selected":""}>${escAttr(i.nombre)}</option>`).join("")}
+          </select></div>
+          <div class="field"><label for="f-proy">Proyecto</label><select id="f-proy">${optList(state.proyectos,x=>x.nombre,rec?rec.proyectoId:null)}</select></div></div>
         <div class="field"><label for="f-fecha">Fecha</label><input type="date" id="f-fecha" value="${rec?rec.fecha:t}"></div>
         <div class="grid2">${moneyField("f-sub","Subtotal (MXN)",rec?rec.subtotal:"")}
         <div class="field"><label for="f-ivam">IVA (MXN)</label><input type="number" id="f-ivam" min="0" step="0.01" value="${rec&&rec.iva!=null?rec.iva:""}" placeholder="se calcula solo"></div></div>
@@ -1465,8 +1802,13 @@ function(t){t.__bidiEngine__=t.prototype.__bidiEngine__=function(t){var r,n,i,a,
       onsubmit=()=>{const sub=+$("#f-sub").value||0;
         const ivaTxt=$("#f-ivam").value;
         const iva=(ivaTxt===""||ivaTxt==null)?sub*(ivaDefPct()/100):(+ivaTxt||0);
+        const integrante=$("#f-integrante").value;
+        if(!integrante){toast("Asigna el integrante responsable del costo.");return false;}
+        const prC=state.proyectos.find(x=>x.id===($("#f-proy").value||null));
+        if(prC&&prC.estado==="cierre"){toast("El proyecto "+prC.nombre+" está en cierre: no admite costos.");return false;}
         const data={proveedor:$("#f-prov").value.trim(),rfc:$("#f-rfc").value.trim(),folio:$("#f-fol").value.trim(),
-          uuid:rec?rec.uuid:"",fecha:$("#f-fecha").value,subtotal:sub,iva,total:sub+iva};
+          uuid:rec?rec.uuid:"",fecha:$("#f-fecha").value,subtotal:sub,iva,total:sub+iva,
+          integranteId:integrante,proyectoId:$("#f-proy").value||null};
         if(editing)Object.assign(rec,data);else state.proveedores.push(Object.assign({id:uid()},data));};
     }
 
@@ -1501,7 +1843,12 @@ function(t){t.__bidiEngine__=t.prototype.__bidiEngine__=function(t){var r,n,i,a,
         if(isCot){const cost=lines.reduce((a,l)=>a+(+l.costo||0)*(+l.cantidad||0),0),mg=s>0?(s-cost)/s*100:0;
           const rets=retEd?retEd.read():[],retTot=rets.reduce((a,r)=>a+s*(+r.tasa||0)/100,0);
           const retRows=rets.filter(r=>r.tasa).map(r=>`<div><span>${escAttr(r.concepto||"Retención")} (${(+r.tasa)}%)</span><span class="num">−${money(s*(+r.tasa||0)/100)}</span></div>`).join("");
-          calc.innerHTML=`<div><span>Costo total</span><span class="num">${money(cost)}</span></div><div><span>Margen promedio</span><span class="num" style="color:var(--good)">${mg.toFixed(1)}%</span></div><div><span>Subtotal (venta)</span><span class="num">${money(s)}</span></div><div><span>IVA ${pct}%</span><span class="num">${money(iva)}</span></div>${retRows}<div class="tot"><span>Total</span><span class="num">${money(s+iva-retTot)}</span></div>`;
+          const porAna={};lines.forEach(l=>{const k=(l.analitica||"").trim()||"Sin analítica";
+            porAna[k]=(porAna[k]||0)+LINESPEC[lineType].imp(l);});
+          const claves=Object.keys(porAna);
+          const anaRows=claves.length>1?`<div class="ana-tit">Por analítica</div>`+claves.map(k=>
+            `<div class="ana-row"><span>${escAttr(k)}</span><span class="num">${money(porAna[k])}</span></div>`).join(""):"";
+          calc.innerHTML=`<div><span>Costo total</span><span class="num">${money(cost)}</span></div><div><span>Margen promedio</span><span class="num" style="color:var(--good)">${mg.toFixed(1)}%</span></div><div><span>Subtotal (venta)</span><span class="num">${money(s)}</span></div><div><span>IVA ${pct}%</span><span class="num">${money(iva)}</span></div>${retRows}<div class="tot"><span>Total</span><span class="num">${money(s+iva-retTot)}</span></div>${anaRows}`;
         }else if(showMargen){const cost=lines.reduce((a,l)=>a+(+l.costo||0)*(+l.cantidad||0),0),mg=s>0?(s-cost)/s*100:0;
           calc.innerHTML=`<div><span>Costo total</span><span class="num">${money(cost)}</span></div><div><span>Margen promedio</span><span class="num" style="color:var(--good)">${mg.toFixed(1)}%</span></div><div><span>Subtotal (venta)</span><span class="num">${money(s)}</span></div><div><span>IVA ${pct}%</span><span class="num">${money(iva)}</span></div><div class="tot"><span>Total</span><span class="num">${money(s+iva)}</span></div>`;
         }else{calc.innerHTML=`<div><span>Subtotal</span><span class="num">${money(s)}</span></div><div><span>IVA ${pct}%</span><span class="num">${money(iva)}</span></div><div class="tot"><span>Total</span><span class="num">${money(s+iva)}</span></div>`;}};
@@ -1540,14 +1887,235 @@ function(t){t.__bidiEngine__=t.prototype.__bidiEngine__=function(t){var r,n,i,a,
       return {id:uid(),proveedor,rfc,folio,uuid,fecha,subtotal:sub,iva,total,conceptos,cotizadaEn:[]};
     }catch(e){return null;}
   }
-  function handleXmlFiles(files){
-    const arr=[...files];if(!arr.length)return;let ok=0,fail=0,pend=arr.length;
-    arr.forEach(f=>f.text().then(txt=>{const r=parseCFDI(txt);if(r){state.proveedores.push(r);ok++;}else fail++;}).catch(()=>{fail++;}).finally(()=>{if(--pend===0){persist();render();toast(ok+" factura(s) cargada(s) desde XML"+(fail?", "+fail+" no se pudieron leer":""));}}));
+  // Lee un CFDI emitido al cliente y arma la factura: receptor, folio, conceptos,
+  // IVA y retenciones. El costo no viene en el XML: queda en 0 para capturarlo.
+  function parseCFDIVenta(txt){
+    try{
+      const doc=new DOMParser().parseFromString(txt,"application/xml");
+      if(doc.getElementsByTagName("parsererror").length)return null;
+      const comp=doc.documentElement;
+      if(!comp||comp.localName!=="Comprobante")return null;
+      const els=doc.getElementsByTagName("*");
+      const porNombre=n=>{for(let i=0;i<els.length;i++)if(els[i].localName===n)return els[i];return null;};
+      const todos=n=>{const r=[];for(let i=0;i<els.length;i++)if(els[i].localName===n)r.push(els[i]);return r;};
+
+      const sub=+comp.getAttribute("SubTotal")||0;
+      const serie=comp.getAttribute("Serie")||"";
+      const folio=((serie?serie+"-":"")+(comp.getAttribute("Folio")||"")).trim();
+      const fecha=(comp.getAttribute("Fecha")||"").slice(0,10)||todayStr();
+      const re=porNombre("Receptor");
+      const cliente=re?(re.getAttribute("Nombre")||"Cliente"):"Cliente";
+      const rfc=re?(re.getAttribute("Rfc")||""):"";
+      const tfd=porNombre("TimbreFiscalDigital");
+      const uuid=tfd?(tfd.getAttribute("UUID")||""):"";
+
+      const lineas=todos("Concepto").map(el=>{
+        const cant=+el.getAttribute("Cantidad")||1;
+        const vu=+el.getAttribute("ValorUnitario")||0;
+        const imp=+el.getAttribute("Importe")||(cant*vu);
+        return {desc:el.getAttribute("Descripcion")||"Concepto",
+          unidad:String(el.getAttribute("Unidad")||el.getAttribute("ClaveUnidad")||"PZ").slice(0,8),
+          cantidad:cant,costo:0,precio:vu||(cant?imp/cant:imp)};
+      });
+
+      // IVA trasladado: se deduce la tasa a partir del importe
+      const impuestos=porNombre("Impuestos");
+      let ivaImporte=impuestos?+impuestos.getAttribute("TotalImpuestosTrasladados")||0:0;
+      let ivaPct=sub>0?Math.round(ivaImporte/sub*10000)/100:ivaDefPct();
+      const tras=todos("Traslado").find(t=>(t.getAttribute("Impuesto")||"")==="002");
+      if(tras&&tras.getAttribute("TasaOCuota"))ivaPct=Math.round(+tras.getAttribute("TasaOCuota")*10000)/100;
+
+      // retenciones (ISR 001, IVA 002) como % sobre el subtotal
+      const retenciones=todos("Retencion").filter(r=>r.parentNode&&r.parentNode.localName==="Retenciones").map(r=>{
+        const cod=r.getAttribute("Impuesto")||"";
+        const importe=+r.getAttribute("Importe")||0;
+        return {concepto:cod==="001"?"Retención ISR":cod==="002"?"Retención IVA":"Retención "+cod,
+          tasa:sub>0?Math.round(importe/sub*1000000)/10000:0};
+      }).filter(r=>r.tasa>0);
+
+      return {id:uid(),folio:folio||nextFolio("FAC",state.facturas),cliente,rfc,uuid,fecha,
+        vencimiento:addDays(fecha,30),flujo:"creada",ivaPct,retenciones,lineas};
+    }catch(e){return null;}
   }
-  document.addEventListener("change",e=>{if(e.target&&e.target.id==="xmlfile"){handleXmlFiles(e.target.files);e.target.value="";}});
-  document.addEventListener("dragover",e=>{const d=e.target.closest&&e.target.closest("#drop");if(d){e.preventDefault();d.classList.add("drag");}});
-  document.addEventListener("dragleave",e=>{const d=e.target.closest&&e.target.closest("#drop");if(d)d.classList.remove("drag");});
-  document.addEventListener("drop",e=>{const d=e.target.closest&&e.target.closest("#drop");if(d){e.preventDefault();d.classList.remove("drag");handleXmlFiles(e.dataTransfer.files);}});
+
+  function handleXmlVenta(files){
+    const arr=[...files];if(!arr.length)return;
+    let ok=0,fail=0,pend=arr.length;const nuevas=[];
+    arr.forEach(f=>f.text().then(txt=>{
+      const r=parseCFDIVenta(txt);
+      if(r&&r.lineas.length){
+        if(folioRepetido(state.facturas,r.folio,null))r.folio=nextFolio("FAC",state.facturas);
+        state.facturas.push(r);nuevas.push(r);ok++;
+        // si el cliente no existe en el catálogo, se da de alta con su RFC
+        if(r.cliente&&!state.clientes.some(c=>(c.nombre||"").toLowerCase()===r.cliente.toLowerCase()))
+          state.clientes.push({id:uid(),nombre:r.cliente,rfc:r.rfc||"",margen:30,ivaPct:r.ivaPct,emails:"",retenciones:r.retenciones||[]});
+      } else fail++;
+    }).catch(()=>{fail++;}).finally(()=>{
+      if(--pend===0){
+        persist();render();
+        toast(ok+" factura(s) leída(s) del XML"+(fail?", "+fail+" no se pudieron leer":""));
+        if(nuevas.length===1)setTimeout(()=>openForm("factura",{id:nuevas[0].id}),120);
+      }
+    }));
+  }
+
+  function handleXmlFiles(files){
+    const arr=[...files];if(!arr.length)return;
+    const integrante=ui.provIntegrante||"";
+    if(!integrante){
+      toast(state.integrantes.length?"Elige primero el integrante responsable del costo"
+        :"Da de alta un integrante antes de cargar costos");
+      if(!state.integrantes.length)setTimeout(()=>{current="integrantes";render();},900);
+      return;
+    }
+    let ok=0,fail=0,pend=arr.length;
+    arr.forEach(f=>f.text().then(txt=>{const r=parseCFDI(txt);if(r){r.integranteId=integrante;state.proveedores.push(r);ok++;}else fail++;}).catch(()=>{fail++;}).finally(()=>{if(--pend===0){persist();render();toast(ok+" factura(s) cargada(s) desde XML"+(fail?", "+fail+" no se pudieron leer":""));}}));
+  }
+  let tBusca=null;
+  document.addEventListener("input",e=>{
+    if(!e.target||e.target.id!=="buscador")return;
+    const sc=e.target.dataset.scope,val=e.target.value;
+    clearTimeout(tBusca);
+    tBusca=setTimeout(()=>{
+      ui.q[sc]=val;render();
+      const el=document.getElementById("buscador");
+      if(el){el.focus();el.setSelectionRange(el.value.length,el.value.length);}
+    },300);
+  });
+
+  document.addEventListener("change",e=>{
+    if(e.target&&e.target.id==="prov-integrante"){ui.provIntegrante=e.target.value;}
+    if(e.target&&e.target.id==="xmlfile"){handleXmlFiles(e.target.files);e.target.value="";}
+    if(e.target&&e.target.id==="xmlventa"){handleXmlVenta(e.target.files);e.target.value="";}
+  });
+  const zonaXml=t=>t&&t.closest&&(t.closest("#drop")||t.closest("#dropventa"));
+  document.addEventListener("dragover",e=>{const d=zonaXml(e.target);if(d){e.preventDefault();d.classList.add("drag");}});
+  document.addEventListener("dragleave",e=>{const d=zonaXml(e.target);if(d)d.classList.remove("drag");});
+  document.addEventListener("drop",e=>{const d=zonaXml(e.target);if(!d)return;e.preventDefault();d.classList.remove("drag");
+    if(d.id==="dropventa")handleXmlVenta(e.dataTransfer.files);else handleXmlFiles(e.dataTransfer.files);});
+
+  /* ---------- carga masiva de cotizaciones (CSV) ---------- */
+  const COLS_CSV=["folio","cliente","fecha","vigencia","iva","concepto","unidad","cantidad","costo","margen","ret_isr","ret_iva"];
+
+  function plantillaCSV(){
+    const hoy=todayStr();
+    const filas=[COLS_CSV.join(",")];
+    // Dos renglones con el mismo folio = una cotización con dos conceptos.
+    filas.push(["COT-1001","Transportes del Bajío S.A.",hoy,"15","16","Bomba centrífuga 40 HP","PZ","2","31000","30","1.25","10.6667"].join(","));
+    filas.push(["COT-1001","Transportes del Bajío S.A.",hoy,"15","16","Kit de sellos mecánicos","PZ","5","3500","30","1.25","10.6667"].join(","));
+    filas.push(["COT-1002","Logística Marina MX",hoy,"20","16","Medidor de flujo Coriolis","PZ","3","18000","25","",""].join(","));
+    return filas.join("\r\n")+"\r\n";
+  }
+
+  // Divide una línea de CSV respetando comillas. Acepta coma o punto y coma.
+  function partirCSV(linea,sep){
+    const out=[];let act="",dentro=false;
+    for(let i=0;i<linea.length;i++){
+      const c=linea[i];
+      if(c==='"'){ if(dentro&&linea[i+1]==='"'){act+='"';i++;} else dentro=!dentro; }
+      else if(c===sep&&!dentro){out.push(act);act="";}
+      else act+=c;
+    }
+    out.push(act);
+    return out.map(s=>s.trim());
+  }
+
+  function leerCSV(texto){
+    texto=texto.replace(/^\uFEFF/,"");
+    const lineas=texto.split(/\r?\n/).filter(l=>l.trim()!=="");
+    if(!lineas.length)return {error:"El archivo está vacío."};
+    const sep=(lineas[0].split(";").length>lineas[0].split(",").length)?";":",";
+    const cab=partirCSV(lineas[0],sep).map(s=>s.toLowerCase().replace(/\s+/g,"_"));
+    const faltan=["folio","cliente","concepto","cantidad"].filter(c=>cab.indexOf(c)===-1);
+    if(faltan.length)return {error:"Faltan columnas obligatorias: "+faltan.join(", ")+"."};
+    const idx={};cab.forEach((c,i)=>idx[c]=i);
+    const val=(f,c)=>{const i=idx[c];return i==null?"":String(f[i]||"").trim();};
+    const num=(f,c)=>{const v=val(f,c).replace(/[$,\s]/g,"").replace(",",".");return v===""?null:(+v||0);};
+
+    const mapa={},orden=[],avisos=[];
+    for(let i=1;i<lineas.length;i++){
+      const f=partirCSV(lineas[i],sep);
+      const folio=val(f,"folio");
+      const concepto=val(f,"concepto");
+      if(!folio||!concepto){avisos.push("Renglón "+(i+1)+": sin folio o sin concepto, se omite.");continue;}
+      if(!mapa[folio]){
+        const rets=[];
+        const ri=num(f,"ret_isr"),rv=num(f,"ret_iva");
+        if(ri)rets.push({concepto:"Retención ISR",tasa:ri});
+        if(rv)rets.push({concepto:"Retención IVA",tasa:rv});
+        const iva=num(f,"iva");
+        mapa[folio]={folio,cliente:val(f,"cliente"),fecha:val(f,"fecha")||todayStr(),
+          vigencia:num(f,"vigencia")||15,ivaPct:iva==null?ivaDefPct():iva,
+          retenciones:rets,lineas:[]};
+        orden.push(folio);
+      }
+      const mg=num(f,"margen");
+      mapa[folio].lineas.push({desc:concepto,unidad:val(f,"unidad")||"PZ",
+        cantidad:num(f,"cantidad")||1,costo:num(f,"costo")||0,
+        margen:mg==null?30:mg});
+    }
+    const cots=orden.map(f=>mapa[f]);
+    if(!cots.length)return {error:"No se encontró ninguna cotización válida.",avisos};
+    return {cots,avisos};
+  }
+
+  function importarCSV(texto){
+    const r=leerCSV(texto);
+    const caja=document.getElementById("csvresult");
+    if(r.error){if(caja)caja.innerHTML=`<div class="csv-err">${r.error}</div>`;return;}
+    let nuevas=0,renombradas=0;
+    r.cots.forEach(c=>{
+      let folio=c.folio;
+      if(folioRepetido(state.cotizaciones,folio,null)){folio=nextFolio("COT",state.cotizaciones);renombradas++;}
+      state.cotizaciones.push({id:uid(),folio,cliente:c.cliente,fecha:c.fecha,vigencia:c.vigencia,
+        ivaPct:c.ivaPct,retenciones:c.retenciones,lineas:c.lineas,estatus:"borrador",facturada:false});
+      nuevas++;
+      if(c.cliente&&!state.clientes.some(x=>(x.nombre||"").toLowerCase()===c.cliente.toLowerCase()))
+        state.clientes.push({id:uid(),nombre:c.cliente,rfc:"",margen:c.lineas[0]?c.lineas[0].margen:30,
+          ivaPct:c.ivaPct,emails:"",retenciones:c.retenciones||[]});
+    });
+    persist();
+    if(caja)caja.innerHTML=`<div class="csv-ok">Se importaron <b>${nuevas}</b> cotización(es).`+
+      (renombradas?` ${renombradas} tenía(n) folio repetido y se renumeraron.`:"")+
+      (r.avisos&&r.avisos.length?`<div class="csv-avisos">${r.avisos.slice(0,5).join("<br>")}</div>`:"")+`</div>`;
+    toast(nuevas+" cotización(es) importada(s)");
+    setTimeout(()=>{const ov=document.querySelector(".overlay.on");if(ov)ov.remove();current="cotizaciones";render();},1400);
+  }
+
+  function abrirCargaMasiva(){
+    const o=document.createElement("div");o.className="overlay on";
+    o.innerHTML=`<div class="modal" style="max-width:560px">
+      <div class="modal-head"><h3>Carga masiva de cotizaciones</h3><button type="button" aria-label="Cerrar" data-x>&times;</button></div>
+      <div style="padding:8px 20px 20px;display:flex;flex-direction:column;gap:14px">
+        <p class="hintline" style="margin:0">Un renglón por concepto. Los renglones que compartan el mismo <b>folio</b> se agrupan en una sola cotización.</p>
+        <div class="csv-cols"><b>Columnas:</b> ${COLS_CSV.join(" · ")}<br>
+          <span style="color:var(--text-faint)">Obligatorias: folio, cliente, concepto, cantidad. Las demás toman valores por defecto.</span></div>
+        <button class="ghost" id="btn-plantilla" style="align-self:flex-start">Descargar plantilla CSV</button>
+        <label class="drop" id="dropcsv">
+          <input type="file" id="csvfile" accept=".csv,text/csv" hidden>
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor"><path d="M12 16V4M7 9l5-5 5 5M4 20h16" stroke-width="1.6"/></svg>
+          <b>Arrastra o haz clic para cargar tu CSV</b>
+          <div class="hint">Se puede editar en Excel o Google Sheets</div></label>
+        <div id="csvresult"></div>
+      </div></div>`;
+    document.body.appendChild(o);
+    const cerrar=()=>o.remove();
+    o.addEventListener("click",e=>{if(e.target===o)cerrar();});
+    o.querySelector("[data-x]").onclick=cerrar;
+    o.querySelector("#btn-plantilla").onclick=()=>{
+      const blob=new Blob(["\uFEFF"+plantillaCSV()],{type:"text/csv;charset=utf-8"});
+      if(CAN_SAVE())saveVia("plantilla-cotizaciones.csv",blob).then(()=>toast("Plantilla guardada")).catch(()=>legacySave(blob,"plantilla-cotizaciones.csv"));
+      else {legacySave(blob,"plantilla-cotizaciones.csv");toast("Plantilla descargada");}
+    };
+    const input=o.querySelector("#csvfile");
+    input.addEventListener("change",()=>{const f=input.files[0];if(!f)return;
+      f.text().then(importarCSV).catch(()=>{o.querySelector("#csvresult").innerHTML='<div class="csv-err">No se pudo leer el archivo.</div>';});});
+    const zona=o.querySelector("#dropcsv");
+    zona.addEventListener("dragover",e=>{e.preventDefault();zona.classList.add("drag");});
+    zona.addEventListener("dragleave",()=>zona.classList.remove("drag"));
+    zona.addEventListener("drop",e=>{e.preventDefault();zona.classList.remove("drag");
+      const f=e.dataTransfer.files[0];if(f)f.text().then(importarCSV);});
+  }
 
   /* ---------- impresión / PDF ---------- */
   const pr=$("#printroot");
@@ -1859,10 +2427,19 @@ function(t){t.__bidiEngine__=t.prototype.__bidiEngine__=function(t){var r,n,i,a,
     else if(a==="add"){openForm(b.dataset.type);}
     else if(a==="edit"){openForm(b.dataset.type,{id});}
     else if(a==="filter"){ui[b.dataset.scope]=b.dataset.val;render();}
+    else if(a==="ordenar"){const sc=b.dataset.scope,col=b.dataset.col;
+      const s=ui.sort[sc]||{col:"folio",dir:"desc"};
+      ui.sort[sc]=(s.col===col)?{col,dir:s.dir==="asc"?"desc":"asc"}:{col,dir:"asc"};
+      render();}
+    else if(a==="buscar-limpiar"){ui.q[b.dataset.scope]="";render();}
     else if(a==="theme"){const cur=document.documentElement.getAttribute("data-theme");const isDark=cur?cur==="dark":matchMedia("(prefers-color-scheme: dark)").matches;document.documentElement.setAttribute("data-theme",isDark?"light":"dark");}
     else if(a==="reset"){askConfirm("¿Restaurar los datos de ejemplo? Se reemplazarán tus datos actuales.",()=>{state=seed();(function(){const pm=state.pagos.map(p=>monthKey(p.fecha)).sort();ui.contaMonth=pm.length?pm[pm.length-1]:monthKey(todayStr());})();persist();render();toast("Datos de ejemplo restaurados");},{ok:"Restaurar",danger:false});}
     else if(a==="vaciar"){askConfirm("¿Vaciar TODO? Se eliminarán todos los registros (queda la app en blanco). Considera guardar un cierre antes.",()=>{["cotizaciones","ventas","facturas","pagos","ordenes","proveedores","gastos","proyectos","clientes"].forEach(k=>state[k]=[]);persist();current="dashboard";render();toast("Todos los registros fueron eliminados");},{ok:"Vaciar todo"});}
     else if(a==="cot-status"){const c=state.cotizaciones.find(x=>x.id===id);const o=["borrador","enviada","aceptada","rechazada"];c.estatus=o[(o.indexOf(c.estatus)+1)%o.length];persist();render();}
+    else if(a==="proy-cierre"){abrirCierre(id);}
+    else if(a==="proy-reabrir"){askConfirm("¿Reabrir el proyecto? Podrás volver a modificar ingresos, costos y gastos.",()=>{
+      const p=state.proyectos.find(x=>x.id===id);if(p){p.estado="abierto";persist();render();toast("Proyecto reabierto");}},{ok:"Reabrir",danger:false});}
+    else if(a==="cot-masiva"){abrirCargaMasiva();}
     else if(a==="cot-venta"){openForm("venta",{fromCot:id});}
     else if(a==="cot-dup"){const c=state.cotizaciones.find(x=>x.id===id);if(!c)return;
       const copia=JSON.parse(JSON.stringify(c));
@@ -1887,7 +2464,12 @@ function(t){t.__bidiEngine__=t.prototype.__bidiEngine__=function(t){var r,n,i,a,
     else if(a==="oc-pagar"){state.ordenes.find(x=>x.id===id).estatus="pagada";persist();render();}
     else if(a==="fac-flujo"){const f=state.facturas.find(x=>x.id===id);const seq=FLUJO.map(x=>x.v);f.flujo=seq[(seq.indexOf(f.flujo)+1)%seq.length];persist();render();}
     else if(a==="fac-pago"){openForm("pago",{preFacId:id});}
-    else if(a==="del"){const type=b.dataset.type;askConfirm("¿Eliminar este registro?",()=>{
+    else if(a==="del"){const type=b.dataset.type;
+      if(type==="gastos"||type==="proveedores"){
+        const r=state[type].find(x=>x.id===id);
+        if(r&&proyBloqueado(r.proyectoId)){toast("Ese registro pertenece a un proyecto cerrado.");return;}
+      }
+      askConfirm("¿Eliminar este registro?",()=>{
       if(type==="facturas"){state.pagos=state.pagos.filter(p=>p.facturaId!==id);state.ventas.forEach(v=>{if(v.facturaId===id){v.facturaId=null;v.estatus="abierta";}});}
       if(type==="ventas"){state.cotizaciones.forEach(c=>{if(c.ventaId===id)c.ventaId=null;});state.facturas.forEach(f=>{if(f.ventaId===id)f.ventaId=null;});}
       if(type==="cotizaciones")state.proveedores.forEach(p=>{if(Array.isArray(p.cotizadaEn))p.cotizadaEn=p.cotizadaEn.filter(x=>x!==id);});

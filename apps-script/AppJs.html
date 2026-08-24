@@ -40,26 +40,34 @@
   const LINESPEC={
     cotizacion:{cols:[
       {k:"desc",h:"Descripción",t:"text",ph:"Concepto",w:"1fr"},
+      {k:"unidad",h:"Unidad",t:"text",v:"PZ",lista:"fx-uni",w:"70px"},
+      {k:"analitica",h:"Analítica",t:"text",ph:"Centro de costo",lista:"fx-ana",w:"124px"},
       {k:"cantidad",h:"Cant.",t:"num",v:1,step:"1",w:"52px"},
       {k:"costo",h:"Costo U.",t:"num",ph:"0.00",w:"88px"},
       {k:"margen",h:"Margen%",t:"num",v:30,step:"0.5",w:"66px"}],
       imp:lineaImporte},
     factura:{cols:[
       {k:"desc",h:"Descripción",t:"text",ph:"Concepto",w:"1fr"},
+      {k:"unidad",h:"Unidad",t:"text",v:"PZ",lista:"fx-uni",w:"70px"},
+      {k:"analitica",h:"Analítica",t:"text",ph:"Centro de costo",lista:"fx-ana",w:"120px"},
       {k:"cantidad",h:"Cant.",t:"num",v:1,step:"1",w:"50px"},
-      {k:"costo",h:"Costo U.",t:"num",ph:"0.00",w:"88px"},
-      {k:"precio",h:"Precio U.",t:"num",ph:"0.00",w:"92px"}],
+      {k:"costo",h:"Costo U.",t:"num",ph:"0.00",w:"86px"},
+      {k:"precio",h:"Precio U.",t:"num",ph:"0.00",w:"90px"}],
       imp:l=>(+l.precio||0)*(+l.cantidad||0)},
     venta:{cols:[
       {k:"desc",h:"Descripción",t:"text",ph:"Concepto",w:"1fr"},
+      {k:"unidad",h:"Unidad",t:"text",v:"PZ",lista:"fx-uni",w:"70px"},
+      {k:"analitica",h:"Analítica",t:"text",ph:"Centro de costo",lista:"fx-ana",w:"120px"},
       {k:"cantidad",h:"Cant.",t:"num",v:1,step:"1",w:"50px"},
-      {k:"costo",h:"Costo U.",t:"num",ph:"0.00",w:"88px"},
-      {k:"precio",h:"Precio U.",t:"num",ph:"0.00",w:"92px"}],
+      {k:"costo",h:"Costo U.",t:"num",ph:"0.00",w:"86px"},
+      {k:"precio",h:"Precio U.",t:"num",ph:"0.00",w:"90px"}],
       imp:l=>(+l.precio||0)*(+l.cantidad||0)},
     orden:{cols:[
       {k:"desc",h:"Descripción",t:"text",ph:"Concepto",w:"1fr"},
+      {k:"unidad",h:"Unidad",t:"text",v:"PZ",lista:"fx-uni",w:"70px"},
+      {k:"analitica",h:"Analítica",t:"text",ph:"Centro de costo",lista:"fx-ana",w:"124px"},
       {k:"cantidad",h:"Cant.",t:"num",v:1,step:"1",w:"52px"},
-      {k:"costo",h:"Costo U.",t:"num",ph:"0.00",w:"100px"}],
+      {k:"costo",h:"Costo U.",t:"num",ph:"0.00",w:"96px"}],
       imp:l=>(+l.costo||0)*(+l.cantidad||0)},
   };
   const sumLineas=(type,ls)=>(ls||[]).reduce((a,l)=>a+LINESPEC[type].imp(l),0);
@@ -840,29 +848,42 @@
   const moneyField=(id,label,val)=>`<div class="field"><label for="${id}">${label}</label><input type="number" id="${id}" min="0" step="0.01" value="${val==null?"":val}" required></div>`;
   const optList=(arr,labelFn,sel)=>'<option value="">— ninguno —</option>'+arr.map(x=>`<option value="${x.id}" ${x.id===sel?"selected":""}>${escAttr(labelFn(x))}</option>`).join("");
 
+  const UNIDADES=["PZ","SERV","LOT","KG","TON","MTR","M2","M3","LT","HR","DIA","CAJA","JGO","ROLLO"];
+  // Valores de analítica ya usados, para sugerirlos en las líneas nuevas.
+  function analiticasUsadas(){
+    const set=new Set();
+    [state.cotizaciones,state.ventas,state.facturas,state.ordenes].forEach(col=>
+      (col||[]).forEach(d=>(d.lineas||[]).forEach(l=>{if(l.analitica)set.add(String(l.analitica).trim());})));
+    return [...set].filter(Boolean).sort();
+  }
   function productList(){
     const map=new Map();
-    const add=(desc,costo,precio,margen)=>{if(!desc)return;const k=desc.trim().toLowerCase();if(!k)return;
-      map.set(k,{desc:desc.trim(),costo:+costo||0,precio:+precio||0,margen:margen==null?null:+margen});};
-    state.cotizaciones.forEach(c=>(c.lineas||[]).forEach(l=>add(l.desc,l.costo,lineaPrecio(l),l.margen)));
-    state.ventas.forEach(o=>(o.lineas||[]).forEach(l=>add(l.desc,l.costo,l.precio,null)));
-    state.facturas.forEach(f=>(f.lineas||[]).forEach(l=>add(l.desc,l.costo,l.precio,null)));
-    state.ordenes.forEach(o=>(o.lineas||[]).forEach(l=>add(l.desc,l.costo,0,null)));
+    const add=(l,precio,margen)=>{if(!l||!l.desc)return;const k=l.desc.trim().toLowerCase();if(!k)return;
+      map.set(k,{desc:l.desc.trim(),costo:+l.costo||0,precio:+precio||0,margen:margen==null?null:+margen,
+        unidad:l.unidad||"",analitica:l.analitica||""});};
+    state.cotizaciones.forEach(c=>(c.lineas||[]).forEach(l=>add(l,lineaPrecio(l),l.margen)));
+    state.ventas.forEach(o=>(o.lineas||[]).forEach(l=>add(l,l.precio,null)));
+    state.facturas.forEach(f=>(f.lineas||[]).forEach(l=>add(l,l.precio,null)));
+    state.ordenes.forEach(o=>(o.lineas||[]).forEach(l=>add(l,0,null)));
     return [...map.values()];
   }
   function makeLineEditor(type,host,initial,onChange,catalog){
     const spec=LINESPEC[type],gt=spec.cols.map(c=>c.w).join(" ")+" 92px 22px";
-    const dl=catalog?`<datalist id="fx-prod">${[...catalog.values()].map(p=>`<option value="${escAttr(p.desc)}"></option>`).join("")}</datalist>`:"";
+    const dl=(catalog?`<datalist id="fx-prod">${[...catalog.values()].map(p=>`<option value="${escAttr(p.desc)}"></option>`).join("")}</datalist>`:"")
+      +`<datalist id="fx-uni">${UNIDADES.map(u=>`<option value="${u}"></option>`).join("")}</datalist>`
+      +`<datalist id="fx-ana">${analiticasUsadas().map(a=>`<option value="${escAttr(a)}"></option>`).join("")}</datalist>`;
     host.innerHTML=`${dl}<div class="lhead" style="grid-template-columns:${gt}">${spec.cols.map(c=>`<span>${c.h}</span>`).join("")}<span>Importe</span><span></span></div><div class="llist"></div><button type="button" class="ghost lineadd">+ Agregar línea</button>`;
     const list=host.querySelector(".llist");
     const rowHtml=l=>`<div class="lrow" style="grid-template-columns:${gt}">${spec.cols.map(c=>{const v=escAttr(l&&l[c.k]!=null?l[c.k]:(c.v!=null?c.v:""));
-      return c.t==="text"?`<input data-k="${c.k}" ${catalog?'list="fx-prod"':""} placeholder="${c.ph||""}" value="${v}">`:`<input data-k="${c.k}" type="number" min="0" step="${c.step||"0.01"}" placeholder="${c.ph||""}" value="${v}">`;}).join("")}<span class="l-imp num">$0.00</span><button type="button" class="l-del" aria-label="Quitar">&times;</button></div>`;
+      const lista=c.lista?` list="${c.lista}"`:(c.k==="desc"&&catalog?' list="fx-prod"':"");
+      return c.t==="text"?`<input data-k="${c.k}"${lista} placeholder="${c.ph||""}" value="${v}">`:`<input data-k="${c.k}" type="number" min="0" step="${c.step||"0.01"}" placeholder="${c.ph||""}" value="${v}">`;}).join("")}<span class="l-imp num">$0.00</span><button type="button" class="l-del" aria-label="Quitar">&times;</button></div>`;
     const read=()=>[...list.querySelectorAll(".lrow")].map(r=>{const o={};spec.cols.forEach(c=>{const el=r.querySelector('[data-k="'+c.k+'"]');o[c.k]=c.t==="text"?el.value.trim():(+el.value||0);});return o;});
     const recalc=()=>{list.querySelectorAll(".lrow").forEach(r=>{const o={};spec.cols.forEach(c=>{const el=r.querySelector('[data-k="'+c.k+'"]');o[c.k]=c.t==="text"?el.value:(+el.value||0);});r.querySelector(".l-imp").textContent=money(spec.imp(o));});onChange(read());};
     host.addEventListener("input",recalc);
     if(catalog)host.addEventListener("change",e=>{const inp=e.target;if(inp.dataset&&inp.dataset.k==="desc"){const p=catalog.get(inp.value.trim().toLowerCase());
       if(p){const row=inp.closest(".lrow"),set=(k,val)=>{const el=row.querySelector('[data-k="'+k+'"]');if(el&&val!=null&&val!=="")el.value=val;};
         set("costo",p.costo||"");if(row.querySelector('[data-k="margen"]')&&p.margen!=null)set("margen",p.margen);
+        if(p.unidad)set("unidad",p.unidad);if(p.analitica)set("analitica",p.analitica);
         if(row.querySelector('[data-k="precio"]'))set("precio",p.precio||"");recalc();}}});
     host.addEventListener("click",e=>{if(e.target.closest(".l-del")){if(list.querySelectorAll(".lrow").length>1)e.target.closest(".lrow").remove();recalc();}else if(e.target.closest(".lineadd")){list.insertAdjacentHTML("beforeend",rowHtml());recalc();}});
     (initial&&initial.length?initial:[null]).forEach(l=>list.insertAdjacentHTML("beforeend",rowHtml(l)));
@@ -1161,7 +1182,12 @@
         if(isCot){const cost=lines.reduce((a,l)=>a+(+l.costo||0)*(+l.cantidad||0),0),mg=s>0?(s-cost)/s*100:0;
           const rets=retEd?retEd.read():[],retTot=rets.reduce((a,r)=>a+s*(+r.tasa||0)/100,0);
           const retRows=rets.filter(r=>r.tasa).map(r=>`<div><span>${escAttr(r.concepto||"Retención")} (${(+r.tasa)}%)</span><span class="num">−${money(s*(+r.tasa||0)/100)}</span></div>`).join("");
-          calc.innerHTML=`<div><span>Costo total</span><span class="num">${money(cost)}</span></div><div><span>Margen promedio</span><span class="num" style="color:var(--good)">${mg.toFixed(1)}%</span></div><div><span>Subtotal (venta)</span><span class="num">${money(s)}</span></div><div><span>IVA ${pct}%</span><span class="num">${money(iva)}</span></div>${retRows}<div class="tot"><span>Total</span><span class="num">${money(s+iva-retTot)}</span></div>`;
+          const porAna={};lines.forEach(l=>{const k=(l.analitica||"").trim()||"Sin analítica";
+            porAna[k]=(porAna[k]||0)+LINESPEC[lineType].imp(l);});
+          const claves=Object.keys(porAna);
+          const anaRows=claves.length>1?`<div class="ana-tit">Por analítica</div>`+claves.map(k=>
+            `<div class="ana-row"><span>${escAttr(k)}</span><span class="num">${money(porAna[k])}</span></div>`).join(""):"";
+          calc.innerHTML=`<div><span>Costo total</span><span class="num">${money(cost)}</span></div><div><span>Margen promedio</span><span class="num" style="color:var(--good)">${mg.toFixed(1)}%</span></div><div><span>Subtotal (venta)</span><span class="num">${money(s)}</span></div><div><span>IVA ${pct}%</span><span class="num">${money(iva)}</span></div>${retRows}<div class="tot"><span>Total</span><span class="num">${money(s+iva-retTot)}</span></div>${anaRows}`;
         }else if(showMargen){const cost=lines.reduce((a,l)=>a+(+l.costo||0)*(+l.cantidad||0),0),mg=s>0?(s-cost)/s*100:0;
           calc.innerHTML=`<div><span>Costo total</span><span class="num">${money(cost)}</span></div><div><span>Margen promedio</span><span class="num" style="color:var(--good)">${mg.toFixed(1)}%</span></div><div><span>Subtotal (venta)</span><span class="num">${money(s)}</span></div><div><span>IVA ${pct}%</span><span class="num">${money(iva)}</span></div><div class="tot"><span>Total</span><span class="num">${money(s+iva)}</span></div>`;
         }else{calc.innerHTML=`<div><span>Subtotal</span><span class="num">${money(s)}</span></div><div><span>IVA ${pct}%</span><span class="num">${money(iva)}</span></div><div class="tot"><span>Total</span><span class="num">${money(s+iva)}</span></div>`;}};

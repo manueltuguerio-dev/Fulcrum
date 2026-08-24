@@ -83,6 +83,24 @@ Si la dirección **no** está dada de alta, el correo se envía igual desde la c
 app, pero con el **nombre visible «Comercializadora Fulcrum»** y el **«responder a»** apuntando a
 esa dirección. Si la cuenta que implementa la app ya *es* esa dirección, no hay que hacer nada.
 
+## Líneas de los documentos
+
+Cotizaciones, órdenes de venta, órdenes de compra y facturas comparten el mismo editor de líneas.
+Cada línea lleva:
+
+| Campo | Notas |
+|---|---|
+| **Descripción** | Sugiere productos ya capturados (autocompleta costo, margen, unidad y analítica) |
+| **Unidad** | Lista sugerida: PZ, SERV, LOT, KG, TON, MTR, M2, M3, LT, HR, DIA, CAJA, JGO, ROLLO. Se puede escribir cualquier otra |
+| **Analítica** | Centro de costo libre; sugiere los valores ya usados en cualquier documento |
+| **Cantidad** | |
+| **Costo U.** | Costo unitario de la línea |
+| **Margen % / Precio U.** | Margen en cotizaciones; precio unitario en ventas y facturas |
+
+Se pueden **agregar** líneas con *«+ Agregar línea»*, **editar** cualquier campo y **eliminar** con la
+**×** de la fila. Debajo del captura, si hay más de una analítica, aparece el **resumen «Por analítica»**
+con el importe de cada centro de costo. La **unidad** se imprime en la columna *UNI.* del PDF.
+
 ## Impuestos
 
 - **Impuestos e IVA** (barra lateral) fija el **IVA por defecto** de los documentos nuevos.
