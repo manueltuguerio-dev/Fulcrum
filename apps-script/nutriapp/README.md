@@ -150,6 +150,16 @@ corre con tus permisos y él decide quién es quién. La consecuencia es que la
 hoja de cálculo y la carpeta de Drive quedan a tu nombre, y que **toda la
 seguridad depende de la validación de sesión del propio código**, no de Google.
 
+## Si `setupDatabase` falla con "Specified permissions are not sufficient"
+
+`appsscript.json` declara `oauthScopes` explícitamente, y en cuanto un
+manifiesto lo hace, Apps Script deja de detectar permisos solo: usa
+exactamente esa lista, ni uno más. Si al correr `setupDatabase` el registro
+marca un error señalando `Session.getEffectiveUser` y pidiendo el permiso
+`userinfo.email`, es que el manifiesto pegado en el proyecto no trae ese
+permiso en la lista. Cópialo de nuevo desde `appsscript.json` en esta carpeta,
+guarda, y vuelve a ejecutar `setupDatabase`; te va a pedir autorizar de nuevo.
+
 ## Alertas por WhatsApp
 
 Las credenciales se leen de las propiedades del script, nunca del código:
