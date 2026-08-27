@@ -890,7 +890,7 @@
         <select id="modal-causa"></select>
       </div>
       <div id="wrap-modal-lib">
-        <label>Hora de liberación del furgón <span class="req-star" id="modal-lib-req" style="display:none">*</span></label>
+        <label>Hora de liberación del furgón</label>
         <input type="time" id="modal-liberacion">
         <div class="muted" id="modal-lib-hint" style="margin-top:3px"></div>
       </div>
@@ -2462,11 +2462,9 @@ var Curso = {
       libPrevia = m.hora_liberacion || '';
     });
     STATE.modalUltima = esUltima;
-    // En la última etapa se cierra la maniobra: la liberación deja de ser opcional
-    $('modal-lib-req').style.display = (esUltima && !libPrevia) ? '' : 'none';
-    $('modal-lib-hint').textContent = esUltima
-      ? 'Obligatoria: al cerrar esta etapa se cierra la maniobra.'
-      : 'Opcional en esta etapa.';
+    $('modal-lib-hint').textContent = libPrevia
+      ? 'Ya capturada: ' + libPrevia + '. Escribe otra hora para corregirla.'
+      : (esUltima ? 'Al cerrar esta etapa se cierra la maniobra.' : '');
     $('modal-titulo').textContent = 'Finalizar: ' + nombre;
     $('modal-demora').value = '0';
     $('modal-obs').value = '';
@@ -2497,14 +2495,6 @@ var Curso = {
       return;
     }
     var liberacion = $('modal-liberacion').value;
-    if (STATE.modalUltima && $('modal-lib-req').style.display !== 'none' && !liberacion) {
-      UI.aviso('modal-aviso', 'Captura la hora de liberación del furgón: al cerrar esta ' +
-        'etapa se cierra la maniobra y ese dato mide la ocupación del spot.', 'err');
-      $('wrap-modal-lib').classList.add('campo-invalido');
-      return;
-    }
-    $('wrap-modal-lib').classList.remove('campo-invalido');
-
     var id = STATE.modalEtapa;
     var extras = {
       demora_min:         paro,

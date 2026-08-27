@@ -2258,18 +2258,6 @@ function finalizarEtapa(idEtapa, extras) {
     var tiempoEst  = Number(rowData[11] || 0);
     var acum       = Number(rowData[14] || 0);
 
-    // Si ésta es la última etapa, el furgón no puede cerrarse sin hora de liberación
-    var esUltima = numEtapa >= _secuenciaFlujo_(_flujoDe_(idManiobra)).length;
-    if (esUltima) {
-      var libGuardada = _horaLiberacionDe_(idManiobra);
-      var libNueva    = String((extras.hora_liberacion || '')).trim();
-      if (!libGuardada && !libNueva) {
-        return { ok: false, requiere_liberacion: true,
-          error: 'Captura la hora de liberación del furgón antes de cerrar la maniobra. ' +
-                 'Es el dato que mide la ocupación del spot.' };
-      }
-    }
-
     var props   = PropertiesService.getScriptProperties();
     var propKey = 'pe_' + idEtapa;
     var desde   = Number(props.getProperty(propKey) || 0);
