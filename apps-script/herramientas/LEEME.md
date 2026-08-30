@@ -12,6 +12,8 @@ No forman parte de la aplicación: son los scripts con los que se aplicaron y se
 | `patch_xml_pagos.py` | Cotización desde XML en una sola línea cuadrada con el CFDI y facturas de mayor a menor en el registro de pago |
 | `t_xml_pagos.js` | Prueba en navegador: carga de `cfdi_prueba.xml`, cuadre del costo y orden de las facturas al pagar |
 | `cfdi_prueba.xml` | CFDI 4.0 de prueba cuyos conceptos **no** suman el subtotal, para verificar el ajuste |
+| `patch_orden_listas.py` | Barras de orden en las listas desplegadas de los formularios y clientes en orden alfabético |
+| `t_orden.js` | Prueba en navegador: orden por número de factura, por saldo y por cliente sin perder lo marcado |
 | `t_gas.js` | Simula el entorno de Apps Script (`Index.html` + `getRecursos`) y repite las pruebas sobre el bundle |
 
 Los parches ya están aplicados; volver a ejecutarlos falla a propósito (verifican que el texto

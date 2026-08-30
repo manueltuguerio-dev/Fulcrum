@@ -142,7 +142,23 @@ rechazaba el monto al aplicar el pago con el aviso *«Ingresa un valor válido»
   sistema redondea al guardar.
 - Al aplicar un pago, una diferencia de hasta **2 centavos** contra el saldo se ajusta sola, de modo
   que la factura queda **saldada** y pasa a estatus **Pagada**.
-- En **Registrar pago** las facturas aparecen ordenadas **de mayor a menor saldo**.
+- En **Registrar pago** las facturas salen ordenadas por **número de factura, de mayor a menor**.
+
+## Filtros de orden en las listas de los formularios
+
+Las listas con casillas que aparecen dentro de los formularios llevan una barra **Ordenar por** con
+un desplegable y un botón que alterna **↑ Menor a mayor / ↓ Mayor a menor**:
+
+| Lista | Se puede ordenar por |
+|---|---|
+| **Registrar pago** · Facturas a pagar | Número de factura *(predeterminado, de mayor a menor)*, saldo, cliente, vencimiento |
+| **Proyecto** · Cotizaciones, Órdenes de venta, Órdenes de compra, Facturas | Número/folio *(predeterminado, de mayor a menor)*, fecha, importe, nombre |
+
+Los folios se ordenan de forma natural (`FAC-9` antes que `FAC-10`) y al reordenar **no se pierde**
+lo que ya estaba marcado ni los importes capturados. Los **clientes sugeridos** en cotizaciones,
+facturas y órdenes de venta salen en **orden alfabético**.
+
+Las tablas de cada módulo se siguen ordenando pulsando el encabezado de la columna.
 
 ## Si algo falla
 

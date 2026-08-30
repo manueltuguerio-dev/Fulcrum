@@ -177,6 +177,13 @@
   .rrow input{background:var(--bg);border:1px solid var(--border);border-radius:8px;padding:7px 8px;font-size:13px;color:var(--text);font-family:inherit;width:100%}
   .rrow input:focus{outline:none;border-color:var(--accent);box-shadow:0 0 0 3px var(--accent-soft)}
   .rrow input[type=number]{text-align:right}
+  .ordbar{display:flex;align-items:center;gap:8px;margin-bottom:6px;font-size:11.5px;color:var(--text-faint);
+    text-transform:uppercase;letter-spacing:.04em}
+  .ordbar select{flex:0 1 190px;padding:5px 8px;font-size:12px;border-radius:7px;border:1px solid var(--border);
+    background:var(--bg);color:var(--text);font-family:inherit;text-transform:none;letter-spacing:0}
+  .ordbar .orddir{padding:5px 10px;font-size:12px;border-radius:7px;border:1px solid var(--border);
+    background:var(--bg);color:var(--text-dim);cursor:pointer;font-family:inherit;text-transform:none;letter-spacing:0}
+  .ordbar .orddir:hover{border-color:var(--accent);color:var(--text)}
   .checklist{max-height:150px;overflow:auto;border:1px solid var(--border);border-radius:9px;padding:6px;background:var(--bg);display:flex;flex-direction:column;gap:2px}
   .checklist label{display:flex;align-items:center;gap:8px;padding:5px 7px;border-radius:7px;font-size:13px;font-weight:400;cursor:pointer;color:var(--text)}
   .checklist label:hover{background:var(--surface-2)}
@@ -1513,6 +1520,33 @@ function(t){t.__bidiEngine__=t.prototype.__bidiEngine__=function(t){var r,n,i,a,
   ov.addEventListener("click",e=>{if(e.target===ov)closeModal();});
   document.addEventListener("keydown",e=>{if(e.key==="Escape")closeModal();});
   const moneyField=(id,label,val)=>`<div class="field"><label for="${id}">${label}</label><input type="number" id="${id}" min="0" step="any" value="${val==null?"":val}" required></div>`;
+  /* ---------- orden de las listas desplegadas de los formularios ---------- */
+  // Compara numeros como numeros y textos con orden natural (F-9 antes que F-10).
+  const cmpOrd=(a,b)=>{const A=String(a==null?"":a),B=String(b==null?"":b);
+    if(A!==""&&B!==""&&isFinite(+A)&&isFinite(+B))return (+A)-(+B);
+    return A.localeCompare(B,"es",{numeric:true,sensitivity:"base"});};
+  const clientesOrd=()=>[...state.clientes].sort((a,b)=>cmpOrd(a.nombre,b.nombre));
+  const ORD_DOC=[{k:"folio",label:"Número / folio"},{k:"fecha",label:"Fecha"},{k:"importe",label:"Importe"},{k:"nombre",label:"Nombre"}];
+  function barraOrden(opciones,def){
+    const dir=(def&&def.dir)||"asc";
+    return `<div class="ordbar"><span>Ordenar por</span>
+      <select class="ordsel">${opciones.map(o=>`<option value="${o.k}" ${o.k===(def&&def.k)?"selected":""}>${o.label}</option>`).join("")}</select>
+      <button type="button" class="orddir" data-dir="${dir}">${dir==="desc"?"↓ Mayor a menor":"↑ Menor a mayor"}</button></div>`;
+  }
+  function activarOrden(caja){
+    if(!caja)return;
+    const bar=caja.querySelector(".ordbar");if(!bar)return;
+    const sel=bar.querySelector(".ordsel"),btn=bar.querySelector(".orddir");
+    const lista=caja.querySelector("[data-ordlist]");if(!lista)return;
+    const aplicar=()=>{const k=sel.value,dir=btn.dataset.dir==="desc"?-1:1;
+      const filas=[...lista.querySelectorAll("[data-ordrow]")];
+      filas.sort((a,b)=>dir*cmpOrd(a.getAttribute("data-o-"+k),b.getAttribute("data-o-"+k)));
+      filas.forEach(f=>lista.appendChild(f));};
+    sel.addEventListener("change",aplicar);
+    btn.addEventListener("click",()=>{const d=btn.dataset.dir==="desc"?"asc":"desc";
+      btn.dataset.dir=d;btn.textContent=d==="desc"?"↓ Mayor a menor":"↑ Menor a mayor";aplicar();});
+    aplicar();
+  }
   const optList=(arr,labelFn,sel)=>'<option value="">— ninguno —</option>'+arr.map(x=>`<option value="${x.id}" ${x.id===sel?"selected":""}>${escAttr(labelFn(x))}</option>`).join("");
 
   const UNIDADES=["PZ","SERV","LOT","KG","TON","MTR","M2","M3","LT","HR","DIA","CAJA","JGO","ROLLO"];
@@ -1594,8 +1628,8 @@ function(t){t.__bidiEngine__=t.prototype.__bidiEngine__=function(t){var r,n,i,a,
       body=`${campoFolio(rec?rec.folio:nextFolio("COT",state.cotizaciones))}
         <div class="grid2">
           <div class="field"><label for="f-cli">Cliente</label><input id="f-cli" list="cli-list" required value="${escAttr(rec?rec.cliente:"")}" placeholder="Nombre del cliente">
-            <datalist id="cli-list">${state.clientes.map(cl=>`<option value="${escAttr(cl.nombre)}"></option>`).join("")}</datalist></div>
-          <div class="field"><label for="f-cliid">Impuestos de cliente</label><select id="f-cliid"><option value="">— personalizado —</option>${state.clientes.map(cl=>`<option value="${cl.id}">${escAttr(cl.nombre)}</option>`).join("")}</select></div></div>
+            <datalist id="cli-list">${clientesOrd().map(cl=>`<option value="${escAttr(cl.nombre)}"></option>`).join("")}</datalist></div>
+          <div class="field"><label for="f-cliid">Impuestos de cliente</label><select id="f-cliid"><option value="">— personalizado —</option>${clientesOrd().map(cl=>`<option value="${cl.id}">${escAttr(cl.nombre)}</option>`).join("")}</select></div></div>
         <div class="grid3"><div class="field"><label for="f-fecha">Fecha</label><input type="date" id="f-fecha" value="${rec?rec.fecha:t}"></div>
           <div class="field"><label for="f-vig">Vigencia (días)</label><input type="number" id="f-vig" value="${rec?rec.vigencia:15}" min="1"></div>
           <div class="field"><label for="f-iva">IVA (%)</label><input type="number" id="f-iva" min="0" max="100" step="0.5" value="${rec&&rec.ivaPct!=null?rec.ivaPct:ivaDefPct()}"></div></div>
@@ -1629,8 +1663,8 @@ function(t){t.__bidiEngine__=t.prototype.__bidiEngine__=function(t){var r,n,i,a,
       body=`${campoFolio(rec?rec.folio:nextFolio("FAC",state.facturas))}
         <div class="grid2">
           <div class="field"><label for="f-cli">Cliente</label><input id="f-cli" list="cli-list" required value="${escAttr(rec?rec.cliente:"")}" placeholder="Nombre del cliente">
-            <datalist id="cli-list">${state.clientes.map(cl=>`<option value="${escAttr(cl.nombre)}"></option>`).join("")}</datalist></div>
-          <div class="field"><label for="f-cliid">Impuestos de cliente</label><select id="f-cliid"><option value="">— personalizado —</option>${state.clientes.map(cl=>`<option value="${cl.id}" ${rec&&rec.clienteId===cl.id?"selected":""}>${escAttr(cl.nombre)}</option>`).join("")}</select></div></div>
+            <datalist id="cli-list">${clientesOrd().map(cl=>`<option value="${escAttr(cl.nombre)}"></option>`).join("")}</datalist></div>
+          <div class="field"><label for="f-cliid">Impuestos de cliente</label><select id="f-cliid"><option value="">— personalizado —</option>${clientesOrd().map(cl=>`<option value="${cl.id}" ${rec&&rec.clienteId===cl.id?"selected":""}>${escAttr(cl.nombre)}</option>`).join("")}</select></div></div>
         <div class="grid3"><div class="field"><label for="f-fecha">Emisión</label><input type="date" id="f-fecha" value="${rec?rec.fecha:t}"></div>
         <div class="field"><label for="f-venc">Vence</label><input type="date" id="f-venc" value="${rec?rec.vencimiento:addDays(t,30)}"></div>
         <div class="field"><label for="f-flujo">Estatus</label><select id="f-flujo">${FLUJO.map(x=>`<option value="${x.v}" ${(rec?rec.flujo:"solicitada")===x.v?"selected":""}>${x.label}</option>`).join("")}</select></div></div>
@@ -1651,19 +1685,19 @@ function(t){t.__bidiEngine__=t.prototype.__bidiEngine__=function(t){var r,n,i,a,
     else if(type==="pago"){
       const editAps=rec?(rec.aplicaciones&&rec.aplicaciones.length?rec.aplicaciones:(rec.facturaId?[{facturaId:rec.facturaId,monto:rec.monto}]:[])):[];
       const editIds=editAps.map(x=>x.facturaId);
-      const cand=state.facturas.filter(f=>facSaldo(f)>CENTAVO||editIds.indexOf(f.id)>=0)
-        .sort((a,b)=>facSaldo(b)-facSaldo(a));   // de mayor a menor saldo
+      const cand=state.facturas.filter(f=>facSaldo(f)>CENTAVO||editIds.indexOf(f.id)>=0);
       if(!cand.length){toast("No hay facturas con saldo pendiente.");return;}
       const preId=opts.preFacId||null;
       title=editing?"Editar pago":"Registrar pago";
       const rowFor=f=>{const ap=editAps.find(x=>x.facturaId===f.id),checked=!!ap||f.id===preId,amt=ap?ap.monto:facSaldo(f);
-        return `<label class="payrow"><input type="checkbox" class="pf" value="${f.id}" ${checked?"checked":""}>
+        return `<label class="payrow" data-ordrow data-o-folio="${escAttr(f.folio||"")}" data-o-nombre="${escAttr(f.cliente||"")}" data-o-fecha="${f.vencimiento||f.fecha||""}" data-o-importe="${facSaldo(f)}"><input type="checkbox" class="pf" value="${f.id}" ${checked?"checked":""}>
           <span class="pf-info"><span class="mono">${f.folio}</span> · ${f.cliente} <span class="pf-saldo">saldo ${money(facSaldo(f))}</span></span>
           <input type="number" class="pa" data-fid="${f.id}" min="0" step="any" value="${checked?r2(amt):""}" placeholder="0.00"></label>`;};
       body=`<div class="grid2"><div class="field"><label for="f-fecha">Fecha</label><input type="date" id="f-fecha" value="${rec?rec.fecha:t}"></div>
         <div class="field"><label for="f-met">Método</label><select id="f-met">${["Transferencia","Cheque","Efectivo","Tarjeta"].map(m=>`<option ${rec&&rec.metodo===m?"selected":""}>${m}</option>`).join("")}</select></div></div>
         <div class="field"><label>Facturas a pagar <span style="color:var(--text-faint);font-weight:400">· marca una o varias (pago consolidado)</span></label>
-          <div class="checklist paylist" id="paylist">${cand.map(rowFor).join("")}</div></div>
+          ${barraOrden([{k:"folio",label:"Número de factura"},{k:"importe",label:"Saldo"},{k:"nombre",label:"Cliente"},{k:"fecha",label:"Vencimiento"}],{k:"folio",dir:"desc"})}
+          <div class="checklist paylist" id="paylist" data-ordlist>${cand.map(rowFor).join("")}</div></div>
         <div class="calc"><div class="tot"><span>Total del pago</span><span class="num" id="paytot">$0.00</span></div></div>`;
       onsubmit=()=>{const aps=[...md.querySelectorAll(".pf:checked")].map(cb=>{const fid=cb.value,el=md.querySelector('.pa[data-fid="'+fid+'"]'),f=state.facturas.find(x=>x.id===fid);
           const prev=editAps.find(x=>x.facturaId===fid),tope=r2(facSaldo(f)+(prev?+prev.monto||0:0));
@@ -1677,7 +1711,10 @@ function(t){t.__bidiEngine__=t.prototype.__bidiEngine__=function(t){var r,n,i,a,
         aps.forEach(x=>{const f=state.facturas.find(y=>y.id===x.facturaId);if(f&&facSaldo(f)<=CENTAVO)f.flujo="pagada";});};
     }
     else if(type==="proyecto"){title=editing?"Editar proyecto":"Nuevo proyecto";
-      const chk=(cls,arr,lf,sel)=>arr.length?arr.map(x=>`<label><input type="checkbox" class="${cls}" value="${x.id}" ${sel.indexOf(x.id)>=0?"checked":""}> <span class="mono">${x.folio}</span> · ${lf(x)}</label>`).join(""):'<div class="none">— sin registros —</div>';
+      const chk=(cls,arr,lf,sel,imp)=>{const filas=arr.length?arr.map(x=>
+        `<label data-ordrow data-o-folio="${escAttr(x.folio||"")}" data-o-fecha="${x.fecha||""}" data-o-importe="${imp?imp(x):0}" data-o-nombre="${escAttr(lf(x))}">
+          <input type="checkbox" class="${cls}" value="${x.id}" ${sel.indexOf(x.id)>=0?"checked":""}> <span class="mono">${x.folio}</span> · ${lf(x)}</label>`).join(""):'<div class="none">— sin registros —</div>';
+        return `${arr.length?barraOrden(ORD_DOC,{k:"folio",dir:"desc"}):""}<div class="checklist" data-ordlist>${filas}</div>`;};
       const sc=rec?rec.cotIds||[]:[],sv=rec?rec.ventaIds||[]:[],so=rec?rec.ordenIds||[]:[],sf=rec?rec.facturaIds||[]:[];
       body=`<div class="field"><label for="f-nom">Nombre del proyecto</label><input id="f-nom" required value="${escAttr(rec?rec.nombre:"")}" placeholder="Ej. Rehabilitación de bombas"></div>
         <div class="grid2"><div class="field"><label for="f-cliid">Cliente</label>
@@ -1686,10 +1723,10 @@ function(t){t.__bidiEngine__=t.prototype.__bidiEngine__=function(t){var r,n,i,a,
         <div class="field"><label>Integrantes del proyecto</label>
           <div class="checklist">${state.integrantes.length?state.integrantes.map(i=>`<label><input type="checkbox" class="c-int" value="${i.id}" ${(rec&&(rec.integranteIds||[]).indexOf(i.id)>=0)?"checked":""}> ${escAttr(i.nombre)}</label>`).join(""):'<div class="none">— da de alta integrantes primero —</div>'}</div></div>
         <p class="hintline">Marca los documentos del proyecto. El margen neto = ingresos − costos XML − gastos.</p>
-        <div class="field"><label>Cotizaciones</label><div class="checklist">${chk("c-cot",state.cotizaciones,x=>x.cliente,sc)}</div></div>
-        <div class="field"><label>Órdenes de venta (cliente)</label><div class="checklist">${chk("c-ov",state.ventas,x=>x.cliente,sv)}</div></div>
-        <div class="field"><label>Órdenes de compra (proveedor)</label><div class="checklist">${chk("c-oc",state.ordenes,x=>x.proveedor,so)}</div></div>
-        <div class="field"><label>Facturas al cliente</label><div class="checklist">${chk("c-fac",state.facturas,x=>x.cliente,sf)}</div></div>`;
+        <div class="field"><label>Cotizaciones</label>${chk("c-cot",state.cotizaciones,x=>x.cliente,sc,cotTotal)}</div>
+        <div class="field"><label>Órdenes de venta (cliente)</label>${chk("c-ov",state.ventas,x=>x.cliente,sv,ovTotal)}</div>
+        <div class="field"><label>Órdenes de compra (proveedor)</label>${chk("c-oc",state.ordenes,x=>x.proveedor,so,ocTotal)}</div>
+        <div class="field"><label>Facturas al cliente</label>${chk("c-fac",state.facturas,x=>x.cliente,sf,facTotal)}</div>`;
       onsubmit=()=>{const g=cls=>[...md.querySelectorAll("."+cls+":checked")].map(el=>el.value);
         const cid=$("#f-cliid").value||null,cl=state.clientes.find(x=>x.id===cid);
         const data={nombre:$("#f-nom").value.trim(),clienteId:cid,cliente:cl?cl.nombre:"",mes:$("#f-mes").value,
@@ -1724,7 +1761,7 @@ function(t){t.__bidiEngine__=t.prototype.__bidiEngine__=function(t){var r,n,i,a,
       const pre=src||{};formLines=pre.lineas||null;
       body=`${campoFolio(rec?rec.folio:nextFolio("OV",state.ventas))}
         <div class="field"><label for="f-cli">Cliente</label><input id="f-cli" list="cli-list" required value="${escAttr(pre.cliente||"")}" placeholder="Cliente">
-          <datalist id="cli-list">${state.clientes.map(cl=>`<option value="${escAttr(cl.nombre)}"></option>`).join("")}</datalist></div>
+          <datalist id="cli-list">${clientesOrd().map(cl=>`<option value="${escAttr(cl.nombre)}"></option>`).join("")}</datalist></div>
         <div class="grid2"><div class="field"><label for="f-occ">OC del cliente</label><input id="f-occ" value="${escAttr(pre.ocCliente||"")}" placeholder="Folio de su orden de compra"></div>
         <div class="field"><label for="f-fecha">Fecha</label><input type="date" id="f-fecha" value="${pre.fecha||t}"></div></div>
         <div class="field" style="max-width:160px"><label for="f-iva">IVA (%)</label><input type="number" id="f-iva" min="0" max="100" step="0.5" value="${(rec&&rec.ivaPct!=null)?rec.ivaPct:ivaDefPct()}"></div>
@@ -1760,7 +1797,7 @@ function(t){t.__bidiEngine__=t.prototype.__bidiEngine__=function(t){var r,n,i,a,
           <div style="color:var(--text-faint);font-size:12px">${facs.map(p=>p.proveedor+" · "+(p.folio||"s/folio")).join(" | ")}</div></div>
         ${yaCot.length?`<p class="hintline" style="color:var(--warn)">Aviso: ${yaCot.length} factura(s) ya se hab\u00edan cotizado (${yaCot.map(p=>p.folio).join(", ")}). Puedes continuar si es una recotizaci\u00f3n.</p>`:""}
         <div class="field"><label for="f-cliid">Cliente</label><select id="f-cliid" required>
-          ${state.clientes.length?state.clientes.map(c=>`<option value="${c.id}">${escAttr(c.nombre)}${c.margen!=null?" · margen "+c.margen+"%":""}</option>`).join(""):'<option value="">— sin clientes —</option>'}
+          ${state.clientes.length?clientesOrd().map(c=>`<option value="${c.id}">${escAttr(c.nombre)}${c.margen!=null?" · margen "+c.margen+"%":""}</option>`).join(""):'<option value="">— sin clientes —</option>'}
         </select></div>
         <div class="grid3">
           <div class="field"><label for="f-mg">Margen (%)</label><input type="number" id="f-mg" min="0" max="99" step="0.5" value="${state.clientes.length&&state.clientes[0].margen!=null?state.clientes[0].margen:30}"></div>
@@ -1920,6 +1957,7 @@ function(t){t.__bidiEngine__=t.prototype.__bidiEngine__=function(t){var r,n,i,a,
     }
     if($("#rets")&&!retEd){retEd=makeRetEditor($("#rets"),formRets||(rec?rec.retenciones:null),function(){});}
 
+    md.querySelectorAll(".ordbar").forEach(b=>activarOrden(b.parentElement));
     md.querySelector("#theform").addEventListener("submit",e=>{e.preventDefault();if(onsubmit()===false)return;persist();closeModal();render();});
     const first=md.querySelector("input,select");if(first)first.focus();
   }

@@ -42,7 +42,7 @@ const ok=[],bad=[];const chk=(c,m)=>{(c?ok:bad).push(m);};
   await p.goto('https://fulcrum.test/');
   await p.waitForSelector('#nav .navbtn',{timeout:15000});
   chk(true,'la app arranca en Apps Script');
-  chk(await p.$eval('#appver',e=>e.textContent)==='v15-2026-08-30','versión v15 en pantalla');
+  chk(await p.$eval('#appver',e=>e.textContent)==='v16-2026-08-30','versión v16 en pantalla');
   chk(await p.$('#view [data-error]')==null,'sin recuadro de error');
 
   // cliente con impuestos

@@ -71,9 +71,12 @@ const SUB=18171.18;
   await p.click('[data-view="pagos"]');await p.waitForTimeout(250);
   await p.click('[data-action="add"][data-type="pago"]');
   await p.waitForSelector('#paylist .payrow');
-  const saldos=await p.$$eval('#paylist .pf',n=>n.map(cb=>+cb.closest('.payrow').querySelector('.pf-saldo').textContent.replace(/[^\d.]/g,'')));
-  const ordenado=saldos.every((v,i)=>i===0||saldos[i-1]>=v);
-  chk(ordenado&&saldos.length>1,'facturas de mayor a menor saldo: '+saldos.join(' > '));
+  const fol=await p.$$eval('#paylist .payrow',n=>n.map(e=>e.getAttribute('data-o-folio')));
+  const nat=(a,b)=>String(a).localeCompare(String(b),'es',{numeric:true});
+  chk(fol.length>1&&fol.every((v,i)=>i===0||nat(fol[i-1],v)>=0),'facturas por número, de mayor a menor: '+fol.join(' > '));
+  await p.selectOption('.ordbar .ordsel','importe');await p.waitForTimeout(150);
+  const saldos=await p.$$eval('#paylist .payrow',n=>n.map(e=>+e.getAttribute('data-o-importe')));
+  chk(saldos.every((v,i)=>i===0||saldos[i-1]>=v),'y se puede ordenar por saldo: '+saldos.join(' > '));
   await p.keyboard.press('Escape');
 
   chk(errs.length===0,'sin errores JS'+(errs.length?': '+errs.join(' | '):''));
