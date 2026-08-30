@@ -694,6 +694,9 @@ function(t){t.__bidiEngine__=t.prototype.__bidiEngine__=function(t){var r,n,i,a,
   const fmtMoney=new Intl.NumberFormat("es-MX",{style:"currency",currency:"MXN",minimumFractionDigits:2});
   const money=n=>fmtMoney.format(n||0);
   const money0=n=>fmtMoney.format(Math.round(n||0)).replace(/\.00$/,"");
+  // Redondeo a centavos: evita saldos con 4 decimales que impedian aplicar el pago.
+  const r2=n=>Math.round(((+n||0)+Number.EPSILON)*100)/100;
+  const CENTAVO=0.005;
   const todayStr=()=>"2026-07-30";
   function addDays(s,d){const t=new Date(s+"T00:00:00");t.setDate(t.getDate()+d);return t.toISOString().slice(0,10);}
   function fmtDate(s){if(!s)return "—";const t=new Date(s+"T00:00:00");return t.toLocaleDateString("es-MX",{day:"2-digit",month:"short",year:"numeric"});}
@@ -749,29 +752,32 @@ function(t){t.__bidiEngine__=t.prototype.__bidiEngine__=function(t){var r,n,i,a,
       imp:l=>(+l.costo||0)*(+l.cantidad||0)},
   };
   const sumLineas=(type,ls)=>(ls||[]).reduce((a,l)=>a+LINESPEC[type].imp(l),0);
-  const cotSubtotal=c=>sumLineas("cotizacion",c.lineas);
+  const cotSubtotal=c=>r2(sumLineas("cotizacion",c.lineas));
   const cotCosto=c=>(c.lineas||[]).reduce((a,l)=>a+(+l.costo||0)*(+l.cantidad||0),0);
   const cotMargenPct=c=>{const s=cotSubtotal(c);return s>0?(s-cotCosto(c))/s*100:0;};
-  const cotRetencion=c=>{const s=cotSubtotal(c);return (c.retenciones||[]).reduce((a,r)=>a+s*(+r.tasa||0)/100,0);};
-  const cotTotal=c=>cotSubtotal(c)*(1+ivaR(c))-cotRetencion(c);
-  const facSubtotal=f=>sumLineas("factura",f.lineas);
+  const cotRetencion=c=>{const s=cotSubtotal(c);return r2((c.retenciones||[]).reduce((a,r)=>a+s*(+r.tasa||0)/100,0));};
+  const cotTotal=c=>r2(cotSubtotal(c)*(1+ivaR(c))-cotRetencion(c));
+  const facSubtotal=f=>r2(sumLineas("factura",f.lineas));
   const facCosto=f=>(f.lineas||[]).reduce((a,l)=>a+(+l.costo||0)*(+l.cantidad||0),0);
-  const facTotal=f=>facSubtotal(f)*(1+ivaR(f));
-  const facPagado=f=>state.pagos.reduce((a,p)=>a+((p.aplicaciones&&p.aplicaciones.length)
+  // Las facturas tambien llevan retenciones: se restan del total igual que en la cotizacion.
+  const facRetencion=f=>{const s=facSubtotal(f);return r2((f.retenciones||[]).reduce((a,r)=>a+s*(+r.tasa||0)/100,0));};
+  const facIva=f=>r2(facSubtotal(f)*ivaR(f));
+  const facTotal=f=>r2(facSubtotal(f)+facIva(f)-facRetencion(f));
+  const facPagado=f=>r2(state.pagos.reduce((a,p)=>a+((p.aplicaciones&&p.aplicaciones.length)
     ? p.aplicaciones.filter(x=>x.facturaId===f.id).reduce((s,x)=>s+(+x.monto||0),0)
-    : (p.facturaId===f.id?(+p.monto||0):0)),0);
-  const facSaldo=f=>Math.max(0,facTotal(f)-facPagado(f));
-  const ocSubtotal=o=>sumLineas("orden",o.lineas);
-  const ocTotal=o=>ocSubtotal(o)*(1+ivaR(o));
-  const ovSubtotal=o=>sumLineas("venta",o.lineas);
+    : (p.facturaId===f.id?(+p.monto||0):0)),0));
+  const facSaldo=f=>Math.max(0,r2(facTotal(f)-facPagado(f)));
+  const ocSubtotal=o=>r2(sumLineas("orden",o.lineas));
+  const ocTotal=o=>r2(ocSubtotal(o)*(1+ivaR(o)));
+  const ovSubtotal=o=>r2(sumLineas("venta",o.lineas));
   const ovCosto=o=>(o.lineas||[]).reduce((a,l)=>a+(+l.costo||0)*(+l.cantidad||0),0);
-  const ovTotal=o=>ovSubtotal(o)*(1+ivaR(o));
+  const ovTotal=o=>r2(ovSubtotal(o)*(1+ivaR(o)));
 
   /* ---------- estatus ---------- */
   function facEstatus(f){const saldo=facSaldo(f),total=facTotal(f);
-    if(saldo<=0.01)return{k:"pagada",cls:"p-good"};
+    if(saldo<=CENTAVO)return{k:"pagada",cls:"p-good"};
     const venc=todayStr()>f.vencimiento;
-    if(saldo<total-0.01)return venc?{k:"vencida (parcial)",cls:"p-bad"}:{k:"parcial",cls:"p-info"};
+    if(saldo<total-CENTAVO)return venc?{k:"vencida (parcial)",cls:"p-bad"}:{k:"parcial",cls:"p-info"};
     return venc?{k:"vencida",cls:"p-bad"}:{k:"pendiente",cls:"p-warn"};}
   const cotCls={borrador:"p-mut",enviada:"p-info",aceptada:"p-good",rechazada:"p-bad"};
   const ocCls={abierta:"p-warn",recibida:"p-info",pagada:"p-good"};
@@ -944,7 +950,7 @@ function(t){t.__bidiEngine__=t.prototype.__bidiEngine__=function(t){var r,n,i,a,
     const facturado=state.facturas.reduce((a,f)=>a+facTotal(f),0);
     const cobrado=state.pagos.reduce((a,p)=>a+p.monto,0);
     const porCobrar=state.facturas.reduce((a,f)=>a+facSaldo(f),0);
-    const vencido=state.facturas.filter(f=>facSaldo(f)>0.01&&todayStr()>f.vencimiento).reduce((a,f)=>a+facSaldo(f),0);
+    const vencido=state.facturas.filter(f=>facSaldo(f)>CENTAVO&&todayStr()>f.vencimiento).reduce((a,f)=>a+facSaldo(f),0);
     const porPagar=state.ordenes.filter(o=>o.estatus!=="pagada").reduce((a,o)=>a+ocTotal(o),0);
     const cotAb=state.cotizaciones.filter(c=>c.estatus==="borrador"||c.estatus==="enviada");
     const cotMonto=cotAb.reduce((a,c)=>a+cotSubtotal(c)*(1+ivaR(c)),0);
@@ -952,7 +958,7 @@ function(t){t.__bidiEngine__=t.prototype.__bidiEngine__=function(t){var r,n,i,a,
   }
   function projections(){
     const m={};const add=(k,f,v)=>{(m[k]=m[k]||{cobrar:0,pagar:0})[f]+=v;};
-    state.facturas.forEach(f=>{const s=facSaldo(f);if(s>0.01)add(monthKey(f.vencimiento),"cobrar",s);});
+    state.facturas.forEach(f=>{const s=facSaldo(f);if(s>CENTAVO)add(monthKey(f.vencimiento),"cobrar",s);});
     state.ordenes.forEach(o=>{if(o.estatus!=="pagada")add(monthKey(o.fechaPago||o.fecha),"pagar",ocTotal(o));});
     return Object.keys(m).sort().map(k=>({k,cobrar:m[k].cobrar,pagar:m[k].pagar,neto:m[k].cobrar-m[k].pagar}));
   }
@@ -1077,7 +1083,7 @@ function(t){t.__bidiEngine__=t.prototype.__bidiEngine__=function(t){var r,n,i,a,
     <div class="two">${panelCartera()}${panelCompromisos()}</div>`;
   }
   function panelCartera(){
-    const rows=state.facturas.filter(f=>facSaldo(f)>0.01).sort((a,b)=>a.vencimiento.localeCompare(b.vencimiento)).slice(0,5);
+    const rows=state.facturas.filter(f=>facSaldo(f)>CENTAVO).sort((a,b)=>a.vencimiento.localeCompare(b.vencimiento)).slice(0,5);
     return `<div class="panel"><div class="panel-head"><h3>Cartera por cobrar</h3><span class="hint">próximos vencimientos</span></div><div class="tablewrap"><table>
       <thead><tr><th>Folio</th><th>Cliente</th><th>Vence</th><th class="r">Saldo</th><th></th></tr></thead><tbody>${rows.length?rows.map(f=>{const e=facEstatus(f);
       return `<tr><td class="mono">${f.folio}</td><td>${f.cliente}</td><td>${fmtDate(f.vencimiento)}</td><td class="r num strong">${money(facSaldo(f))}</td><td><span class="pill ${e.cls}">${e.k}</span></td></tr>`;}).join(""):emptyRow(5,"Todo cobrado 🎉")}</tbody></table></div></div>`;
@@ -1231,13 +1237,13 @@ function(t){t.__bidiEngine__=t.prototype.__bidiEngine__=function(t){var r,n,i,a,
     <thead><tr>${th("fac","folio","Folio")}${th("fac","cliente","Cliente")}${th("fac","fecha","Emisión")}${th("fac","vencimiento","Vence")}${th("fac","total","Total","r")}${th("fac","saldo","Saldo","r")}${th("fac","flujo","Estatus")}<th></th></tr></thead>
     <tbody>${list.length?list.map(f=>{const e=facEstatus(f),fl=flujoMeta(f.flujo),saldo=facSaldo(f);
       return `<tr><td class="mono">${f.folio}</td><td>${f.cliente}</td><td>${fmtDate(f.fecha)}</td><td>${fmtDate(f.vencimiento)}</td>
-      <td class="r num">${money(facTotal(f))}</td><td class="r num strong" style="color:${saldo>0.01&&todayStr()>f.vencimiento?"var(--bad)":"inherit"}">${money(saldo)}</td>
+      <td class="r num">${money(facTotal(f))}</td><td class="r num strong" style="color:${saldo>CENTAVO&&todayStr()>f.vencimiento?"var(--bad)":"inherit"}">${money(saldo)}</td>
       <td><span class="pill ${fl.cls}" title="Cobro: ${e.k}">${fl.label}</span></td>
       <td><div class="rowact">
         <button class="act" data-action="print" data-type="fac" data-id="${f.id}">PDF</button>
         <button class="act" data-action="edit" data-type="factura" data-id="${f.id}">Editar</button>
         <button class="act" data-action="fac-flujo" data-id="${f.id}">Avanzar</button>
-        ${saldo>0.01?`<button class="act good" data-action="fac-pago" data-id="${f.id}">Aplicar pago</button>`:""}
+        ${saldo>CENTAVO?`<button class="act good" data-action="fac-pago" data-id="${f.id}">Aplicar pago</button>`:""}
         <button class="act warnact" data-action="del" data-type="facturas" data-id="${f.id}">Eliminar</button>
       </div></td></tr>`;}).join(""):emptyRow(8,"Sin facturas con ese estatus")}</tbody></table></div></div>`;
   }
@@ -1506,7 +1512,7 @@ function(t){t.__bidiEngine__=t.prototype.__bidiEngine__=function(t){var r,n,i,a,
   function closeModal(){ov.classList.remove("on");md.innerHTML="";}
   ov.addEventListener("click",e=>{if(e.target===ov)closeModal();});
   document.addEventListener("keydown",e=>{if(e.key==="Escape")closeModal();});
-  const moneyField=(id,label,val)=>`<div class="field"><label for="${id}">${label}</label><input type="number" id="${id}" min="0" step="0.01" value="${val==null?"":val}" required></div>`;
+  const moneyField=(id,label,val)=>`<div class="field"><label for="${id}">${label}</label><input type="number" id="${id}" min="0" step="any" value="${val==null?"":val}" required></div>`;
   const optList=(arr,labelFn,sel)=>'<option value="">— ninguno —</option>'+arr.map(x=>`<option value="${x.id}" ${x.id===sel?"selected":""}>${escAttr(labelFn(x))}</option>`).join("");
 
   const UNIDADES=["PZ","SERV","LOT","KG","TON","MTR","M2","M3","LT","HR","DIA","CAJA","JGO","ROLLO"];
@@ -1537,7 +1543,7 @@ function(t){t.__bidiEngine__=t.prototype.__bidiEngine__=function(t){var r,n,i,a,
     const list=host.querySelector(".llist");
     const rowHtml=l=>`<div class="lrow" style="grid-template-columns:${gt}">${spec.cols.map(c=>{const v=escAttr(l&&l[c.k]!=null?l[c.k]:(c.v!=null?c.v:""));
       const lista=c.lista?` list="${c.lista}"`:(c.k==="desc"&&catalog?' list="fx-prod"':"");
-      return c.t==="text"?`<input data-k="${c.k}"${lista} placeholder="${c.ph||""}" value="${v}">`:`<input data-k="${c.k}" type="number" min="0" step="${c.step||"0.01"}" placeholder="${c.ph||""}" value="${v}">`;}).join("")}<span class="l-imp num">$0.00</span><button type="button" class="l-del" aria-label="Quitar">&times;</button></div>`;
+      return c.t==="text"?`<input data-k="${c.k}"${lista} placeholder="${c.ph||""}" value="${v}">`:`<input data-k="${c.k}" type="number" min="0" step="${c.step||"any"}" placeholder="${c.ph||""}" value="${v}">`;}).join("")}<span class="l-imp num">$0.00</span><button type="button" class="l-del" aria-label="Quitar">&times;</button></div>`;
     const read=()=>[...list.querySelectorAll(".lrow")].map(r=>{const o={};spec.cols.forEach(c=>{const el=r.querySelector('[data-k="'+c.k+'"]');o[c.k]=c.t==="text"?el.value.trim():(+el.value||0);});return o;});
     const recalc=()=>{list.querySelectorAll(".lrow").forEach(r=>{const o={};spec.cols.forEach(c=>{const el=r.querySelector('[data-k="'+c.k+'"]');o[c.k]=c.t==="text"?el.value:(+el.value||0);});r.querySelector(".l-imp").textContent=money(spec.imp(o));});onChange(read());};
     host.addEventListener("input",recalc);
@@ -1551,13 +1557,29 @@ function(t){t.__bidiEngine__=t.prototype.__bidiEngine__=function(t){var r,n,i,a,
     recalc();
     return {read};
   }
+  // Impuestos y retenciones dados de alta: los de los clientes mas los ya usados en documentos.
+  function retCatalogo(){
+    const map=new Map();
+    const add=r=>{if(!r||!r.concepto)return;const k=String(r.concepto).trim();if(!k)return;
+      if(!map.has(k.toLowerCase()))map.set(k.toLowerCase(),{concepto:k,tasa:+r.tasa||0});};
+    (state.clientes||[]).forEach(c=>(c.retenciones||[]).forEach(add));
+    [state.cotizaciones,state.facturas].forEach(col=>(col||[]).forEach(d=>(d.retenciones||[]).forEach(add)));
+    [{concepto:"Retención ISR",tasa:1.25},{concepto:"Retención IVA",tasa:10.6667}].forEach(add);
+    return [...map.values()].sort((a,b)=>a.concepto.localeCompare(b.concepto));
+  }
   function makeRetEditor(host,initial,onChange){
-    host.innerHTML=`<div class="rethead"><span>Concepto</span><span>Tasa %</span><span></span></div><div class="rlist"></div><button type="button" class="ghost retadd">+ Agregar retención</button>`;
+    const cat=retCatalogo();
+    const dl=`<datalist id="fx-ret">${cat.map(r=>`<option value="${escAttr(r.concepto)}">${r.tasa}%</option>`).join("")}</datalist>`;
+    host.innerHTML=`${dl}<div class="rethead"><span>Concepto</span><span>Tasa %</span><span></span></div><div class="rlist"></div><button type="button" class="ghost retadd">+ Agregar impuesto o retención</button>`;
     const list=host.querySelector(".rlist");
-    const rowHtml=r=>`<div class="rrow"><input data-k="concepto" placeholder="Ej. Retención ISR" value="${escAttr(r?r.concepto:"")}"><input data-k="tasa" type="number" min="0" step="0.0001" placeholder="0" value="${r&&r.tasa!=null?r.tasa:""}"><button type="button" class="l-del" aria-label="Quitar">&times;</button></div>`;
+    const rowHtml=r=>`<div class="rrow"><input data-k="concepto" list="fx-ret" placeholder="Ej. Retención ISR" value="${escAttr(r?r.concepto:"")}"><input data-k="tasa" type="number" min="0" step="any" placeholder="0" value="${r&&r.tasa!=null?r.tasa:""}"><button type="button" class="l-del" aria-label="Quitar">&times;</button></div>`;
     const read=()=>[...list.querySelectorAll(".rrow")].map(r=>({concepto:r.querySelector('[data-k="concepto"]').value.trim(),tasa:+r.querySelector('[data-k="tasa"]').value||0}));
     const setRows=rows=>{list.innerHTML="";(rows&&rows.length?rows:[]).forEach(r=>list.insertAdjacentHTML("beforeend",rowHtml(r)));onChange();};
     host.addEventListener("input",()=>onChange());
+    // Al elegir un impuesto del catalogo se completa su tasa.
+    host.addEventListener("change",e=>{const inp=e.target;
+      if(inp.dataset&&inp.dataset.k==="concepto"){const c=cat.find(x=>x.concepto.toLowerCase()===inp.value.trim().toLowerCase());
+        if(c){const t=inp.closest(".rrow").querySelector('[data-k="tasa"]');if(t&&!(+t.value)){t.value=c.tasa;onChange();}}}});
     host.addEventListener("click",e=>{if(e.target.closest(".l-del")){e.target.closest(".rrow").remove();onChange();}else if(e.target.closest(".retadd")){list.insertAdjacentHTML("beforeend",rowHtml());onChange();}});
     (initial&&initial.length?initial:[]).forEach(r=>list.insertAdjacentHTML("beforeend",rowHtml(r)));
     return {read,setRows};
@@ -1605,43 +1627,53 @@ function(t){t.__bidiEngine__=t.prototype.__bidiEngine__=function(t){var r,n,i,a,
     }
     else if(type==="factura"){lineType="factura";title=editing?"Editar factura":"Nueva factura";
       body=`${campoFolio(rec?rec.folio:nextFolio("FAC",state.facturas))}
-        <div class="field"><label for="f-cli">Cliente</label><input id="f-cli" required value="${escAttr(rec?rec.cliente:"")}" placeholder="Nombre del cliente"></div>
+        <div class="grid2">
+          <div class="field"><label for="f-cli">Cliente</label><input id="f-cli" list="cli-list" required value="${escAttr(rec?rec.cliente:"")}" placeholder="Nombre del cliente">
+            <datalist id="cli-list">${state.clientes.map(cl=>`<option value="${escAttr(cl.nombre)}"></option>`).join("")}</datalist></div>
+          <div class="field"><label for="f-cliid">Impuestos de cliente</label><select id="f-cliid"><option value="">— personalizado —</option>${state.clientes.map(cl=>`<option value="${cl.id}" ${rec&&rec.clienteId===cl.id?"selected":""}>${escAttr(cl.nombre)}</option>`).join("")}</select></div></div>
         <div class="grid3"><div class="field"><label for="f-fecha">Emisión</label><input type="date" id="f-fecha" value="${rec?rec.fecha:t}"></div>
         <div class="field"><label for="f-venc">Vence</label><input type="date" id="f-venc" value="${rec?rec.vencimiento:addDays(t,30)}"></div>
         <div class="field"><label for="f-flujo">Estatus</label><select id="f-flujo">${FLUJO.map(x=>`<option value="${x.v}" ${(rec?rec.flujo:"solicitada")===x.v?"selected":""}>${x.label}</option>`).join("")}</select></div></div>
         <div class="field" style="max-width:160px"><label for="f-iva">IVA (%)</label><input type="number" id="f-iva" min="0" max="100" step="0.5" value="${rec&&rec.ivaPct!=null?rec.ivaPct:ivaDefPct()}"></div>
-        <div class="field"><label>Conceptos</label><div id="lineas"></div></div><div class="calc" id="calc"></div>`;
+        <div class="field"><label>Conceptos</label><div id="lineas"></div></div>
+        <div class="field"><label>Retenciones e impuestos <span style="color:var(--text-faint);font-weight:400">· % sobre subtotal · se cargan del cliente</span></label><div id="rets"></div></div>
+        <div class="calc" id="calc"></div>`;
       onsubmit=()=>{const lineas=lineEd.read().filter(l=>l.desc&&l.cantidad>0);
         if(!lineas.length){toast("Agrega al menos una línea.");return false;}
         const folio=$("#f-folio").value.trim();
         if(!folio){toast("Escribe el folio.");return false;}
         if(folioRepetido(state.facturas,folio,editing)){toast("Ya existe la factura "+folio);return false;}
-        const data={folio,cliente:$("#f-cli").value.trim(),fecha:$("#f-fecha").value,vencimiento:$("#f-venc").value,flujo:$("#f-flujo").value,ivaPct:+$("#f-iva").value||0,lineas};
+        const cid=$("#f-cliid").value||null;
+        const data={folio,cliente:$("#f-cli").value.trim(),clienteId:cid,fecha:$("#f-fecha").value,vencimiento:$("#f-venc").value,
+          flujo:$("#f-flujo").value,ivaPct:+$("#f-iva").value||0,retenciones:retEd?retEd.read().filter(r=>r.concepto):[],lineas};
         if(editing)Object.assign(rec,data);else state.facturas.push(Object.assign({id:uid()},data));};
     }
     else if(type==="pago"){
       const editAps=rec?(rec.aplicaciones&&rec.aplicaciones.length?rec.aplicaciones:(rec.facturaId?[{facturaId:rec.facturaId,monto:rec.monto}]:[])):[];
       const editIds=editAps.map(x=>x.facturaId);
-      const cand=state.facturas.filter(f=>facSaldo(f)>0.01||editIds.indexOf(f.id)>=0);
+      const cand=state.facturas.filter(f=>facSaldo(f)>CENTAVO||editIds.indexOf(f.id)>=0);
       if(!cand.length){toast("No hay facturas con saldo pendiente.");return;}
       const preId=opts.preFacId||null;
       title=editing?"Editar pago":"Registrar pago";
       const rowFor=f=>{const ap=editAps.find(x=>x.facturaId===f.id),checked=!!ap||f.id===preId,amt=ap?ap.monto:facSaldo(f);
         return `<label class="payrow"><input type="checkbox" class="pf" value="${f.id}" ${checked?"checked":""}>
           <span class="pf-info"><span class="mono">${f.folio}</span> · ${f.cliente} <span class="pf-saldo">saldo ${money(facSaldo(f))}</span></span>
-          <input type="number" class="pa" data-fid="${f.id}" min="0" step="0.01" value="${checked?amt:""}" placeholder="0.00"></label>`;};
+          <input type="number" class="pa" data-fid="${f.id}" min="0" step="any" value="${checked?r2(amt):""}" placeholder="0.00"></label>`;};
       body=`<div class="grid2"><div class="field"><label for="f-fecha">Fecha</label><input type="date" id="f-fecha" value="${rec?rec.fecha:t}"></div>
         <div class="field"><label for="f-met">Método</label><select id="f-met">${["Transferencia","Cheque","Efectivo","Tarjeta"].map(m=>`<option ${rec&&rec.metodo===m?"selected":""}>${m}</option>`).join("")}</select></div></div>
         <div class="field"><label>Facturas a pagar <span style="color:var(--text-faint);font-weight:400">· marca una o varias (pago consolidado)</span></label>
           <div class="checklist paylist" id="paylist">${cand.map(rowFor).join("")}</div></div>
         <div class="calc"><div class="tot"><span>Total del pago</span><span class="num" id="paytot">$0.00</span></div></div>`;
-      onsubmit=()=>{const aps=[...md.querySelectorAll(".pf:checked")].map(cb=>{const fid=cb.value,el=md.querySelector('.pa[data-fid="'+fid+'"]'),f=state.facturas.find(x=>x.id===fid);return {facturaId:fid,facturaFolio:f.folio,monto:+el.value||0};}).filter(x=>x.monto>0);
+      onsubmit=()=>{const aps=[...md.querySelectorAll(".pf:checked")].map(cb=>{const fid=cb.value,el=md.querySelector('.pa[data-fid="'+fid+'"]'),f=state.facturas.find(x=>x.id===fid);
+          const prev=editAps.find(x=>x.facturaId===fid),tope=r2(facSaldo(f)+(prev?+prev.monto||0:0));
+          let m=r2(+el.value||0);if(m>tope&&m-tope<=0.02)m=tope;   // absorbe diferencias de centavos
+          return {facturaId:fid,facturaFolio:f.folio,monto:m};}).filter(x=>x.monto>0);
         if(!aps.length){toast("Marca al menos una factura y captura su monto.");return false;}
-        const total=aps.reduce((a,x)=>a+x.monto,0),cls=[...new Set(aps.map(x=>state.facturas.find(f=>f.id===x.facturaId).cliente))];
+        const total=r2(aps.reduce((a,x)=>a+x.monto,0)),cls=[...new Set(aps.map(x=>state.facturas.find(f=>f.id===x.facturaId).cliente))];
         const data={fecha:$("#f-fecha").value,metodo:$("#f-met").value,aplicaciones:aps,monto:total,
           cliente:cls.length===1?cls[0]:"Varios",facturaFolio:aps.length===1?aps[0].facturaFolio:aps.length+" facturas",facturaId:aps.length===1?aps[0].facturaId:null};
         if(editing)Object.assign(rec,data);else state.pagos.push(Object.assign({id:uid(),folio:nextFolio("PAG",state.pagos)},data));
-        aps.forEach(x=>{const f=state.facturas.find(y=>y.id===x.facturaId);if(f&&facSaldo(f)<=0.01)f.flujo="pagada";});};
+        aps.forEach(x=>{const f=state.facturas.find(y=>y.id===x.facturaId);if(f&&facSaldo(f)<=CENTAVO)f.flujo="pagada";});};
     }
     else if(type==="proyecto"){title=editing?"Editar proyecto":"Nuevo proyecto";
       const chk=(cls,arr,lf,sel)=>arr.length?arr.map(x=>`<label><input type="checkbox" class="${cls}" value="${x.id}" ${sel.indexOf(x.id)>=0?"checked":""}> <span class="mono">${x.folio}</span> · ${lf(x)}</label>`).join(""):'<div class="none">— sin registros —</div>';
@@ -1690,7 +1722,8 @@ function(t){t.__bidiEngine__=t.prototype.__bidiEngine__=function(t){var r,n,i,a,
       const src=editing?rec:(opts.fromCot?(function(){const c=state.cotizaciones.find(x=>x.id===opts.fromCot);return c?{cliente:c.cliente,ocCliente:"",fecha:t,cotizacionId:c.id,lineas:(c.lineas||[]).map(l=>({desc:l.desc,cantidad:l.cantidad,costo:l.costo,precio:lineaPrecio(l)}))}:null;})():null);
       const pre=src||{};formLines=pre.lineas||null;
       body=`${campoFolio(rec?rec.folio:nextFolio("OV",state.ventas))}
-        <div class="field"><label for="f-cli">Cliente</label><input id="f-cli" required value="${escAttr(pre.cliente||"")}" placeholder="Cliente"></div>
+        <div class="field"><label for="f-cli">Cliente</label><input id="f-cli" list="cli-list" required value="${escAttr(pre.cliente||"")}" placeholder="Cliente">
+          <datalist id="cli-list">${state.clientes.map(cl=>`<option value="${escAttr(cl.nombre)}"></option>`).join("")}</datalist></div>
         <div class="grid2"><div class="field"><label for="f-occ">OC del cliente</label><input id="f-occ" value="${escAttr(pre.ocCliente||"")}" placeholder="Folio de su orden de compra"></div>
         <div class="field"><label for="f-fecha">Fecha</label><input type="date" id="f-fecha" value="${pre.fecha||t}"></div></div>
         <div class="field" style="max-width:160px"><label for="f-iva">IVA (%)</label><input type="number" id="f-iva" min="0" max="100" step="0.5" value="${(rec&&rec.ivaPct!=null)?rec.ivaPct:ivaDefPct()}"></div>
@@ -1796,7 +1829,7 @@ function(t){t.__bidiEngine__=t.prototype.__bidiEngine__=function(t){var r,n,i,a,
           <div class="field"><label for="f-proy">Proyecto</label><select id="f-proy">${optList(state.proyectos,x=>x.nombre,rec?rec.proyectoId:null)}</select></div></div>
         <div class="field"><label for="f-fecha">Fecha</label><input type="date" id="f-fecha" value="${rec?rec.fecha:t}"></div>
         <div class="grid2">${moneyField("f-sub","Subtotal (MXN)",rec?rec.subtotal:"")}
-        <div class="field"><label for="f-ivam">IVA (MXN)</label><input type="number" id="f-ivam" min="0" step="0.01" value="${rec&&rec.iva!=null?rec.iva:""}" placeholder="se calcula solo"></div></div>
+        <div class="field"><label for="f-ivam">IVA (MXN)</label><input type="number" id="f-ivam" min="0" step="any" value="${rec&&rec.iva!=null?rec.iva:""}" placeholder="se calcula solo"></div></div>
         <p class="hintline">Deja el IVA vacío para calcularlo con la tasa configurada, o escribe el importe exacto de la factura.</p>
         <div class="calc" id="calc"></div>`;
       onsubmit=()=>{const sub=+$("#f-sub").value||0;
@@ -1830,8 +1863,8 @@ function(t){t.__bidiEngine__=t.prototype.__bidiEngine__=function(t){var r,n,i,a,
     // pago consolidado: total en vivo + habilitar montos
     const pl=$("#paylist");
     if(type==="pago"&&pl){const totEl=$("#paytot");
-      const calc=()=>{let s=0;pl.querySelectorAll(".pf").forEach(cb=>{const el=pl.querySelector('.pa[data-fid="'+cb.value+'"]');el.disabled=!cb.checked;if(cb.checked)s+=+el.value||0;});totEl.textContent=money(s);};
-      pl.addEventListener("change",e=>{if(e.target.classList.contains("pf")){const cb=e.target,el=pl.querySelector('.pa[data-fid="'+cb.value+'"]');if(cb.checked&&!(+el.value)){const f=state.facturas.find(x=>x.id===cb.value);el.value=facSaldo(f);}}calc();});
+      const calc=()=>{let s=0;pl.querySelectorAll(".pf").forEach(cb=>{const el=pl.querySelector('.pa[data-fid="'+cb.value+'"]');el.disabled=!cb.checked;if(cb.checked)s+=+el.value||0;});totEl.textContent=money(r2(s));};
+      pl.addEventListener("change",e=>{if(e.target.classList.contains("pf")){const cb=e.target,el=pl.querySelector('.pa[data-fid="'+cb.value+'"]');if(cb.checked&&!(+el.value)){const f=state.facturas.find(x=>x.id===cb.value);el.value=r2(facSaldo(f));}}calc();});
       pl.addEventListener("input",calc);calc();}
     // editor de líneas
     const catalog=new Map(productList().map(p=>[p.desc.toLowerCase(),p]));
@@ -1839,24 +1872,33 @@ function(t){t.__bidiEngine__=t.prototype.__bidiEngine__=function(t){var r,n,i,a,
     if(lineType){const calc=$("#calc"),isCot=lineType==="cotizacion",showMargen=LINESPEC[lineType].cols.some(c=>c.k==="costo")&&lineType!=="orden";
       const ivaInput=$("#f-iva");
       const tasaForm=()=>ivaInput?((+ivaInput.value||0)/100):(ivaDefPct()/100);
-      const doCalc=()=>{const lines=lineEd?lineEd.read():[],s=sumLineas(lineType,lines),pct=+(tasaForm()*100).toFixed(4),iva=s*tasaForm();
-        if(isCot){const cost=lines.reduce((a,l)=>a+(+l.costo||0)*(+l.cantidad||0),0),mg=s>0?(s-cost)/s*100:0;
-          const rets=retEd?retEd.read():[],retTot=rets.reduce((a,r)=>a+s*(+r.tasa||0)/100,0);
-          const retRows=rets.filter(r=>r.tasa).map(r=>`<div><span>${escAttr(r.concepto||"Retención")} (${(+r.tasa)}%)</span><span class="num">−${money(s*(+r.tasa||0)/100)}</span></div>`).join("");
-          const porAna={};lines.forEach(l=>{const k=(l.analitica||"").trim()||"Sin analítica";
-            porAna[k]=(porAna[k]||0)+LINESPEC[lineType].imp(l);});
-          const claves=Object.keys(porAna);
-          const anaRows=claves.length>1?`<div class="ana-tit">Por analítica</div>`+claves.map(k=>
-            `<div class="ana-row"><span>${escAttr(k)}</span><span class="num">${money(porAna[k])}</span></div>`).join(""):"";
-          calc.innerHTML=`<div><span>Costo total</span><span class="num">${money(cost)}</span></div><div><span>Margen promedio</span><span class="num" style="color:var(--good)">${mg.toFixed(1)}%</span></div><div><span>Subtotal (venta)</span><span class="num">${money(s)}</span></div><div><span>IVA ${pct}%</span><span class="num">${money(iva)}</span></div>${retRows}<div class="tot"><span>Total</span><span class="num">${money(s+iva-retTot)}</span></div>${anaRows}`;
-        }else if(showMargen){const cost=lines.reduce((a,l)=>a+(+l.costo||0)*(+l.cantidad||0),0),mg=s>0?(s-cost)/s*100:0;
-          calc.innerHTML=`<div><span>Costo total</span><span class="num">${money(cost)}</span></div><div><span>Margen promedio</span><span class="num" style="color:var(--good)">${mg.toFixed(1)}%</span></div><div><span>Subtotal (venta)</span><span class="num">${money(s)}</span></div><div><span>IVA ${pct}%</span><span class="num">${money(iva)}</span></div><div class="tot"><span>Total</span><span class="num">${money(s+iva)}</span></div>`;
-        }else{calc.innerHTML=`<div><span>Subtotal</span><span class="num">${money(s)}</span></div><div><span>IVA ${pct}%</span><span class="num">${money(iva)}</span></div><div class="tot"><span>Total</span><span class="num">${money(s+iva)}</span></div>`;}};
+      const doCalc=()=>{const lines=lineEd?lineEd.read():[],s=r2(sumLineas(lineType,lines)),pct=+(tasaForm()*100).toFixed(4),iva=r2(s*tasaForm());
+        const rets=retEd?retEd.read():[],retTot=r2(rets.reduce((a,r)=>a+s*(+r.tasa||0)/100,0));
+        const retRows=rets.filter(r=>r.tasa).map(r=>`<div><span>${escAttr(r.concepto||"Retención")} (${(+r.tasa)}%)</span><span class="num">−${money(r2(s*(+r.tasa||0)/100))}</span></div>`).join("");
+        const porAna={};lines.forEach(l=>{const k=(l.analitica||"").trim()||"Sin analítica";
+          porAna[k]=(porAna[k]||0)+LINESPEC[lineType].imp(l);});
+        const claves=Object.keys(porAna);
+        const anaRows=claves.length>1?`<div class="ana-tit">Por analítica</div>`+claves.map(k=>
+          `<div class="ana-row"><span>${escAttr(k)}</span><span class="num">${money(porAna[k])}</span></div>`).join(""):"";
+        const total=`<div class="tot"><span>Total</span><span class="num">${money(r2(s+iva-retTot))}</span></div>`;
+        if(showMargen){const cost=lines.reduce((a,l)=>a+(+l.costo||0)*(+l.cantidad||0),0),mg=s>0?(s-cost)/s*100:0;
+          calc.innerHTML=`<div><span>Costo total</span><span class="num">${money(cost)}</span></div><div><span>Margen promedio</span><span class="num" style="color:var(--good)">${mg.toFixed(1)}%</span></div><div><span>Subtotal (venta)</span><span class="num">${money(s)}</span></div><div><span>IVA ${pct}%</span><span class="num">${money(iva)}</span></div>${retRows}${total}${anaRows}`;
+        }else{calc.innerHTML=`<div><span>Subtotal</span><span class="num">${money(s)}</span></div><div><span>IVA ${pct}%</span><span class="num">${money(iva)}</span></div>${retRows}${total}${anaRows}`;}};
       lineEd=makeLineEditor(lineType,$("#lineas"),rec?rec.lineas:formLines,doCalc,catalog);
       if(ivaInput)ivaInput.addEventListener("input",doCalc);
-      if(isCot){retEd=makeRetEditor($("#rets"),rec?rec.retenciones:null,doCalc);doCalc();
-        const cliSel=$("#f-cliid");if(cliSel)cliSel.addEventListener("change",()=>{const cl=state.clientes.find(x=>x.id===cliSel.value);
-          if(cl){if(cl.nombre)$("#f-cli").value=cl.nombre;if(cl.ivaPct!=null&&$("#f-iva"))$("#f-iva").value=cl.ivaPct;retEd.setRows(cl.retenciones||[]);doCalc();}});}
+      // Cotizaciones y facturas comparten el editor de retenciones y heredan los impuestos del cliente.
+      const usaRets=isCot||lineType==="factura";
+      if(usaRets){retEd=makeRetEditor($("#rets"),rec?rec.retenciones:null,doCalc);doCalc();
+        const cliSel=$("#f-cliid"),cliInp=$("#f-cli");
+        const aplicaCliente=cl=>{if(!cl)return;
+          if(cl.nombre&&cliInp)cliInp.value=cl.nombre;
+          if(cl.ivaPct!=null&&ivaInput)ivaInput.value=cl.ivaPct;
+          retEd.setRows(cl.retenciones||[]);doCalc();
+          toast("Impuestos de "+cl.nombre+" aplicados");};
+        if(cliSel)cliSel.addEventListener("change",()=>aplicaCliente(state.clientes.find(x=>x.id===cliSel.value)));
+        if(cliInp)cliInp.addEventListener("change",()=>{const n=cliInp.value.trim().toLowerCase();
+          const cl=state.clientes.find(x=>String(x.nombre||"").trim().toLowerCase()===n);
+          if(cl){if(cliSel)cliSel.value=cl.id;aplicaCliente(cl);}});}
     }
     if($("#rets")&&!retEd){retEd=makeRetEditor($("#rets"),formRets||(rec?rec.retenciones:null),function(){});}
 
@@ -2318,9 +2360,11 @@ function(t){t.__bidiEngine__=t.prototype.__bidiEngine__=function(t){var r,n,i,a,
       columns:["CANT.","UNI.","DESCRIPCIÓN","PRECIO UNIT","PRECIO TOTAL"],rows,totals,
       contact:[EMISOR.email,EMISOR.contacto,"Esta cotización tiene una validez de: "+(+c.vigencia||0)+" Días.","Esta cotización se emite el: "+fmtDate(c.fecha),"¡Gracias por su preferencia!"],
       filename:c.folio+".pdf"});}
-  function specFactura(f){const sub=facSubtotal(f),iva=facTotal(f)-sub,pagado=facPagado(f),saldo=facSaldo(f),fl=flujoMeta(f.flujo);
-    const totals=[{label:"SUBTOTAL",value:money(sub)},{label:ivaLbl(f).toUpperCase(),value:money(iva)},{label:"TOTAL",value:money(facTotal(f)),bold:true,rule:true}];
-    if(pagado>0)totals.push({label:"PAGADO",value:money(pagado)});if(saldo>0.01)totals.push({label:"SALDO",value:money(saldo),bold:true});
+  function specFactura(f){const sub=facSubtotal(f),iva=facIva(f),pagado=facPagado(f),saldo=facSaldo(f),fl=flujoMeta(f.flujo);
+    const totals=[{label:"SUBTOTAL",value:money(sub)},{label:ivaLbl(f).toUpperCase(),value:money(iva)}];
+    (f.retenciones||[]).filter(r=>r.tasa).forEach(r=>totals.push({label:(r.concepto||"Retención").toUpperCase()+" "+(+r.tasa)+"%",value:money(r2(sub*(+r.tasa)/100))}));
+    totals.push({label:"TOTAL",value:money(facTotal(f)),bold:true,rule:true});
+    if(pagado>0)totals.push({label:"PAGADO",value:money(pagado)});if(saldo>CENTAVO)totals.push({label:"SALDO",value:money(saldo),bold:true});
     return ({kind:"Factura",folio:f.folio,partyLabel:"CLIENTE",party:f.cliente,metaLeft:["Estatus: "+fl.label],
       metaRight:["Emisión: "+fmtDate(f.fecha),"Vence: "+fmtDate(f.vencimiento),"Folio: "+f.folio],
       columns:["CANT.","UNI.","DESCRIPCIÓN","PRECIO UNIT","PRECIO TOTAL"],rows:(f.lineas||[]).map(l=>line5(l,"precio")),totals,

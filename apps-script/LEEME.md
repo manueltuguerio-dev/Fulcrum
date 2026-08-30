@@ -106,10 +106,28 @@ con el importe de cada centro de costo. La **unidad** se imprime en la columna *
 - **Impuestos e IVA** (barra lateral) fija el **IVA por defecto** de los documentos nuevos.
 - Cada **cotización, factura, orden de compra y orden de venta** tiene su propio campo **IVA (%)**,
   que puede diferir del global (útil para tasa 8 % de frontera o 0 %).
-- Cada **cliente** guarda su **margen** y su **IVA**, que se aplican al cotizarle.
+- Cada **cliente** guarda su **margen**, su **IVA** y sus **retenciones**.
+- **Cotizaciones y facturas** llevan un editor de **impuestos y retenciones**: se **agregan** con
+  *«+ Agregar impuesto o retención»*, se **editan** y se **eliminan** con la **×**. El campo Concepto
+  sugiere los impuestos **ya dados de alta** (los de los clientes y los usados en otros documentos)
+  y al elegir uno **completa su tasa**.
+- Al escoger el cliente —por el selector *Impuestos de cliente* o escribiendo su nombre en el campo
+  Cliente, que **sugiere los clientes dados de alta**— la factura toma **su IVA y sus retenciones**.
+- Las retenciones se **restan del total** de la factura y salen impresas en el PDF.
 - En las **facturas de proveedor** el **IVA se captura como importe** (se respeta el del XML) y
   puede editarse a mano.
-- Las **retenciones** (ISR, IVA u otras) se capturan libremente por cliente y por cotización.
+
+## Redondeo y aplicación de pagos
+
+Todos los importes de documento (subtotal, IVA, retenciones, total, pagado y saldo) se **redondean
+a centavos**. Antes un saldo podía quedar con cuatro decimales (p. ej. `18171.1796`) y el navegador
+rechazaba el monto al aplicar el pago con el aviso *«Ingresa un valor válido»*. Ahora:
+
+- El saldo propuesto siempre trae **dos decimales** y se acepta sin error.
+- Los campos de importe admiten cualquier número de decimales al capturar (útil con los CFDI) y el
+  sistema redondea al guardar.
+- Al aplicar un pago, una diferencia de hasta **2 centavos** contra el saldo se ajusta sola, de modo
+  que la factura queda **saldada** y pasa a estatus **Pagada**.
 
 ## Si algo falla
 
