@@ -191,6 +191,66 @@
     ];
     return s;
   }
+  /* ---------- catálogos configurables ---------- */
+  // Cada catálogo se administra desde el módulo «Catálogos» y alimenta los formularios.
+  const CATS=[
+    {k:"unidades",label:"Unidades de medida",sing:"unidad",cols:["clave","nombre","decimales"],
+      campos:[{k:"clave",label:"Clave",ph:"PZ",req:true},{k:"nombre",label:"Nombre",ph:"Pieza"},
+        {k:"decimales",label:"Decimales permitidos",tipo:"num",v:0,ayuda:"0 = solo enteros · 2 o 3 para kilos, metros, horas…"}]},
+    {k:"analiticas",label:"Líneas analíticas",sing:"línea analítica",cols:["nombre","nota"],
+      campos:[{k:"nombre",label:"Nombre",ph:"MANTENIMIENTO",req:true},{k:"nota",label:"Descripción",ph:"Centro de costo"}]},
+    {k:"impuestos",label:"Impuestos y retenciones",sing:"impuesto",cols:["concepto","tasa"],
+      campos:[{k:"concepto",label:"Concepto",ph:"Retención ISR",req:true},{k:"tasa",label:"Tasa %",tipo:"num",v:0}]},
+    {k:"metodosPago",label:"Métodos de pago",sing:"método de pago",cols:["nombre"],
+      campos:[{k:"nombre",label:"Nombre",ph:"Transferencia",req:true}]},
+    {k:"motivosRechazo",label:"Motivos de rechazo",sing:"motivo",cols:["nombre"],
+      campos:[{k:"nombre",label:"Motivo",ph:"Precio fuera de mercado",req:true}]},
+    {k:"plantillas",label:"Plantillas de correo",sing:"plantilla",cols:["nombre","asunto"],
+      campos:[{k:"nombre",label:"Nombre",ph:"Envío de cotización",req:true},
+        {k:"asunto",label:"Asunto",ph:"Cotización {{folio}} · {{empresa}}"},
+        {k:"cuerpo",label:"Mensaje",tipo:"area",ph:"Estimado…",
+          ayuda:"Variables: {{cliente}} {{contacto}} {{folio}} {{total}} {{vigencia}} {{entrega}} {{fecha}} {{empresa}}"}]},
+    {k:"conceptos",label:"Conceptos / productos",sing:"concepto",cols:["desc","unidad","costo"],
+      campos:[{k:"desc",label:"Descripción",ph:"Bomba centrífuga 40 HP",req:true},
+        {k:"unidad",label:"Unidad",ph:"PZ"},{k:"analitica",label:"Analítica",ph:""},
+        {k:"costo",label:"Costo sugerido",tipo:"num",v:0}]},
+  ];
+  const UNIDADES_DEF=[["PZ","Pieza",0],["SERV","Servicio",0],["LOT","Lote",0],["KG","Kilogramo",3],["TON","Tonelada",3],
+    ["MTR","Metro",2],["M2","Metro cuadrado",2],["M3","Metro cúbico",2],["LT","Litro",2],["HR","Hora",2],
+    ["DIA","Día",0],["CAJA","Caja",0],["JGO","Juego",0],["ROLLO","Rollo",0]];
+  const PLANTILLA_DEF={nombre:"Envío de cotización",asunto:"Cotización {{folio}} · {{empresa}}",
+    cuerpo:"Estimado(a) {{contacto}}:\n\nPor este medio le envío la cotización {{folio}} por un total de {{total}}.\n\n"
+      +"Tiempo de entrega: {{entrega}}\nVigencia de la oferta: {{vigencia}}\n\n"
+      +"Quedo atento a cualquier comentario.\n\nSaludos cordiales,\n{{empresa}}"};
+  function catalogosDefault(s){
+    if(!s.catalogos||typeof s.catalogos!=="object")s.catalogos={};
+    const c=s.catalogos;
+    CATS.forEach(x=>{if(!Array.isArray(c[x.k]))c[x.k]=[];});
+    if(!c.unidades.length)c.unidades=UNIDADES_DEF.map(u=>({id:uid(),clave:u[0],nombre:u[1],decimales:u[2]}));
+    if(!c.impuestos.length)c.impuestos=[{id:uid(),concepto:"Retención ISR",tasa:1.25},{id:uid(),concepto:"Retención IVA",tasa:10.6667}];
+    if(!c.metodosPago.length)c.metodosPago=["Transferencia","Cheque","Efectivo","Tarjeta"].map(n=>({id:uid(),nombre:n}));
+    if(!c.motivosRechazo.length)c.motivosRechazo=["Precio fuera de mercado","Tiempo de entrega","Se eligió a otro proveedor",
+      "Proyecto cancelado","Sin presupuesto"].map(n=>({id:uid(),nombre:n}));
+    if(!c.plantillas.length)c.plantillas=[Object.assign({id:uid()},PLANTILLA_DEF)];
+    // Los clientes guardan sus contactos; se respeta el campo antiguo de correos.
+    (s.clientes||[]).forEach(cl=>{if(!Array.isArray(cl.contactos))cl.contactos=[];});
+    return s;
+  }
+  const cat=k=>((state.catalogos||{})[k]||[]);
+  const unidadesCat=()=>{const u=cat("unidades").map(x=>String(x.clave||"").trim()).filter(Boolean);
+    return u.length?u:UNIDADES_DEF.map(x=>x[0]);};
+  const unidadDec=clave=>{const u=cat("unidades").find(x=>String(x.clave||"").toUpperCase()===String(clave||"").trim().toUpperCase());
+    const d=u&&u.decimales!=null?+u.decimales:0;return isFinite(d)?Math.max(0,Math.min(6,d)):0;};
+  const metodosPago=()=>{const m=cat("metodosPago").map(x=>x.nombre).filter(Boolean);
+    return m.length?m:["Transferencia","Cheque","Efectivo","Tarjeta"];};
+  // Correos de un cliente: contactos marcados como destino + el campo libre de correos.
+  function contactosDe(cli){
+    if(!cli)return [];
+    const l=(cli.contactos||[]).filter(c=>c&&c.email);
+    (String(cli.emails||"").split(/[,;]+/).map(s=>s.trim()).filter(Boolean)).forEach(em=>{
+      if(!l.some(c=>String(c.email).toLowerCase()===em.toLowerCase()))l.push({nombre:"",email:em,puesto:""});});
+    return l;
+  }
   const COLL={cotizacion:"cotizaciones",orden:"ordenes",factura:"facturas",pago:"pagos",proyecto:"proyectos",proveedor:"proveedores",venta:"ventas",gasto:"gastos",cliente:"clientes",integrante:"integrantes"};
   const EMPRESA="empresa";   // pagador por defecto de los gastos
   const nombreIntegrante=id=>{if(!id||id===EMPRESA)return "Empresa";
@@ -200,6 +260,7 @@
   function normalize(s){if(!s||typeof s!=="object")s={};KEYS.forEach(k=>{if(!Array.isArray(s[k]))s[k]=[];});
     if(!s.config||typeof s.config!=="object")s.config={iva:16};
     if(s.config.iva==null)s.config.iva=16;
+    catalogosDefault(s);
     return s;}
   // El estado vive en Google Sheets; se guarda con retraso para no saturar el servidor.
   let saveTimer=null,saving=false,pendingSave=false;
@@ -219,6 +280,7 @@
   }
   state=normalize(null);
   const ui={cotFilter:"all",ocFilter:"all",facFilter:"all",ovFilter:"all",proyMonth:"all",contaMonth:null,provSel:[],
+    catTab:"unidades",cotSel:[],
     q:{},sort:{}};   // q: texto de búsqueda por módulo · sort: {col,dir} por módulo
   (function(){const pm=state.pagos.map(p=>monthKey(p.fecha)).filter(Boolean).sort();ui.contaMonth=pm.length?pm[pm.length-1]:monthKey(todayStr());})();
   const SNAPS="fulcrum_erp_snaps_v1";
@@ -346,6 +408,7 @@
     {id:"clientes",label:"Clientes",icon:'<circle cx="12" cy="8" r="3.4" stroke-width="1.7"/><path d="M5 20a7 7 0 0 1 14 0" stroke-width="1.7"/>'},
     {id:"proyecciones",label:"Proyecciones",icon:'<path d="M3 3v18h18" stroke-width="1.7"/><path d="M7 14l3-4 3 3 5-7" stroke-width="1.7"/>'},
     {id:"contabilidad",label:"Contabilidad",icon:'<path d="M4 3h16v18H4z" stroke-width="1.7"/><path d="M8 7h8M8 11h8M8 15h5" stroke-width="1.7"/>'},
+    {id:"catalogos",label:"Catálogos",icon:'<path d="M4 6h16M4 12h16M4 18h16" stroke-width="1.7"/><circle cx="8" cy="6" r="1.6" stroke-width="1.7"/><circle cx="14" cy="12" r="1.6" stroke-width="1.7"/><circle cx="10" cy="18" r="1.6" stroke-width="1.7"/>'},
     {id:"cierres",label:"Cierres / respaldos",icon:'<path d="M3 4h18v5H3z" stroke-width="1.7"/><path d="M5 9v11h14V9M9 13h6" stroke-width="1.7"/>'},
   ];
   let current="dashboard";
@@ -379,6 +442,7 @@
     return `<div class="filterbar"><span class="flabel">Mes:</span>`+opts.map(o=>
       `<button class="fbtn ${o.v===current?"on":""}" data-action="filter" data-scope="${scope}" data-val="${o.v}" style="text-transform:capitalize">${o.label}</button>`).join("")+`</div>`;
   }
+  const mailIcon='<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" width="14" height="14" style="vertical-align:-2px;margin-right:5px"><rect x="2.5" y="5" width="19" height="14" rx="2" stroke-width="1.7"/><path d="M3 6.5l9 6 9-6" stroke-width="1.7"/></svg>';
   function emptyRow(cols,msg){return `<tr><td colspan="${cols}"><div class="empty"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor"><path d="M4 7h16M4 12h16M4 17h10" stroke-width="1.6"/></svg><div>${msg}</div></div></td></tr>`;}
 
   function barChart(data){
@@ -481,24 +545,45 @@
     const opts=[{v:"all",label:"Todos"},{v:"borrador",label:"Borrador"},{v:"enviada",label:"Enviada"},{v:"aceptada",label:"Aceptada"},{v:"rechazada",label:"Rechazada"}];
     const base=state.cotizaciones.filter(c=>ui.cotFilter==="all"||c.estatus===ui.cotFilter);
     const list=listaDe(base,"cot",{total:c=>cotTotal(c),margen:c=>cotMargenPct(c),lineas:c=>(c.lineas||[]).length});
+    const sel=(ui.cotSel||[]).filter(id=>state.cotizaciones.some(c=>c.id===id));
+    const selTot=state.cotizaciones.filter(c=>sel.indexOf(c.id)>=0).reduce((a,c)=>a+cotTotal(c),0);
+    const ESTATUS=["borrador","enviada","aceptada","rechazada"];
+    const barraSel=`<div class="selbar">
+      <span>${sel.length?sel.length+" cotización(es) seleccionada(s) · "+money(selTot):"Marca cotizaciones para enviarlas o cambiarles el estatus en bloque"}</span>
+      <div class="headacts">
+        ${sel.length?`<button class="ghost" data-action="cot-sel-none">Quitar selección</button>`:""}
+        <select id="cot-masivo-estatus" ${sel.length?"":"disabled"}>${ESTATUS.map(e=>`<option value="${e}">${e.charAt(0).toUpperCase()+e.slice(1)}</option>`).join("")}</select>
+        <button class="ghost" data-action="cot-masivo" ${sel.length?"":"disabled"}>Cambiar estatus</button>
+        <button class="ghost warnact" data-action="cot-rechazar-sel" ${sel.length?"":"disabled"}>Rechazar</button>
+        <button class="primary" data-action="cot-enviar-sel" ${sel.length?"":"disabled"}>${mailIcon}Enviar por correo</button>
+      </div></div>`;
     return `${headBar("Cotizaciones","Propuestas a clientes · margen por línea · convierte las aceptadas en factura","cotizacion","Nueva cotización","rep-cot","cot-masiva")}
     ${filterBar("cotFilter",ui.cotFilter,opts)}
     ${barraBusqueda("cot","Buscar por folio, cliente o concepto…",base.length,list.length)}
+    ${barraSel}
     <div class="panel"><div class="tablewrap"><table>
-    <thead><tr>${th("cot","folio","Folio")}${th("cot","cliente","Cliente")}${th("cot","fecha","Fecha")}<th>Origen (costo)</th>${th("cot","lineas","Líneas","r")}${th("cot","margen","Margen","r")}${th("cot","total","Total","r")}${th("cot","estatus","Estatus")}<th></th></tr></thead>
+    <thead><tr><th style="width:34px"><input type="checkbox" data-action="cot-sel-all" ${sel.length&&sel.length===list.length?"checked":""}></th>
+      ${th("cot","folio","Folio")}${th("cot","cliente","Cliente")}${th("cot","fecha","Fecha")}<th>Origen (costo)</th>${th("cot","lineas","Líneas","r")}${th("cot","margen","Margen","r")}${th("cot","total","Total","r")}${th("cot","estatus","Estatus")}<th></th></tr></thead>
     <tbody>${list.length?list.map(c=>`<tr>
+      <td><input type="checkbox" data-action="cot-sel" data-id="${c.id}" ${sel.indexOf(c.id)>=0?"checked":""}></td>
       <td class="mono">${c.folio}</td><td>${c.cliente}</td><td>${fmtDate(c.fecha)}</td>
       <td>${(c.origenProveedorIds||[]).length?(c.origenProveedorIds.map(pid=>{const p=state.proveedores.find(x=>x.id===pid);
         return p?`<span class="pill p-mut" style="margin:1px 2px" title="${escAttr(p.proveedor)}">${p.folio||"s/folio"}</span>`:"";}).join("")):'<span style="color:var(--text-faint)">—</span>'}</td>
       <td class="r num">${(c.lineas||[]).length}</td><td class="r num" style="color:var(--good);font-weight:600">${cotMargenPct(c).toFixed(1)}%</td>
-      <td class="r num strong" title="${(c.retenciones||[]).length?"Neto de retenciones":""}">${money(cotTotal(c))}${(c.retenciones||[]).length?' <span style="color:var(--text-faint);font-weight:400">ret</span>':""}</td><td><span class="pill ${cotCls[c.estatus]}">${c.estatus}</span></td>
+      <td class="r num strong" title="${(c.retenciones||[]).length?"Neto de retenciones":""}">${money(cotTotal(c))}${(c.retenciones||[]).length?' <span style="color:var(--text-faint);font-weight:400">ret</span>':""}</td><td><span class="pill ${cotCls[c.estatus]}" ${c.motivoRechazo?`title="${escAttr(c.motivoRechazo+(c.comentarioRechazo?" · "+c.comentarioRechazo:""))}"`:""}>${c.estatus}</span>
+        ${c.estatus==="rechazada"&&c.motivoRechazo?`<div style="color:var(--text-faint);font-size:10.5px;margin-top:2px">${escAttr(c.motivoRechazo)}</div>`:""}
+        ${c.enviadaEl?`<div style="color:var(--text-faint);font-size:10.5px;margin-top:2px">enviada ${fmtDate(c.enviadaEl)}</div>`:""}</td>
       <td><div class="rowact">
         <button class="act" data-action="print" data-type="cot" data-id="${c.id}">PDF</button>
+        <button class="act" data-action="cot-enviar" data-id="${c.id}">Enviar</button>
         <button class="act" data-action="edit" data-type="cotizacion" data-id="${c.id}">Editar</button>
         <button class="act" data-action="cot-dup" data-id="${c.id}">Duplicar</button>
         ${c.ventaId?`<span class="pill p-info">→ orden de venta</span>`:(c.estatus==="aceptada"?`<button class="act good" data-action="cot-venta" data-id="${c.id}">A orden de venta</button>`:`<button class="act" data-action="cot-status" data-id="${c.id}">Avanzar</button>`)}
+        ${c.estatus==="rechazada"
+          ?`<button class="act" data-action="cot-reactivar" data-id="${c.id}">Reactivar</button>`
+          :`<button class="act warnact" data-action="cot-rechazar" data-id="${c.id}">Rechazar</button>`}
         <button class="act warnact" data-action="del" data-type="cotizaciones" data-id="${c.id}">Eliminar</button>
-      </div></td></tr>`).join(""):emptyRow(9,"Sin cotizaciones con ese estatus")}</tbody></table></div></div>`;
+      </div></td></tr>`).join(""):emptyRow(10,"Sin cotizaciones con ese estatus")}</tbody></table></div></div>`;
   }
 
   function vVentas(){
@@ -832,8 +917,29 @@
     pinta();
   }
 
+  function vCatalogos(){
+    const act=CATS.find(c=>c.k===ui.catTab)||CATS[0];
+    const filas=cat(act.k);
+    const tabs=`<div class="filterbar"><span class="flabel">Catálogo:</span>`+CATS.map(c=>
+      `<button class="fbtn ${c.k===act.k?"on":""}" data-action="cat-tab" data-cat="${c.k}">${c.label} (${cat(c.k).length})</button>`).join("")+`</div>`;
+    const enc=act.campos.map(f=>`<th>${f.label}</th>`).join("");
+    const celda=(f,r)=>{const v=r[f.k];
+      if(f.tipo==="num")return `<td class="r num">${v==null||v===""?"—":v}</td>`;
+      if(f.tipo==="area")return `<td style="max-width:420px;color:var(--text-dim);font-size:12px">${escAttr(String(v||"").slice(0,90))}${String(v||"").length>90?"…":""}</td>`;
+      return `<td>${escAttr(v==null?"":String(v))}</td>`;};
+    return `<div class="head"><div><h2>Catálogos</h2><p>Da de alta y edita los valores que usan los formularios: unidades, analíticas, impuestos, plantillas y más</p></div>
+      <div class="headacts"><button class="primary" data-action="cat-add" data-cat="${act.k}">${plusIcon}Agregar ${act.sing}</button></div></div>
+      ${tabs}
+      <div class="panel"><div class="tablewrap"><table>
+      <thead><tr>${enc}<th></th></tr></thead>
+      <tbody>${filas.length?filas.map(r=>`<tr>${act.campos.map(f=>celda(f,r)).join("")}
+        <td><div class="rowact"><button class="act" data-action="cat-edit" data-cat="${act.k}" data-id="${r.id}">Editar</button>
+        <button class="act warnact" data-action="cat-del" data-cat="${act.k}" data-id="${r.id}">Eliminar</button></div></td></tr>`).join(""):
+        emptyRow(act.campos.length+1,"Sin registros en este catálogo")}</tbody></table></div></div>
+      <p class="hintline">Los valores de este apartado aparecen como sugerencia en los formularios. Borrar uno no modifica los documentos ya capturados.</p>`;
+  }
   const viewFns={dashboard:vDashboard,integrantes:vIntegrantes,proyectos:vProyectos,cotizaciones:vCotizaciones,ventas:vVentas,ordenes:vOrdenes,
-    facturas:vFacturas,pagos:vPagos,proveedores:vProveedores,gastos:vGastos,clientes:vClientes,proyecciones:vProyecciones,contabilidad:vContabilidad,cierres:vCierres};
+    facturas:vFacturas,pagos:vPagos,proveedores:vProveedores,gastos:vGastos,clientes:vClientes,proyecciones:vProyecciones,contabilidad:vContabilidad,cierres:vCierres,catalogos:vCatalogos};
   function render(){renderNav();$("#view").innerHTML=viewFns[current]();window.scrollTo({top:0});}
 
   /* ---------- modal / formularios ---------- */
@@ -881,10 +987,10 @@
   }
   const optList=(arr,labelFn,sel)=>'<option value="">— ninguno —</option>'+arr.map(x=>`<option value="${x.id}" ${x.id===sel?"selected":""}>${escAttr(labelFn(x))}</option>`).join("");
 
-  const UNIDADES=["PZ","SERV","LOT","KG","TON","MTR","M2","M3","LT","HR","DIA","CAJA","JGO","ROLLO"];
-  // Valores de analítica ya usados, para sugerirlos en las líneas nuevas.
+  // Analíticas del catálogo más las ya usadas en cualquier documento.
   function analiticasUsadas(){
     const set=new Set();
+    cat("analiticas").forEach(a=>{if(a.nombre)set.add(String(a.nombre).trim());});
     [state.cotizaciones,state.ventas,state.facturas,state.ordenes].forEach(col=>
       (col||[]).forEach(d=>(d.lineas||[]).forEach(l=>{if(l.analitica)set.add(String(l.analitica).trim());})));
     return [...set].filter(Boolean).sort();
@@ -894,6 +1000,7 @@
     const add=(l,precio,margen)=>{if(!l||!l.desc)return;const k=l.desc.trim().toLowerCase();if(!k)return;
       map.set(k,{desc:l.desc.trim(),costo:+l.costo||0,precio:+precio||0,margen:margen==null?null:+margen,
         unidad:l.unidad||"",analitica:l.analitica||""});};
+    cat("conceptos").forEach(p=>add({desc:p.desc,costo:p.costo,unidad:p.unidad,analitica:p.analitica},0,null));
     state.cotizaciones.forEach(c=>(c.lineas||[]).forEach(l=>add(l,lineaPrecio(l),l.margen)));
     state.ventas.forEach(o=>(o.lineas||[]).forEach(l=>add(l,l.precio,null)));
     state.facturas.forEach(f=>(f.lineas||[]).forEach(l=>add(l,l.precio,null)));
@@ -903,16 +1010,34 @@
   function makeLineEditor(type,host,initial,onChange,catalog){
     const spec=LINESPEC[type],gt=spec.cols.map(c=>c.w).join(" ")+" 92px 22px";
     const dl=(catalog?`<datalist id="fx-prod">${[...catalog.values()].map(p=>`<option value="${escAttr(p.desc)}"></option>`).join("")}</datalist>`:"")
-      +`<datalist id="fx-uni">${UNIDADES.map(u=>`<option value="${u}"></option>`).join("")}</datalist>`
+      +`<datalist id="fx-uni">${unidadesCat().map(u=>`<option value="${u}"></option>`).join("")}</datalist>`
       +`<datalist id="fx-ana">${analiticasUsadas().map(a=>`<option value="${escAttr(a)}"></option>`).join("")}</datalist>`;
     host.innerHTML=`${dl}<div class="lhead" style="grid-template-columns:${gt}">${spec.cols.map(c=>`<span>${c.h}</span>`).join("")}<span>Importe</span><span></span></div><div class="llist"></div><button type="button" class="ghost lineadd">+ Agregar línea</button>`;
     const list=host.querySelector(".llist");
-    const rowHtml=l=>`<div class="lrow" style="grid-template-columns:${gt}">${spec.cols.map(c=>{const v=escAttr(l&&l[c.k]!=null?l[c.k]:(c.v!=null?c.v:""));
+    let margenDef=null;   // margen por defecto del cliente elegido
+    const rowHtml=l=>`<div class="lrow" style="grid-template-columns:${gt}">${spec.cols.map(c=>{
+      const porDef=(c.k==="margen"&&margenDef!=null)?margenDef:(c.v!=null?c.v:"");
+      const v=escAttr(l&&l[c.k]!=null?l[c.k]:porDef);
       const lista=c.lista?` list="${c.lista}"`:(c.k==="desc"&&catalog?' list="fx-prod"':"");
       return c.t==="text"?`<input data-k="${c.k}"${lista} placeholder="${c.ph||""}" value="${v}">`:`<input data-k="${c.k}" type="number" min="0" step="${c.step||"any"}" placeholder="${c.ph||""}" value="${v}">`;}).join("")}<span class="l-imp num">$0.00</span><button type="button" class="l-del" aria-label="Quitar">&times;</button></div>`;
-    const read=()=>[...list.querySelectorAll(".lrow")].map(r=>{const o={};spec.cols.forEach(c=>{const el=r.querySelector('[data-k="'+c.k+'"]');o[c.k]=c.t==="text"?el.value.trim():(+el.value||0);});return o;});
-    const recalc=()=>{list.querySelectorAll(".lrow").forEach(r=>{const o={};spec.cols.forEach(c=>{const el=r.querySelector('[data-k="'+c.k+'"]');o[c.k]=c.t==="text"?el.value:(+el.value||0);});r.querySelector(".l-imp").textContent=money(spec.imp(o));});onChange(read());};
+    // La cantidad admite decimales solo si la unidad del catálogo los permite.
+    const decDe=v=>unidadDec(v);
+    const ajustaFila=(r,redondear)=>{const u=r.querySelector('[data-k="unidad"]'),c=r.querySelector('[data-k="cantidad"]');
+      if(!u||!c)return;const d=decDe(u.value);
+      c.step=d>0?String(1/Math.pow(10,d)):"1";
+      c.title=d>0?("Admite hasta "+d+" decimales"):"Solo cantidades enteras";
+      if(redondear&&c.value!==""){const n=+c.value||0;const f=Math.pow(10,d);const v=Math.round(n*f)/f;
+        if(v!==n)c.value=v;}};
+    const ajustaTodas=redondear=>list.querySelectorAll(".lrow").forEach(r=>ajustaFila(r,redondear));
+    const leeFila=r=>{const o={};spec.cols.forEach(c=>{const el=r.querySelector('[data-k="'+c.k+'"]');o[c.k]=c.t==="text"?el.value.trim():(+el.value||0);});
+      if(o.unidad!=null&&o.cantidad!=null){const f=Math.pow(10,decDe(o.unidad));o.cantidad=Math.round((+o.cantidad||0)*f)/f;}
+      return o;};
+    const read=()=>[...list.querySelectorAll(".lrow")].map(leeFila);
+    const recalc=()=>{ajustaTodas(false);list.querySelectorAll(".lrow").forEach(r=>{const o=leeFila(r);r.querySelector(".l-imp").textContent=money(spec.imp(o));});onChange(read());};
     host.addEventListener("input",recalc);
+    // Al cambiar la unidad se ajusta (y redondea) la cantidad de esa línea.
+    host.addEventListener("change",e=>{const inp=e.target;
+      if(inp.dataset&&inp.dataset.k==="unidad"){ajustaFila(inp.closest(".lrow"),true);recalc();}});
     if(catalog)host.addEventListener("change",e=>{const inp=e.target;if(inp.dataset&&inp.dataset.k==="desc"){const p=catalog.get(inp.value.trim().toLowerCase());
       if(p){const row=inp.closest(".lrow"),set=(k,val)=>{const el=row.querySelector('[data-k="'+k+'"]');if(el&&val!=null&&val!=="")el.value=val;};
         set("costo",p.costo||"");if(row.querySelector('[data-k="margen"]')&&p.margen!=null)set("margen",p.margen);
@@ -920,18 +1045,38 @@
         if(row.querySelector('[data-k="precio"]'))set("precio",p.precio||"");recalc();}}});
     host.addEventListener("click",e=>{if(e.target.closest(".l-del")){if(list.querySelectorAll(".lrow").length>1)e.target.closest(".lrow").remove();recalc();}else if(e.target.closest(".lineadd")){list.insertAdjacentHTML("beforeend",rowHtml());recalc();}});
     (initial&&initial.length?initial:[null]).forEach(l=>list.insertAdjacentHTML("beforeend",rowHtml(l)));
-    recalc();
-    return {read};
+    ajustaTodas(false);recalc();
+    // Fija el margen del cliente: lo usan las líneas nuevas y, si se pide, las existentes.
+    const setMargen=(m,aTodas)=>{if(m==null||!isFinite(+m))return;margenDef=+m;
+      if(aTodas)list.querySelectorAll('.lrow [data-k="margen"]').forEach(el=>{el.value=+m;});
+      recalc();};
+    return {read,setMargen};
   }
   // Impuestos y retenciones dados de alta: los de los clientes mas los ya usados en documentos.
   function retCatalogo(){
     const map=new Map();
     const add=r=>{if(!r||!r.concepto)return;const k=String(r.concepto).trim();if(!k)return;
       if(!map.has(k.toLowerCase()))map.set(k.toLowerCase(),{concepto:k,tasa:+r.tasa||0});};
+    cat("impuestos").forEach(add);
     (state.clientes||[]).forEach(c=>(c.retenciones||[]).forEach(add));
     [state.cotizaciones,state.facturas].forEach(col=>(col||[]).forEach(d=>(d.retenciones||[]).forEach(add)));
-    [{concepto:"Retención ISR",tasa:1.25},{concepto:"Retención IVA",tasa:10.6667}].forEach(add);
     return [...map.values()].sort((a,b)=>a.concepto.localeCompare(b.concepto));
+  }
+  // Contactos de una empresa: nombre, puesto y correo.
+  function makeConEditor(host,initial){
+    host.innerHTML=`<div class="conhead"><span>Nombre</span><span>Puesto</span><span>Correo</span><span></span></div>
+      <div class="clist"></div><button type="button" class="ghost conadd">+ Agregar contacto</button>`;
+    const list=host.querySelector(".clist");
+    const rowHtml=c=>`<div class="crow"><input data-k="nombre" placeholder="Nombre" value="${escAttr(c?c.nombre:"")}">
+      <input data-k="puesto" placeholder="Compras" value="${escAttr(c?c.puesto:"")}">
+      <input data-k="email" type="email" placeholder="correo@empresa.com" value="${escAttr(c?c.email:"")}">
+      <button type="button" class="l-del" aria-label="Quitar">&times;</button></div>`;
+    const read=()=>[...list.querySelectorAll(".crow")].map(r=>({nombre:r.querySelector('[data-k="nombre"]').value.trim(),
+      puesto:r.querySelector('[data-k="puesto"]').value.trim(),email:r.querySelector('[data-k="email"]').value.trim()}));
+    host.addEventListener("click",e=>{if(e.target.closest(".l-del"))e.target.closest(".crow").remove();
+      else if(e.target.closest(".conadd"))list.insertAdjacentHTML("beforeend",rowHtml());});
+    (initial&&initial.length?initial:[]).forEach(c=>list.insertAdjacentHTML("beforeend",rowHtml(c)));
+    return {read};
   }
   function makeRetEditor(host,initial,onChange){
     const cat=retCatalogo();
@@ -953,8 +1098,10 @@
 
   function openForm(type,opts){
     opts=opts||{};
-    const editing=opts.id||null,rec=editing?state[COLL[type]].find(x=>x.id===editing):null;
-    let title,body,onsubmit,lineType=null,formLines=null,retEd=null,formRets=null;const t=todayStr();
+    // Los formularios de catálogo y rechazo no viven en una colección de COLL.
+    const coll=COLL[type],editing=opts.id||null;
+    const rec=(editing&&coll&&Array.isArray(state[coll]))?state[coll].find(x=>x.id===editing):null;
+    let title,body,onsubmit,lineType=null,formLines=null,retEd=null,formRets=null,conEd=null;const t=todayStr();
 
     if(type==="cotizacion"){lineType="cotizacion";title=editing?"Editar cotización":"Nueva cotización";
       body=`${campoFolio(rec?rec.folio:nextFolio("COT",state.cotizaciones))}
@@ -965,6 +1112,9 @@
         <div class="grid3"><div class="field"><label for="f-fecha">Fecha</label><input type="date" id="f-fecha" value="${rec?rec.fecha:t}"></div>
           <div class="field"><label for="f-vig">Vigencia (días)</label><input type="number" id="f-vig" value="${rec?rec.vigencia:15}" min="1"></div>
           <div class="field"><label for="f-iva">IVA (%)</label><input type="number" id="f-iva" min="0" max="100" step="0.5" value="${rec&&rec.ivaPct!=null?rec.ivaPct:ivaDefPct()}"></div></div>
+        <div class="field"><label for="f-ent">Tiempo de entrega</label>
+          <input id="f-ent" list="ent-list" value="${escAttr(rec&&rec.entrega?rec.entrega:"")}" placeholder="Ej. 10 días hábiles">
+          <datalist id="ent-list">${["Inmediata","3 días hábiles","5 días hábiles","10 días hábiles","15 días hábiles","20 días hábiles","4 a 6 semanas","Por confirmar"].map(x=>`<option value="${x}"></option>`).join("")}</datalist></div>
         <div class="field"><label>Conceptos <span style="color:var(--text-faint);font-weight:400">· costo + margen por línea</span></label><div id="lineas"></div></div>
         <div class="field"><label>Retenciones <span style="color:var(--text-faint);font-weight:400">· % sobre subtotal (libre)</span></label><div id="rets"></div></div>
         <div class="calc" id="calc"></div>`;
@@ -973,7 +1123,9 @@
         const folio=$("#f-folio").value.trim();
         if(!folio){toast("Escribe el folio.");return false;}
         if(folioRepetido(state.cotizaciones,folio,editing)){toast("Ya existe la cotización "+folio);return false;}
-        const data={folio,cliente:$("#f-cli").value.trim(),fecha:$("#f-fecha").value,vigencia:+$("#f-vig").value,ivaPct:+$("#f-iva").value||0,retenciones:retEd?retEd.read().filter(r=>r.concepto):[],lineas};
+        const data={folio,cliente:$("#f-cli").value.trim(),fecha:$("#f-fecha").value,vigencia:+$("#f-vig").value,
+          entrega:$("#f-ent")?$("#f-ent").value.trim():"",ivaPct:+$("#f-iva").value||0,
+          retenciones:retEd?retEd.read().filter(r=>r.concepto):[],lineas};
         if(editing)Object.assign(rec,data);else state.cotizaciones.push(Object.assign({id:uid(),estatus:"borrador",facturada:false},data));};
     }
     else if(type==="orden"){lineType="orden";title=editing?"Editar orden de compra":"Nueva orden de compra";
@@ -1026,7 +1178,7 @@
           <span class="pf-info"><span class="mono">${f.folio}</span> · ${f.cliente} <span class="pf-saldo">saldo ${money(facSaldo(f))}</span></span>
           <input type="number" class="pa" data-fid="${f.id}" min="0" step="any" value="${checked?r2(amt):""}" placeholder="0.00"></label>`;};
       body=`<div class="grid2"><div class="field"><label for="f-fecha">Fecha</label><input type="date" id="f-fecha" value="${rec?rec.fecha:t}"></div>
-        <div class="field"><label for="f-met">Método</label><select id="f-met">${["Transferencia","Cheque","Efectivo","Tarjeta"].map(m=>`<option ${rec&&rec.metodo===m?"selected":""}>${m}</option>`).join("")}</select></div></div>
+        <div class="field"><label for="f-met">Método</label><select id="f-met">${metodosPago().map(m=>`<option ${rec&&rec.metodo===m?"selected":""}>${m}</option>`).join("")}</select></div></div>
         <div class="field"><label>Facturas a pagar <span style="color:var(--text-faint);font-weight:400">· marca una o varias (pago consolidado)</span></label>
           ${barraOrden([{k:"folio",label:"Número de factura"},{k:"importe",label:"Saldo"},{k:"nombre",label:"Cliente"},{k:"fecha",label:"Vencimiento"}],{k:"folio",dir:"desc"})}
           <div class="checklist paylist" id="paylist" data-ordlist>${cand.map(rowFor).join("")}</div></div>
@@ -1081,10 +1233,12 @@
         <div class="grid2"><div class="field"><label for="f-mg">Margen fijo (%)</label><input type="number" id="f-mg" min="0" max="99" step="0.5" value="${rec&&rec.margen!=null?rec.margen:30}"></div>
         <div class="field"><label for="f-ivac">IVA (%)</label><input type="number" id="f-ivac" min="0" max="100" step="0.5" value="${rec&&rec.ivaPct!=null?rec.ivaPct:ivaDefPct()}"></div></div>
         <div class="field"><label for="f-mail">Correos para enviar documentos</label><input id="f-mail" value="${escAttr(rec?rec.emails:"")}" placeholder="compras@cliente.com, pagos@cliente.com"></div>
+        <div class="field"><label>Contactos de la empresa <span style="color:var(--text-faint);font-weight:400">· se eligen al enviar la cotización</span></label><div id="cons"></div></div>
         <div class="field"><label>Retenciones / impuestos aplicables</label><div id="rets"></div></div>
         <p class="hintline">Estas retenciones se cargarán automáticamente al elegir el cliente en una cotización.</p>`;
       onsubmit=()=>{const data={nombre:$("#f-nom").value.trim(),rfc:$("#f-rfc").value.trim(),margen:+$("#f-mg").value||0,
-        ivaPct:+$("#f-ivac").value,emails:$("#f-mail").value.trim(),retenciones:retEd.read().filter(r=>r.concepto)};
+        ivaPct:+$("#f-ivac").value,emails:$("#f-mail").value.trim(),contactos:conEd?conEd.read().filter(c=>c.email):[],
+        retenciones:retEd.read().filter(r=>r.concepto)};
         if(!data.nombre){toast("Escribe el nombre del cliente.");return false;}
         if(editing)Object.assign(rec,data);else state.clientes.push(Object.assign({id:uid()},data));};
     }
@@ -1107,6 +1261,45 @@
         const data={folio,cliente:$("#f-cli").value.trim(),ocCliente:$("#f-occ").value.trim(),fecha:$("#f-fecha").value,cotizacionId:$("#f-cot").value||null,ivaPct:+$("#f-iva").value||0,lineas};
         if(editing)Object.assign(rec,data);else{const nv=Object.assign({id:uid(),estatus:"abierta",facturaId:null},data);
           state.ventas.push(nv);if(opts.fromCot){const c=state.cotizaciones.find(x=>x.id===opts.fromCot);if(c){c.ventaId=nv.id;if(c.estatus!=="aceptada")c.estatus="aceptada";}}}};
+    }
+    else if(type==="rechazo"){
+      const ids=(opts.ids||[]).filter(Boolean);
+      const cots=state.cotizaciones.filter(c=>ids.indexOf(c.id)>=0);
+      if(!cots.length){toast("Selecciona al menos una cotización");return;}
+      const uno=cots.length===1?cots[0]:null;
+      title=cots.length===1?"Rechazar cotización "+uno.folio:"Rechazar "+cots.length+" cotizaciones";
+      body=`<p class="hintline">${cots.map(c=>c.folio+" · "+c.cliente).join("<br>")}</p>
+        <div class="field"><label for="f-motivo">Motivo del rechazo</label>
+          <input id="f-motivo" list="mot-list" required value="${escAttr(uno&&uno.motivoRechazo?uno.motivoRechazo:"")}" placeholder="Ej. Precio fuera de mercado">
+          <datalist id="mot-list">${cat("motivosRechazo").map(m=>`<option value="${escAttr(m.nombre)}"></option>`).join("")}</datalist></div>
+        <div class="field"><label for="f-coment">Comentario</label>
+          <textarea id="f-coment" rows="4" placeholder="Detalle de lo que comentó el cliente…">${escAttr(uno&&uno.comentarioRechazo?uno.comentarioRechazo:"")}</textarea></div>
+        <p class="hintline">Los motivos se administran en <b>Catálogos → Motivos de rechazo</b>. Podrás reactivar la cotización cuando quieras.</p>`;
+      onsubmit=()=>{const motivo=$("#f-motivo").value.trim();
+        if(!motivo){toast("Escribe el motivo del rechazo.");return false;}
+        const coment=$("#f-coment").value.trim();
+        cots.forEach(c=>{c.estatus="rechazada";c.motivoRechazo=motivo;c.comentarioRechazo=coment;c.fechaRechazo=todayStr();});
+        ui.cotSel=[];toast(cots.length===1?"Cotización rechazada":cots.length+" cotizaciones rechazadas");};
+    }
+    else if(type==="catalogo"){
+      const def=CATS.find(c=>c.k===opts.cat)||CATS[0];
+      const reg=opts.id?(cat(def.k).find(x=>x.id===opts.id)||null):null;
+      title=(reg?"Editar ":"Nuevo(a) ")+def.sing;
+      body=def.campos.map(f=>{const v=reg&&reg[f.k]!=null?reg[f.k]:(f.v!=null?f.v:"");
+        const inp=f.tipo==="area"
+          ? `<textarea id="cf-${f.k}" rows="8" placeholder="${escAttr(f.ph||"")}">${escAttr(String(v))}</textarea>`
+          : f.tipo==="num"
+            ? `<input type="number" step="any" id="cf-${f.k}" value="${escAttr(String(v))}" placeholder="${escAttr(f.ph||"")}">`
+            : `<input id="cf-${f.k}" value="${escAttr(String(v))}" placeholder="${escAttr(f.ph||"")}" ${f.req?"required":""}>`;
+        return `<div class="field"><label for="cf-${f.k}">${f.label}</label>${inp}${f.ayuda?`<p class="hintline" style="margin:4px 0 0">${f.ayuda}</p>`:""}</div>`;}).join("");
+      onsubmit=()=>{const data={};
+        for(const f of def.campos){const el=$("#cf-"+f.k);let v=el.value;
+          if(f.tipo==="num")v=+v||0;else v=String(v).trim();
+          if(f.req&&!v){toast("Falta "+f.label);return false;}
+          data[f.k]=v;}
+        if(!Array.isArray(state.catalogos[def.k]))state.catalogos[def.k]=[];
+        if(reg)Object.assign(reg,data);else state.catalogos[def.k].push(Object.assign({id:uid()},data));
+        current="catalogos";ui.catTab=def.k;};
     }
     else if(type==="cierre"){title="Guardar cierre / respaldo";const def=monthLabel(ui.contaMonth);
       body=`<div class="field"><label for="f-nom">Nombre del cierre</label><input id="f-nom" required value="${escAttr("Cierre "+def)}" placeholder="Ej. Cierre julio 2026"></div>
@@ -1164,7 +1357,7 @@
           }else lineas.push({desc:"Suministro seg\u00fan factura "+(p.folio||p.proveedor),unidad:"LOT",analitica:"",cantidad:1,costo:subP,margen:mg});
         });
         const nueva={id:uid(),folio:nextFolio("COT",state.cotizaciones),cliente:cli.nombre,fecha:$("#f-fecha").value,
-          vigencia:+$("#f-vig").value||15,estatus:"borrador",facturada:false,ivaPct:(cli.ivaPct!=null?cli.ivaPct:ivaDefPct()),
+          vigencia:+$("#f-vig").value||15,entrega:"",estatus:"borrador",facturada:false,ivaPct:(cli.ivaPct!=null?cli.ivaPct:ivaDefPct()),
           retenciones:(cli.retenciones||[]).map(r=>({concepto:r.concepto,tasa:r.tasa})),
           origenProveedorIds:facs.map(p=>p.id),lineas};
         state.cotizaciones.push(nueva);
@@ -1280,14 +1473,18 @@
         const aplicaCliente=cl=>{if(!cl)return;
           if(cl.nombre&&cliInp)cliInp.value=cl.nombre;
           if(cl.ivaPct!=null&&ivaInput)ivaInput.value=cl.ivaPct;
-          retEd.setRows(cl.retenciones||[]);doCalc();
-          toast("Impuestos de "+cl.nombre+" aplicados");};
+          retEd.setRows(cl.retenciones||[]);
+          // En cotizaciones se aplica también el margen fijo que tiene dado de alta el cliente.
+          let msg="Impuestos de "+cl.nombre+" aplicados";
+          if(isCot&&cl.margen!=null&&lineEd&&lineEd.setMargen){lineEd.setMargen(cl.margen,true);msg+=" · margen "+cl.margen+"%";}
+          doCalc();toast(msg);};
         if(cliSel)cliSel.addEventListener("change",()=>aplicaCliente(state.clientes.find(x=>x.id===cliSel.value)));
         if(cliInp)cliInp.addEventListener("change",()=>{const n=cliInp.value.trim().toLowerCase();
           const cl=state.clientes.find(x=>String(x.nombre||"").trim().toLowerCase()===n);
           if(cl){if(cliSel)cliSel.value=cl.id;aplicaCliente(cl);}});}
     }
     if($("#rets")&&!retEd){retEd=makeRetEditor($("#rets"),formRets||(rec?rec.retenciones:null),function(){});}
+    if($("#cons"))conEd=makeConEditor($("#cons"),rec?rec.contactos:null);
 
     md.querySelectorAll(".ordbar").forEach(b=>activarOrden(b.parentElement));
     md.querySelector("#theform").addEventListener("submit",e=>{e.preventDefault();if(onsubmit()===false)return;persist();closeModal();render();});
@@ -1712,6 +1909,122 @@
     o.querySelector("#m-to").focus();
   }
 
+  // Envío real: un correo por cotización, con su PDF adjunto.
+  const ENVIO_LABEL="Enviar ahora";
+  function enviarCorreos(items,onDone){
+    if(!pdfReady()){toast("Generador de PDF no disponible");return;}
+    const enviados=[],fallos=[];
+    toast("Enviando "+items.length+" correo(s)…");
+    const paso=i=>{
+      if(i>=items.length){
+        if(fallos.length)toast("No se pudieron enviar: "+fallos.join(", "));
+        if(enviados.length)onDone(enviados);
+        return;}
+      const it=items[i];
+      let b64="";
+      try{const d=salesPDF(specCotizacion(it.cot));const u=d.output("datauristring");b64=u.substring(u.indexOf(",")+1);}
+      catch(e){fallos.push(it.cot.folio);paso(i+1);return;}
+      google.script.run
+        .withSuccessHandler(()=>{enviados.push(it);paso(i+1);})
+        .withFailureHandler(()=>{fallos.push(it.cot.folio);paso(i+1);})
+        .emailPdf(it.to,it.asunto,it.cuerpo,it.cot.folio+".pdf",b64);
+    };
+    paso(0);
+  }
+
+  /* ---------- envío de cotizaciones por correo ---------- */
+  // Variables disponibles en las plantillas.
+  function ctxCot(c){
+    const cli=state.clientes.find(x=>x.id===c.clienteId)
+      ||state.clientes.find(x=>x.nombre&&c.cliente&&x.nombre.toLowerCase()===String(c.cliente).toLowerCase());
+    const cons=contactosDe(cli);
+    return {cot:c,cli:cli||null,cons,vars:{
+      cliente:c.cliente||"",contacto:(cons[0]&&cons[0].nombre)||c.cliente||"",
+      folio:c.folio||"",total:money(cotTotal(c)),vigencia:(+c.vigencia||0)+" días",
+      entrega:c.entrega||"por confirmar",fecha:fmtDate(c.fecha),empresa:EMISOR.nombre}};
+  }
+  const aplicaVars=(txt,v)=>String(txt==null?"":txt).replace(/\{\{\s*(\w+)\s*\}\}/g,(m,k)=>v[k]!=null?v[k]:m);
+
+  function abrirEnvio(ids){
+    const cots=state.cotizaciones.filter(c=>(ids||[]).indexOf(c.id)>=0);
+    if(!cots.length){toast("Selecciona al menos una cotización");return;}
+    const ctxs=cots.map(ctxCot);
+    const plantillas=cat("plantillas");
+    const tpl0=plantillas[0]||PLANTILLA_DEF;
+    const uno=cots.length===1?ctxs[0]:null;
+    const destino=x=>`<div class="mailrow" data-cid="${x.cot.id}">
+      <label class="mailinc"><input type="checkbox" class="mi" checked> <span class="mono">${x.cot.folio}</span> · ${escAttr(x.cot.cliente||"")}</label>
+      <div class="mailcons">${x.cons.length?x.cons.map((c,i)=>
+        `<label class="conchk"><input type="checkbox" class="mc" data-mail="${escAttr(c.email)}" ${i===0?"checked":""}> ${escAttr(c.nombre||c.email)}${c.puesto?` <span class="cpu">${escAttr(c.puesto)}</span>`:""}</label>`).join("")
+        :`<span class="sinmail">Este cliente no tiene contactos dados de alta</span>`}</div>
+      <input class="mextra" placeholder="Otros correos separados por coma" value="">
+    </div>`;
+    const o=document.createElement("div");o.className="overlay on";
+    o.innerHTML=`<div class="modal wide">
+      <div class="modal-head"><h3>${cots.length===1?"Enviar cotización "+cots[0].folio:"Enviar "+cots.length+" cotizaciones"}</h3>
+        <button type="button" aria-label="Cerrar" data-x>&times;</button></div>
+      <form id="envform">
+        <div class="field"><label>Destinatarios ${cots.length>1?'<span style="color:var(--text-faint);font-weight:400">· se envía un correo por cotización</span>':""}</label>
+          <div class="checklist maillist">${ctxs.map(destino).join("")}</div></div>
+        <div class="grid2">
+          <div class="field"><label for="e-tpl">Plantilla</label>
+            <select id="e-tpl">${plantillas.map((p,i)=>`<option value="${p.id}" ${i===0?"selected":""}>${escAttr(p.nombre)}</option>`).join("")}
+              <option value="">— personalizada —</option></select></div>
+          ${uno?`<div class="field"><label for="e-ent">Tiempo de entrega</label>
+            <input id="e-ent" value="${escAttr(uno.cot.entrega||"")}" placeholder="Ej. 10 días hábiles"></div>`
+            :`<div class="field"><label>Tiempo de entrega</label><input value="el de cada cotización" disabled></div>`}
+        </div>
+        <div class="field"><label for="e-sub">Asunto</label><input id="e-sub" value="${escAttr(tpl0.asunto||"")}"></div>
+        <div class="field"><label for="e-body">Mensaje</label><textarea id="e-body" rows="9">${escAttr(tpl0.cuerpo||"")}</textarea>
+          <p class="hintline" style="margin:4px 0 0">Variables: {{cliente}} {{contacto}} {{folio}} {{total}} {{vigencia}} {{entrega}} {{fecha}} {{empresa}} · las plantillas se administran en <b>Catálogos</b>.</p></div>
+        <div class="field"><label>Vista previa <span style="color:var(--text-faint);font-weight:400">· ${escAttr(cots[0].folio)}</span></label>
+          <div class="mailprev" id="e-prev"></div></div>
+        <div class="pdfacts" style="padding:0">
+          <span class="pdfhint" id="e-hint"></span>
+          <button type="button" class="ghost" data-x2>Cancelar</button>
+          <button type="submit" class="primary">${ENVIO_LABEL}</button>
+        </div>
+      </form></div>`;
+    document.body.appendChild(o);
+    const cerrar=()=>o.remove();
+    o.addEventListener("click",e=>{if(e.target===o)cerrar();});
+    o.querySelector("[data-x]").onclick=cerrar;
+    o.querySelector("[data-x2]").onclick=cerrar;
+    const selTpl=o.querySelector("#e-tpl"),sub_=o.querySelector("#e-sub"),body=o.querySelector("#e-body"),prev=o.querySelector("#e-prev");
+    const entradaEnt=o.querySelector("#e-ent");
+    const varsDe=x=>{const v=Object.assign({},x.vars);
+      if(uno&&entradaEnt&&entradaEnt.value.trim())v.entrega=entradaEnt.value.trim();
+      const marcados=[...o.querySelectorAll('.mailrow[data-cid="'+x.cot.id+'"] .mc:checked')];
+      if(marcados.length){const c=x.cons.find(k=>k.email===marcados[0].dataset.mail);if(c&&c.nombre)v.contacto=c.nombre;}
+      return v;};
+    const pinta=()=>{const v=varsDe(ctxs[0]);
+      prev.innerHTML=`<div class="mp-sub">${escAttr(aplicaVars(sub_.value,v))}</div><div class="mp-body">${escAttr(aplicaVars(body.value,v)).replace(/\n/g,"<br>")}</div>`;};
+    selTpl.addEventListener("change",()=>{const p=cat("plantillas").find(x=>x.id===selTpl.value);
+      if(p){sub_.value=p.asunto||"";body.value=p.cuerpo||"";pinta();}});
+    [sub_,body].forEach(el=>el.addEventListener("input",pinta));
+    if(entradaEnt)entradaEnt.addEventListener("input",pinta);
+    o.addEventListener("change",e=>{if(e.target.classList&&(e.target.classList.contains("mc")||e.target.classList.contains("mi")))pinta();});
+    pinta();
+    o.querySelector("#envform").addEventListener("submit",e=>{e.preventDefault();
+      const items=[];const sinCorreo=[];
+      ctxs.forEach(x=>{const fila=o.querySelector('.mailrow[data-cid="'+x.cot.id+'"]');
+        if(!fila.querySelector(".mi").checked)return;
+        const dirs=[...fila.querySelectorAll(".mc:checked")].map(el=>el.dataset.mail);
+        String(fila.querySelector(".mextra").value||"").split(/[,;]+/).map(s=>s.trim()).filter(Boolean).forEach(m=>{if(dirs.indexOf(m)<0)dirs.push(m);});
+        if(!dirs.length){sinCorreo.push(x.cot.folio);return;}
+        const v=varsDe(x);
+        items.push({cot:x.cot,to:dirs.join(", "),asunto:aplicaVars(sub_.value,v),cuerpo:aplicaVars(body.value,v)});});
+      if(!items.length){toast(sinCorreo.length?"Sin destinatarios: "+sinCorreo.join(", "):"Marca al menos una cotización");return;}
+      if(uno&&entradaEnt){uno.cot.entrega=entradaEnt.value.trim();}
+      enviarCorreos(items,(enviados)=>{
+        enviados.forEach(it=>{if(it.cot.estatus!=="aceptada"){it.cot.estatus="enviada";}it.cot.enviadaEl=todayStr();});
+        ui.cotSel=[];persist();cerrar();render();
+        toast(enviados.length===1?"Cotización "+enviados[0].cot.folio+" enviada":enviados.length+" cotizaciones enviadas"
+          +(sinCorreo.length?" · sin correo: "+sinCorreo.join(", "):""));});
+    });
+    o.querySelector("#e-sub").focus();
+  }
+
   /* ---------- vista previa del documento ---------- */
   function openDocModal(title,html,makeDoc,filename,emailTo){
     const o=document.createElement("div");o.className="overlay on";
@@ -1784,9 +2097,11 @@
     (c.retenciones||[]).filter(r=>r.tasa).forEach(r=>totals.push({label:(r.concepto||"Retención").toUpperCase()+" "+(+r.tasa)+"%",value:money(sub*(+r.tasa)/100)}));
     totals.push({label:"TOTAL",value:money(cotTotal(c)),bold:true,rule:true});
     return ({kind:"Cotización",folio:c.folio,partyLabel:"CLIENTE",party:c.cliente,rfc:cli?cli.rfc:"",
-      metaLeft:["Válido hasta: "+fmtDate(addDays(c.fecha,+c.vigencia||0))],metaRight:["Emitido el: "+fmtDate(c.fecha),"Folio: "+c.folio],
+      metaLeft:["Válido hasta: "+fmtDate(addDays(c.fecha,+c.vigencia||0))].concat(c.entrega?["Tiempo de entrega: "+c.entrega]:[]),
+      metaRight:["Emitido el: "+fmtDate(c.fecha),"Folio: "+c.folio],
       columns:["CANT.","UNI.","DESCRIPCIÓN","PRECIO UNIT","PRECIO TOTAL"],rows,totals,
-      contact:[EMISOR.email,EMISOR.contacto,"Esta cotización tiene una validez de: "+(+c.vigencia||0)+" Días.","Esta cotización se emite el: "+fmtDate(c.fecha),"¡Gracias por su preferencia!"],
+      contact:[EMISOR.email,EMISOR.contacto].concat(c.entrega?["Tiempo de entrega: "+c.entrega]:[])
+        .concat(["Esta cotización tiene una validez de: "+(+c.vigencia||0)+" Días.","Esta cotización se emite el: "+fmtDate(c.fecha),"¡Gracias por su preferencia!"]),
       filename:c.folio+".pdf"});}
   function specFactura(f){const sub=facSubtotal(f),iva=facIva(f),pagado=facPagado(f),saldo=facSaldo(f),fl=flujoMeta(f.flujo);
     const totals=[{label:"SUBTOTAL",value:money(sub)},{label:ivaLbl(f).toUpperCase(),value:money(iva)}];
@@ -1905,8 +2220,31 @@
       render();}
     else if(a==="buscar-limpiar"){ui.q[b.dataset.scope]="";render();}
     else if(a==="theme"){const cur=document.documentElement.getAttribute("data-theme");const isDark=cur?cur==="dark":matchMedia("(prefers-color-scheme: dark)").matches;document.documentElement.setAttribute("data-theme",isDark?"light":"dark");}
-    else if(a==="reset"){askConfirm("¿Restaurar los datos de ejemplo? Se reemplazarán tus datos actuales.",()=>{state=seed();(function(){const pm=state.pagos.map(p=>monthKey(p.fecha)).sort();ui.contaMonth=pm.length?pm[pm.length-1]:monthKey(todayStr());})();persist();render();toast("Datos de ejemplo restaurados");},{ok:"Restaurar",danger:false});}
+    else if(a==="reset"){askConfirm("¿Restaurar los datos de ejemplo? Se reemplazarán tus datos actuales.",()=>{state=catalogosDefault(seed());(function(){const pm=state.pagos.map(p=>monthKey(p.fecha)).sort();ui.contaMonth=pm.length?pm[pm.length-1]:monthKey(todayStr());})();persist();render();toast("Datos de ejemplo restaurados");},{ok:"Restaurar",danger:false});}
     else if(a==="vaciar"){askConfirm("¿Vaciar TODO? Se eliminarán todos los registros (queda la app en blanco). Considera guardar un cierre antes.",()=>{["cotizaciones","ventas","facturas","pagos","ordenes","proveedores","gastos","proyectos","clientes"].forEach(k=>state[k]=[]);persist();current="dashboard";render();toast("Todos los registros fueron eliminados");},{ok:"Vaciar todo"});}
+    else if(a==="cot-enviar"){abrirEnvio([id]);}
+    else if(a==="cot-enviar-sel"){abrirEnvio((ui.cotSel||[]).slice());}
+    else if(a==="cot-sel"){const s=ui.cotSel||(ui.cotSel=[]);const i=s.indexOf(id);
+      if(i>=0)s.splice(i,1);else s.push(id);render();}
+    else if(a==="cot-sel-all"){const vis=[...document.querySelectorAll('[data-action="cot-sel"]')].map(el=>el.dataset.id);
+      ui.cotSel=(ui.cotSel&&ui.cotSel.length===vis.length)?[]:vis;render();}
+    else if(a==="cot-sel-none"){ui.cotSel=[];render();}
+    else if(a==="cot-masivo"){const s=ui.cotSel||[];if(!s.length)return;
+      const est=(document.getElementById("cot-masivo-estatus")||{}).value||"borrador";
+      if(est==="rechazada"){openForm("rechazo",{ids:s.slice()});return;}
+      state.cotizaciones.forEach(c=>{if(s.indexOf(c.id)>=0){c.estatus=est;
+        if(est!=="rechazada"){delete c.motivoRechazo;delete c.comentarioRechazo;delete c.fechaRechazo;}}});
+      ui.cotSel=[];persist();render();toast(s.length+" cotización(es) a estatus «"+est+"»");}
+    else if(a==="cot-rechazar"){openForm("rechazo",{ids:[id]});}
+    else if(a==="cot-rechazar-sel"){openForm("rechazo",{ids:(ui.cotSel||[]).slice()});}
+    else if(a==="cot-reactivar"){const c=state.cotizaciones.find(x=>x.id===id);if(!c)return;
+      c.estatus="borrador";delete c.motivoRechazo;delete c.comentarioRechazo;delete c.fechaRechazo;
+      persist();render();toast("Cotización "+c.folio+" reactivada");}
+    else if(a==="cat-tab"){ui.catTab=b.dataset.cat;render();}
+    else if(a==="cat-add"){openForm("catalogo",{cat:b.dataset.cat});}
+    else if(a==="cat-edit"){openForm("catalogo",{cat:b.dataset.cat,id:id});}
+    else if(a==="cat-del"){const ck=b.dataset.cat;askConfirm("¿Eliminar este registro del catálogo?",()=>{
+      state.catalogos[ck]=(state.catalogos[ck]||[]).filter(x=>x.id!==id);persist();render();toast("Registro eliminado");});}
     else if(a==="cot-status"){const c=state.cotizaciones.find(x=>x.id===id);const o=["borrador","enviada","aceptada","rechazada"];c.estatus=o[(o.indexOf(c.estatus)+1)%o.length];persist();render();}
     else if(a==="proy-cierre"){abrirCierre(id);}
     else if(a==="proy-reabrir"){askConfirm("¿Reabrir el proyecto? Podrás volver a modificar ingresos, costos y gastos.",()=>{
@@ -1954,7 +2292,7 @@
     else if(a==="del-pago"){askConfirm("¿Eliminar el pago? El saldo se restituye a la factura.",()=>{state.pagos=state.pagos.filter(x=>x.id!==id);persist();render();toast("Pago eliminado");});}
     else if(a==="config"){openForm("config");}
     else if(a==="cierre-guardar"){openForm("cierre");}
-    else if(a==="cierre-restaurar"){const s=snaps.find(x=>x.id===id);if(!s)return;askConfirm("¿Regresar a «"+s.nombre+"»? Se reemplazarán tus datos actuales por los de ese cierre.",()=>{state=JSON.parse(JSON.stringify(s.data));(function(){const pm=state.pagos.map(p=>monthKey(p.fecha)).sort();ui.contaMonth=pm.length?pm[pm.length-1]:monthKey(todayStr());})();persist();render();toast("Datos restaurados del cierre");},{ok:"Regresar",danger:false});}
+    else if(a==="cierre-restaurar"){const s=snaps.find(x=>x.id===id);if(!s)return;askConfirm("¿Regresar a «"+s.nombre+"»? Se reemplazarán tus datos actuales por los de ese cierre.",()=>{state=catalogosDefault(JSON.parse(JSON.stringify(s.data)));(function(){const pm=state.pagos.map(p=>monthKey(p.fecha)).sort();ui.contaMonth=pm.length?pm[pm.length-1]:monthKey(todayStr());})();persist();render();toast("Datos restaurados del cierre");},{ok:"Regresar",danger:false});}
     else if(a==="cierre-eliminar"){askConfirm("¿Eliminar este cierre guardado?",()=>{snaps=snaps.filter(x=>x.id!==id);saveSnaps();render();toast("Cierre eliminado");});}
     else if(a==="print"){const type=b.dataset.type;const arr={cot:state.cotizaciones,fac:state.facturas,oc:state.ordenes,ov:state.ventas}[type];const r=arr.find(x=>x.id===id);if(!r)return;
       const spec=type==="cot"?specCotizacion(r):type==="fac"?specFactura(r):type==="oc"?specOrden(r):specVenta(r);

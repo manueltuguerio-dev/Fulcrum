@@ -144,6 +144,43 @@ rechazaba el monto al aplicar el pago con el aviso *«Ingresa un valor válido»
   que la factura queda **saldada** y pasa a estatus **Pagada**.
 - En **Registrar pago** las facturas salen ordenadas por **número de factura, de mayor a menor**.
 
+## Catálogos
+
+El módulo **Catálogos** (barra lateral) administra los valores que alimentan los formularios. En
+cada uno se puede **agregar, editar y eliminar**:
+
+| Catálogo | Para qué sirve |
+|---|---|
+| **Unidades de medida** | Clave, nombre y **decimales permitidos**. La cantidad de una línea solo acepta decimales si su unidad los permite (KG, TON, MTR, M2, M3, LT, HR); al cambiar a una unidad entera (PZ, LOT, SERV…) la cantidad se redondea |
+| **Líneas analíticas** | Centros de costo sugeridos en las líneas |
+| **Impuestos y retenciones** | Conceptos y tasas; al elegir uno en un documento se completa su tasa |
+| **Métodos de pago** | Opciones del registro de pagos |
+| **Motivos de rechazo** | Se sugieren al rechazar una cotización |
+| **Plantillas de correo** | Asunto y mensaje con variables para el envío de cotizaciones |
+| **Conceptos / productos** | Descripción, unidad, analítica y costo sugerido; aparecen como sugerencia en las líneas |
+
+## Contactos por empresa
+
+En la ficha del **cliente** se dan de alta sus **contactos** (nombre, puesto y correo). Al enviar
+una cotización aparecen como casillas para elegir a quién se le manda. El campo antiguo de
+*Correos para enviar documentos* se sigue respetando.
+
+## Cotizaciones: margen, entrega, rechazo y envío
+
+- **Margen del cliente**: al elegir el cliente se aplica su margen fijo a todas las líneas y a las
+  que se agreguen después (junto con su IVA y sus retenciones).
+- **Tiempo de entrega**: campo propio de la cotización; sale impreso en el PDF y se inserta en el
+  correo mediante la variable `{{entrega}}`.
+- **Rechazar**: marca la cotización como **rechazada** guardando **motivo** (del catálogo) y
+  **comentario**; el motivo se ve en la lista y se puede **Reactivar** cuando haga falta.
+- **Selección múltiple**: marca varias cotizaciones y usa la barra superior para **cambiar el
+  estatus en bloque**, **rechazarlas** con un mismo motivo o **enviarlas por correo**.
+- **Envío**: elige la **plantilla**, ajusta **asunto y mensaje** —con vista previa de las variables
+  ya resueltas— y manda. Las variables disponibles son `{{cliente}} {{contacto}} {{folio}}
+  {{total}} {{vigencia}} {{entrega}} {{fecha}} {{empresa}}`.
+  El **envío masivo manda un correo por cotización** (cada uno a los contactos de su cliente, con
+  su propio PDF adjunto) y las que salen pasan a estatus **enviada** con la fecha de envío.
+
 ## Filtros de orden en las listas de los formularios
 
 Las listas con casillas que aparecen dentro de los formularios llevan una barra **Ordenar por** con

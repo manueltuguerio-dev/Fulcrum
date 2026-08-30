@@ -5,6 +5,10 @@ const unwrap=s=>s.replace(/^[\s\S]*?<script[^>]*>/,'').replace(/<\/script>\s*$/,
 const js=unwrap(fs.readFileSync(dir+'/AppJs.html','utf8'));
 const logo=unwrap(fs.readFileSync(dir+'/LogoData.html','utf8')).trim();
 const index=fs.readFileSync(dir+'/Index.html','utf8');
+// jsPDF va embebido en el artefacto: se sirve en lugar del CDN para probar el envío real.
+const lib=(fs.readFileSync(__dirname+'/erp.html','utf8').match(/<script>([\s\S]*?)<\/script>/g)||[])[0]
+  .replace(/^<script>/,'').replace(/<\/script>$/,'');
+let libServida=false;
 const ok=[],bad=[];const chk=(c,m)=>{(c?ok:bad).push(m);};
 
 (async()=>{
@@ -13,7 +17,8 @@ const ok=[],bad=[];const chk=(c,m)=>{(c?ok:bad).push(m);};
   const errs=[];p.on('pageerror',e=>errs.push(String(e)));
   await p.route('**/*',route=>{
     const u=route.request().url();
-    if(u.startsWith('https://cdn.'))return route.fulfill({status:200,body:'',contentType:'application/javascript'});
+    if(u.startsWith('https://cdn.')){const body=libServida?'':lib;libServida=true;
+      return route.fulfill({status:200,body,contentType:'application/javascript'});}
     if(u==='https://fulcrum.test/')return route.fulfill({status:200,contentType:'text/html',body:index});
     route.continue();
   });
@@ -25,7 +30,7 @@ const ok=[],bad=[];const chk=(c,m)=>{(c?ok:bad).push(m);};
       saveState:s=>{window.__DB.state=JSON.parse(s);return 'ok';},
       saveSnaps:s=>{window.__DB.snaps=JSON.parse(s);return 'ok';},
       savePdfToDrive:()=>JSON.stringify({url:'https://drive.test/x'}),
-      emailPdf:()=>'ok',
+      emailPdf:(to,sub,body,file,b64)=>{(window.__MAILS=window.__MAILS||[]).push({to,sub,body,file,n:(b64||'').length});return 'ok';},
     };
     function runner(){
       let s=null,f=null;
@@ -42,7 +47,7 @@ const ok=[],bad=[];const chk=(c,m)=>{(c?ok:bad).push(m);};
   await p.goto('https://fulcrum.test/');
   await p.waitForSelector('#nav .navbtn',{timeout:15000});
   chk(true,'la app arranca en Apps Script');
-  chk(await p.$eval('#appver',e=>e.textContent)==='v16-2026-08-30','versión v16 en pantalla');
+  chk(await p.$eval('#appver',e=>e.textContent)==='v17-2026-08-30','versión v17 en pantalla');
   chk(await p.$('#view [data-error]')==null,'sin recuadro de error');
 
   // cliente con impuestos
@@ -94,6 +99,34 @@ const ok=[],bad=[];const chk=(c,m)=>{(c?ok:bad).push(m);};
   const pagada=await p.evaluate(id=>{const s=window.__DB.state;const f=s.facturas.find(x=>x.id===id);return f.flujo;},fac.id);
   chk(pagada==='pagada','la factura queda pagada en GAS: '+pagada);
   chk(await p.$eval('#syncbadge',e=>e.textContent).then(t=>/Guardado/.test(t)),'indicador de guardado');
+  // ---- envío de cotizaciones con plantilla y adjunto ----
+  chk(await p.$('[data-view="catalogos"]')!=null,'módulo Catálogos disponible en Apps Script');
+  await p.click('[data-view="cotizaciones"]');await p.waitForTimeout(300);
+  await p.click('[data-action="add"][data-type="cotizacion"]');
+  await p.waitForSelector('#lineas .lrow');
+  await p.fill('#f-folio','COT-GAS1');
+  await p.selectOption('#f-cliid',{label:'CLIENTE GAS'});
+  await p.waitForTimeout(250);
+  await p.fill('#f-ent','15 días hábiles');
+  await p.fill('#lineas .lrow:nth-child(1) [data-k="desc"]','Suministro de prueba');
+  await p.fill('#lineas .lrow:nth-child(1) [data-k="cantidad"]','2');
+  await p.fill('#lineas .lrow:nth-child(1) [data-k="costo"]','1000');
+  await p.click('#modal form button.primary');await p.waitForTimeout(1800);
+  chk(await p.$('[data-action="cot-enviar"]')!=null,'botón Enviar en las cotizaciones');
+  await p.evaluate(()=>{document.querySelector('[data-action="cot-enviar"]').click();});
+  await p.waitForSelector('#envform');
+  chk(/Enviar ahora/.test(await p.$eval('#envform button.primary',e=>e.textContent)),'en Apps Script el botón envía de verdad');
+  await p.evaluate(()=>{document.querySelectorAll('.mailrow').forEach(r=>{
+    if(!r.querySelector('.mc:checked'))r.querySelector('.mextra').value='destino@gas.mx';});});
+  const folioEnv=await p.$eval('.mailrow .mono',e=>e.textContent);
+  await p.click('#envform button.primary');
+  await p.waitForTimeout(4000);
+  const mail=await p.evaluate(()=>window.__MAILS||[]);
+  chk(mail.length===1&&/@/.test(mail[0].to)&&mail[0].file===folioEnv+'.pdf',
+    'se envió un correo con el PDF adjunto: '+JSON.stringify(mail[0]&&{to:mail[0].to,file:mail[0].file}));
+  chk(mail[0]&&!/\{\{/.test(mail[0].body)&&mail[0].body.length>40,'el cuerpo va con las variables resueltas');
+  const st=await p.evaluate(f=>{const s=window.__DB.state;const c=s.cotizaciones.find(x=>x.folio===f);return c?{e:c.estatus,d:c.enviadaEl}:null;},folioEnv);
+  chk(st&&st.e==='enviada'&&st.d,'la cotización quedó como enviada en el servidor: '+JSON.stringify(st));
   chk(errs.length===0,'sin errores JS'+(errs.length?': '+errs.join(' | '):''));
   console.log('OK ('+ok.length+')');ok.forEach(m=>console.log('  ok '+m));
   if(bad.length){console.log('FALLAS ('+bad.length+')');bad.forEach(m=>console.log('  XX '+m));}

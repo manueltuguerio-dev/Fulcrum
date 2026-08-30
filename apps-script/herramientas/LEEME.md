@@ -14,6 +14,11 @@ No forman parte de la aplicación: son los scripts con los que se aplicaron y se
 | `cfdi_prueba.xml` | CFDI 4.0 de prueba cuyos conceptos **no** suman el subtotal, para verificar el ajuste |
 | `patch_orden_listas.py` | Barras de orden en las listas desplegadas de los formularios y clientes en orden alfabético |
 | `t_orden.js` | Prueba en navegador: orden por número de factura, por saldo y por cliente sin perder lo marcado |
+| `patch_catalogos.py` | Módulo de catálogos y contactos por empresa |
+| `patch_unidad_margen.py` | Decimales según la unidad, margen del cliente y tiempo de entrega |
+| `patch_rechazo_masivo.py` | Rechazo con comentario y acciones masivas en cotizaciones |
+| `patch_envio.py` | Envío con plantillas editables y envío masivo individual |
+| `t_v17.js` | Prueba en navegador de todo lo anterior (39 comprobaciones) |
 | `t_gas.js` | Simula el entorno de Apps Script (`Index.html` + `getRecursos`) y repite las pruebas sobre el bundle |
 
 Los parches ya están aplicados; volver a ejecutarlos falla a propósito (verifican que el texto
