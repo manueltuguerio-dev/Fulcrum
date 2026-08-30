@@ -117,6 +117,20 @@ con el importe de cada centro de costo. La **unidad** se imprime en la columna *
 - En las **facturas de proveedor** el **IVA se captura como importe** (se respeta el del XML) y
   puede editarse a mano.
 
+## Cotizar desde un XML de proveedor
+
+En **Costos · facturas de proveedores** marca una o varias facturas y pulsa **Cotizar a cliente**.
+El campo **Detalle** decide cómo se arman los conceptos:
+
+1. **Una sola línea con el costo total** (predeterminado) — una línea cuyo costo es exactamente el
+   subtotal de los XML seleccionados.
+2. **Una línea por factura** — una línea por cada CFDI, con su subtotal.
+3. **Desglosar los conceptos de cada factura** — una línea por concepto del XML.
+
+En los tres casos **el costo de la cotización cuadra con el total del XML**. En el desglose, si la
+suma de los conceptos no coincide con el subtotal del CFDI (por descuentos o redondeos del emisor),
+la diferencia se ajusta en la última línea. Al terminar, el aviso confirma el costo y si cuadra.
+
 ## Redondeo y aplicación de pagos
 
 Todos los importes de documento (subtotal, IVA, retenciones, total, pagado y saldo) se **redondean
@@ -128,6 +142,7 @@ rechazaba el monto al aplicar el pago con el aviso *«Ingresa un valor válido»
   sistema redondea al guardar.
 - Al aplicar un pago, una diferencia de hasta **2 centavos** contra el saldo se ajusta sola, de modo
   que la factura queda **saldada** y pasa a estatus **Pagada**.
+- En **Registrar pago** las facturas aparecen ordenadas **de mayor a menor saldo**.
 
 ## Si algo falla
 

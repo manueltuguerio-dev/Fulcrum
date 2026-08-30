@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<cfdi:Comprobante xmlns:cfdi="http://www.sat.gob.mx/cfd/4" Version="4.0" Folio="A1234" Fecha="2026-07-15T10:00:00" SubTotal="18171.18" Total="21078.57" Moneda="MXN">
+  <cfdi:Emisor Rfc="PRO010101AA1" Nombre="PROVEEDOR DEMO SA DE CV"/>
+  <cfdi:Receptor Rfc="COF120101AAA" Nombre="COMERCIALIZADORA FULCRUM"/>
+  <cfdi:Conceptos>
+    <cfdi:Concepto ClaveUnidad="KGM" Cantidad="123.45" ValorUnitario="98.7654" Importe="12193.59" Descripcion="Carne de res premium"/>
+    <cfdi:Concepto ClaveUnidad="H87" Cantidad="7" ValorUnitario="853.9414" Importe="5977.59" Descripcion="Empaque al alto vacio"/>
+  </cfdi:Conceptos>
+  <cfdi:Impuestos TotalImpuestosTrasladados="2907.39">
+    <cfdi:Traslados><cfdi:Traslado Base="18171.18" Impuesto="002" TipoFactor="Tasa" TasaOCuota="0.160000" Importe="2907.39"/></cfdi:Traslados>
+  </cfdi:Impuestos>
+  <cfdi:Complemento><tfd:TimbreFiscalDigital xmlns:tfd="http://www.sat.gob.mx/TimbreFiscalDigital" UUID="AAAA1111-BBBB-2222-CCCC-333344445555"/></cfdi:Complemento>
+</cfdi:Comprobante>

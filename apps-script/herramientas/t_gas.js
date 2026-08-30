@@ -42,7 +42,7 @@ const ok=[],bad=[];const chk=(c,m)=>{(c?ok:bad).push(m);};
   await p.goto('https://fulcrum.test/');
   await p.waitForSelector('#nav .navbtn',{timeout:15000});
   chk(true,'la app arranca en Apps Script');
-  chk(await p.$eval('#appver',e=>e.textContent)==='v14-2026-08-30','versión v14 en pantalla');
+  chk(await p.$eval('#appver',e=>e.textContent)==='v15-2026-08-30','versión v15 en pantalla');
   chk(await p.$('#view [data-error]')==null,'sin recuadro de error');
 
   // cliente con impuestos
@@ -83,6 +83,8 @@ const ok=[],bad=[];const chk=(c,m)=>{(c?ok:bad).push(m);};
   await p.click('[data-view="pagos"]');await p.waitForTimeout(200);
   await p.click('[data-action="add"][data-type="pago"]');
   await p.waitForSelector('#paylist .payrow');
+  const saldosGas=await p.$$eval('#paylist .pf-saldo',n=>n.map(e=>+e.textContent.replace(/[^\d.]/g,'')));
+  chk(saldosGas.every((v,i)=>i===0||saldosGas[i-1]>=v),'facturas de mayor a menor en GAS: '+saldosGas.join(' > '));
   await p.evaluate(id=>{const cb=document.querySelector(`#paylist .pf[value="${id}"]`);cb.checked=true;cb.dispatchEvent(new Event('change',{bubbles:true}));},fac.id);
   await p.waitForTimeout(200);
   const el=await p.$$eval('#paylist .pa',n=>n.map(e=>({v:e.value,ok:e.checkValidity(),fid:e.dataset.fid})));
