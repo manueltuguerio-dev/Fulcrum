@@ -74,7 +74,7 @@ const db=p=>p.evaluate(()=>JSON.parse(localStorage.getItem('fulcrum_erp_v6')));
   await p.fill('#lineas .lrow:nth-child(1) [data-k="unidad"]','KG');
   await p.dispatchEvent('#lineas .lrow:nth-child(1) [data-k="unidad"]','change');
   await p.waitForTimeout(150);
-  chk(await p.$eval('#lineas .lrow:nth-child(1) [data-k="cantidad"]',e=>e.step)==='0.001','KG admite 3 decimales (step)');
+  chk(await p.$eval('#lineas .lrow:nth-child(1) [data-k="cantidad"]',e=>e.step)==='any','la cantidad admite cualquier decimal');
   await p.fill('#lineas .lrow:nth-child(1) [data-k="cantidad"]','12.5');
   await p.fill('#lineas .lrow:nth-child(1) [data-k="costo"]','30');
   await p.waitForTimeout(150);
@@ -85,14 +85,18 @@ const db=p=>p.evaluate(()=>JSON.parse(localStorage.getItem('fulcrum_erp_v6')));
   await p.fill('#lineas .lrow:nth-child(2) [data-k="desc"]','Maniobras');
   await p.fill('#lineas .lrow:nth-child(2) [data-k="cantidad"]','1');
   await p.fill('#lineas .lrow:nth-child(2) [data-k="costo"]','500');
-  // cambiar a una unidad entera redondea
+  // cambiar de unidad NO debe tocar la cantidad
   await p.fill('#lineas .lrow:nth-child(1) [data-k="unidad"]','PZ');
   await p.dispatchEvent('#lineas .lrow:nth-child(1) [data-k="unidad"]','change');
-  await p.waitForTimeout(200);
-  chk(await p.$eval('#lineas .lrow:nth-child(1) [data-k="cantidad"]',e=>e.value)==='13','al pasar a PZ la cantidad se redondea a entero');
-  chk(await p.$eval('#lineas .lrow:nth-child(1) [data-k="cantidad"]',e=>e.step)==='1','PZ solo admite enteros');
+  await p.waitForTimeout(250);
+  chk(await p.$eval('#lineas .lrow:nth-child(1) [data-k="cantidad"]',e=>e.value)==='12.5','al cambiar de unidad la cantidad NO se redondea');
+  chk(await p.$eval('#lineas .lrow:nth-child(1) [data-k="cantidad"]',e=>e.checkValidity()),'12.5 sigue siendo válido con unidad PZ');
+  // decimales largos tampoco se tocan
+  await p.fill('#lineas .lrow:nth-child(1) [data-k="cantidad"]','12.3456');
   await p.fill('#lineas .lrow:nth-child(1) [data-k="unidad"]','KG');
   await p.dispatchEvent('#lineas .lrow:nth-child(1) [data-k="unidad"]','change');
+  await p.waitForTimeout(250);
+  chk(await p.$eval('#lineas .lrow:nth-child(1) [data-k="cantidad"]',e=>e.value)==='12.3456','se respetan 4 decimales aunque la unidad sugiera 3');
   await p.fill('#lineas .lrow:nth-child(1) [data-k="cantidad"]','12.5');
   await p.waitForTimeout(150);
   await p.click('#modal form button.primary');await p.waitForTimeout(500);
@@ -160,14 +164,16 @@ const db=p=>p.evaluate(()=>JSON.parse(localStorage.getItem('fulcrum_erp_v6')));
   await p.fill('#e-sub','Propuesta {{folio}} para {{cliente}}');
   await p.waitForTimeout(200);
   chk(/Propuesta COT-9100 para ACEROS DEMO SA/.test(await p.$eval('#e-prev',e=>e.textContent)),'se puede editar el asunto antes de enviar');
-  await p.fill('#e-ent','20 días hábiles');
-  await p.waitForTimeout(200);
-  chk(/20 días hábiles/.test(await p.$eval('#e-prev',e=>e.textContent)),'el tiempo de entrega se puede ajustar en el envío');
+  chk(await p.$$eval('#envform input[disabled]',n=>n.some(e=>/12 días hábiles/.test(e.value))),'el tiempo de entrega se muestra pero no se edita en el envío');
+  chk(/adjunt/i.test(await p.$eval('#e-hint',e=>e.textContent)),'avisa que se adjunta el documento del sistema');
+  const antes=JSON.parse(JSON.stringify((await db(p)).cotizaciones.find(c=>c.folio==='COT-9100')));
   await p.click('#envform button.primary');
-  await p.waitForTimeout(900);
+  await p.waitForTimeout(1500);
   const env=(await db(p)).cotizaciones.find(c=>c.folio==='COT-9100');
   chk(env.estatus==='enviada'&&!!env.enviadaEl,'al enviar pasa a estatus enviada: '+env.estatus);
-  chk(env.entrega==='20 días hábiles','el tiempo de entrega ajustado se guarda');
+  const dif=Object.keys(env).filter(k=>JSON.stringify(env[k])!==JSON.stringify(antes[k]));
+  chk(dif.every(k=>k==='estatus'||k==='enviadaEl'),'el envío no cambia ningún otro dato: '+dif.join(', '));
+  chk(env.entrega==='12 días hábiles'&&env.lineas[0].cantidad===12.5,'la cotización conserva entrega y cantidades: '+env.entrega+' / '+env.lineas[0].cantidad);
 
   /* ================= 7. ENVÍO MASIVO ================= */
   await p.click('[data-view="cotizaciones"]');await p.waitForTimeout(250);

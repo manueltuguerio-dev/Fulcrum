@@ -18,6 +18,8 @@ No forman parte de la aplicación: son los scripts con los que se aplicaron y se
 | `patch_unidad_margen.py` | Decimales según la unidad, margen del cliente y tiempo de entrega |
 | `patch_rechazo_masivo.py` | Rechazo con comentario y acciones masivas en cotizaciones |
 | `patch_envio.py` | Envío con plantillas editables y envío masivo individual |
+| `patch_sin_redondeo.py` | Quita el redondeo de la cantidad por unidad de medida |
+| `patch_adjunto.py` | El correo adjunta la cotización del sistema y el envío no modifica datos |
 | `t_v17.js` | Prueba en navegador de todo lo anterior (39 comprobaciones) |
 | `t_gas.js` | Simula el entorno de Apps Script (`Index.html` + `getRecursos`) y repite las pruebas sobre el bundle |
 

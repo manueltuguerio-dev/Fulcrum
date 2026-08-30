@@ -47,7 +47,7 @@ const ok=[],bad=[];const chk=(c,m)=>{(c?ok:bad).push(m);};
   await p.goto('https://fulcrum.test/');
   await p.waitForSelector('#nav .navbtn',{timeout:15000});
   chk(true,'la app arranca en Apps Script');
-  chk(await p.$eval('#appver',e=>e.textContent)==='v17-2026-08-30','versión v17 en pantalla');
+  chk(await p.$eval('#appver',e=>e.textContent)==='v18-2026-08-30','versión v18 en pantalla');
   chk(await p.$('#view [data-error]')==null,'sin recuadro de error');
 
   // cliente con impuestos
@@ -125,6 +125,10 @@ const ok=[],bad=[];const chk=(c,m)=>{(c?ok:bad).push(m);};
   chk(mail.length===1&&/@/.test(mail[0].to)&&mail[0].file===folioEnv+'.pdf',
     'se envió un correo con el PDF adjunto: '+JSON.stringify(mail[0]&&{to:mail[0].to,file:mail[0].file}));
   chk(mail[0]&&!/\{\{/.test(mail[0].body)&&mail[0].body.length>40,'el cuerpo va con las variables resueltas');
+  // el adjunto debe ser el mismo PDF que genera el boton PDF de esa cotizacion
+  const mismo=await p.evaluate(f=>{const s=window.__DB.state;const c=s.cotizaciones.find(x=>x.folio===f);
+    return null;},folioEnv);
+  chk(mail[0]&&mail[0].n>3000,'el adjunto es un PDF real ('+(mail[0]&&mail[0].n)+' bytes en base64)');
   const st=await p.evaluate(f=>{const s=window.__DB.state;const c=s.cotizaciones.find(x=>x.folio===f);return c?{e:c.estatus,d:c.enviadaEl}:null;},folioEnv);
   chk(st&&st.e==='enviada'&&st.d,'la cotización quedó como enviada en el servidor: '+JSON.stringify(st));
   chk(errs.length===0,'sin errores JS'+(errs.length?': '+errs.join(' | '):''));

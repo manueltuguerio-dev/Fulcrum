@@ -151,7 +151,7 @@ cada uno se puede **agregar, editar y eliminar**:
 
 | Catálogo | Para qué sirve |
 |---|---|
-| **Unidades de medida** | Clave, nombre y **decimales permitidos**. La cantidad de una línea solo acepta decimales si su unidad los permite (KG, TON, MTR, M2, M3, LT, HR); al cambiar a una unidad entera (PZ, LOT, SERV…) la cantidad se redondea |
+| **Unidades de medida** | Clave, nombre y decimales sugeridos (solo informativos). **La cantidad se captura tal cual: nunca se redondea ni se limita por la unidad** |
 | **Líneas analíticas** | Centros de costo sugeridos en las líneas |
 | **Impuestos y retenciones** | Conceptos y tasas; al elegir uno en un documento se completa su tasa |
 | **Métodos de pago** | Opciones del registro de pagos |
@@ -178,8 +178,12 @@ una cotización aparecen como casillas para elegir a quién se le manda. El camp
 - **Envío**: elige la **plantilla**, ajusta **asunto y mensaje** —con vista previa de las variables
   ya resueltas— y manda. Las variables disponibles son `{{cliente}} {{contacto}} {{folio}}
   {{total}} {{vigencia}} {{entrega}} {{fecha}} {{empresa}}`.
-  El **envío masivo manda un correo por cotización** (cada uno a los contactos de su cliente, con
-  su propio PDF adjunto) y las que salen pasan a estatus **enviada** con la fecha de envío.
+  El **envío masivo manda un correo por cotización**, cada uno a los contactos de su cliente.
+- **El adjunto es la cotización tal como está en el sistema**: el PDF se genera con el mismo
+  formato y los mismos datos del registro (el que produce el botón *PDF*) y se adjunta con el
+  folio como nombre de archivo. **El envío no modifica ningún dato** de la cotización: solo
+  registra que salió, pasándola a estatus **enviada** con la fecha. Si hay que cambiar el tiempo
+  de entrega, el importe o cualquier dato, se edita la cotización antes de enviarla.
 
 ## Filtros de orden en las listas de los formularios
 

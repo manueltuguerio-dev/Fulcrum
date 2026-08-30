@@ -906,7 +906,7 @@ function(t){t.__bidiEngine__=t.prototype.__bidiEngine__=function(t){var r,n,i,a,
   const CATS=[
     {k:"unidades",label:"Unidades de medida",sing:"unidad",cols:["clave","nombre","decimales"],
       campos:[{k:"clave",label:"Clave",ph:"PZ",req:true},{k:"nombre",label:"Nombre",ph:"Pieza"},
-        {k:"decimales",label:"Decimales permitidos",tipo:"num",v:0,ayuda:"0 = solo enteros · 2 o 3 para kilos, metros, horas…"}]},
+        {k:"decimales",label:"Decimales sugeridos",tipo:"num",v:0,ayuda:"Solo informativo: la cantidad admite los decimales que escribas, sin redondear."}]},
     {k:"analiticas",label:"Líneas analíticas",sing:"línea analítica",cols:["nombre","nota"],
       campos:[{k:"nombre",label:"Nombre",ph:"MANTENIMIENTO",req:true},{k:"nota",label:"Descripción",ph:"Centro de costo"}]},
     {k:"impuestos",label:"Impuestos y retenciones",sing:"impuesto",cols:["concepto","tasa"],
@@ -1713,24 +1713,19 @@ function(t){t.__bidiEngine__=t.prototype.__bidiEngine__=function(t){var r,n,i,a,
       const v=escAttr(l&&l[c.k]!=null?l[c.k]:porDef);
       const lista=c.lista?` list="${c.lista}"`:(c.k==="desc"&&catalog?' list="fx-prod"':"");
       return c.t==="text"?`<input data-k="${c.k}"${lista} placeholder="${c.ph||""}" value="${v}">`:`<input data-k="${c.k}" type="number" min="0" step="${c.step||"any"}" placeholder="${c.ph||""}" value="${v}">`;}).join("")}<span class="l-imp num">$0.00</span><button type="button" class="l-del" aria-label="Quitar">&times;</button></div>`;
-    // La cantidad admite decimales solo si la unidad del catálogo los permite.
-    const decDe=v=>unidadDec(v);
-    const ajustaFila=(r,redondear)=>{const u=r.querySelector('[data-k="unidad"]'),c=r.querySelector('[data-k="cantidad"]');
-      if(!u||!c)return;const d=decDe(u.value);
-      c.step=d>0?String(1/Math.pow(10,d)):"1";
-      c.title=d>0?("Admite hasta "+d+" decimales"):"Solo cantidades enteras";
-      if(redondear&&c.value!==""){const n=+c.value||0;const f=Math.pow(10,d);const v=Math.round(n*f)/f;
-        if(v!==n)c.value=v;}};
-    const ajustaTodas=redondear=>list.querySelectorAll(".lrow").forEach(r=>ajustaFila(r,redondear));
-    const leeFila=r=>{const o={};spec.cols.forEach(c=>{const el=r.querySelector('[data-k="'+c.k+'"]');o[c.k]=c.t==="text"?el.value.trim():(+el.value||0);});
-      if(o.unidad!=null&&o.cantidad!=null){const f=Math.pow(10,decDe(o.unidad));o.cantidad=Math.round((+o.cantidad||0)*f)/f;}
-      return o;};
+    // La cantidad se captura tal cual: la unidad nunca la redondea ni la limita.
+    // Los decimales del catálogo solo se muestran como sugerencia en el campo.
+    const ajustaFila=r=>{const u=r.querySelector('[data-k="unidad"]'),c=r.querySelector('[data-k="cantidad"]');
+      if(!u||!c)return;const d=unidadDec(u.value);
+      c.step="any";
+      c.title=d>0?(u.value.trim().toUpperCase()+" · se sugieren "+d+" decimales"):"";};
+    const ajustaTodas=()=>list.querySelectorAll(".lrow").forEach(ajustaFila);
+    const leeFila=r=>{const o={};spec.cols.forEach(c=>{const el=r.querySelector('[data-k="'+c.k+'"]');o[c.k]=c.t==="text"?el.value.trim():(+el.value||0);});return o;};
     const read=()=>[...list.querySelectorAll(".lrow")].map(leeFila);
-    const recalc=()=>{ajustaTodas(false);list.querySelectorAll(".lrow").forEach(r=>{const o=leeFila(r);r.querySelector(".l-imp").textContent=money(spec.imp(o));});onChange(read());};
+    const recalc=()=>{ajustaTodas();list.querySelectorAll(".lrow").forEach(r=>{const o=leeFila(r);r.querySelector(".l-imp").textContent=money(spec.imp(o));});onChange(read());};
     host.addEventListener("input",recalc);
-    // Al cambiar la unidad se ajusta (y redondea) la cantidad de esa línea.
     host.addEventListener("change",e=>{const inp=e.target;
-      if(inp.dataset&&inp.dataset.k==="unidad"){ajustaFila(inp.closest(".lrow"),true);recalc();}});
+      if(inp.dataset&&inp.dataset.k==="unidad"){ajustaFila(inp.closest(".lrow"));recalc();}});
     if(catalog)host.addEventListener("change",e=>{const inp=e.target;if(inp.dataset&&inp.dataset.k==="desc"){const p=catalog.get(inp.value.trim().toLowerCase());
       if(p){const row=inp.closest(".lrow"),set=(k,val)=>{const el=row.querySelector('[data-k="'+k+'"]');if(el&&val!=null&&val!=="")el.value=val;};
         set("costo",p.costo||"");if(row.querySelector('[data-k="margen"]')&&p.margen!=null)set("margen",p.margen);
@@ -1738,7 +1733,7 @@ function(t){t.__bidiEngine__=t.prototype.__bidiEngine__=function(t){var r,n,i,a,
         if(row.querySelector('[data-k="precio"]'))set("precio",p.precio||"");recalc();}}});
     host.addEventListener("click",e=>{if(e.target.closest(".l-del")){if(list.querySelectorAll(".lrow").length>1)e.target.closest(".lrow").remove();recalc();}else if(e.target.closest(".lineadd")){list.insertAdjacentHTML("beforeend",rowHtml());recalc();}});
     (initial&&initial.length?initial:[null]).forEach(l=>list.insertAdjacentHTML("beforeend",rowHtml(l)));
-    ajustaTodas(false);recalc();
+    ajustaTodas();recalc();
     // Fija el margen del cliente: lo usan las líneas nuevas y, si se pide, las existentes.
     const setMargen=(m,aTodas)=>{if(m==null||!isFinite(+m))return;margenDef=+m;
       if(aTodas)list.querySelectorAll('.lrow [data-k="margen"]').forEach(el=>{el.value=+m;});
@@ -2585,10 +2580,13 @@ function(t){t.__bidiEngine__=t.prototype.__bidiEngine__=function(t){var r,n,i,a,
   const ENVIO_LABEL="Preparar y marcar como enviadas";
   function enviarCorreos(items,onDone){
     const texto=items.map(it=>"Para: "+it.to+"\nAsunto: "+it.asunto+"\n\n"+it.cuerpo).join("\n\n———\n\n");
+    // El PDF sale del mismo generador que el botón PDF: es el documento del sistema, sin cambios.
+    const bajaPDFs=()=>{if(!pdfReady())return;
+      items.forEach((it,i)=>setTimeout(()=>{try{salesPDF(specCotizacion(it.cot)).save(it.cot.folio+".pdf");}catch(e){}},i*350));};
     const abrir=()=>{const it=items[0];
       const url="mailto:"+encodeURIComponent(it.to)+"?subject="+encodeURIComponent(it.asunto)+"&body="+encodeURIComponent(it.cuerpo);
       try{window.open(url,"_blank");}catch(e){}};
-    const seguir=()=>{abrir();onDone(items);};
+    const seguir=()=>{bajaPDFs();abrir();onDone(items);};
     if(navigator.clipboard&&navigator.clipboard.writeText)
       navigator.clipboard.writeText(texto).then(seguir,seguir);
     else seguir();
@@ -2632,9 +2630,9 @@ function(t){t.__bidiEngine__=t.prototype.__bidiEngine__=function(t){var r,n,i,a,
           <div class="field"><label for="e-tpl">Plantilla</label>
             <select id="e-tpl">${plantillas.map((p,i)=>`<option value="${p.id}" ${i===0?"selected":""}>${escAttr(p.nombre)}</option>`).join("")}
               <option value="">— personalizada —</option></select></div>
-          ${uno?`<div class="field"><label for="e-ent">Tiempo de entrega</label>
-            <input id="e-ent" value="${escAttr(uno.cot.entrega||"")}" placeholder="Ej. 10 días hábiles"></div>`
-            :`<div class="field"><label>Tiempo de entrega</label><input value="el de cada cotización" disabled></div>`}
+          <div class="field"><label>Tiempo de entrega</label>
+            <input value="${escAttr(uno?(uno.cot.entrega||"— sin capturar —"):"el de cada cotización")}" disabled>
+            <p class="hintline" style="margin:4px 0 0">Se toma de la cotización. Para cambiarlo, edítala antes de enviar.</p></div>
         </div>
         <div class="field"><label for="e-sub">Asunto</label><input id="e-sub" value="${escAttr(tpl0.asunto||"")}"></div>
         <div class="field"><label for="e-body">Mensaje</label><textarea id="e-body" rows="9">${escAttr(tpl0.cuerpo||"")}</textarea>
@@ -2642,7 +2640,7 @@ function(t){t.__bidiEngine__=t.prototype.__bidiEngine__=function(t){var r,n,i,a,
         <div class="field"><label>Vista previa <span style="color:var(--text-faint);font-weight:400">· ${escAttr(cots[0].folio)}</span></label>
           <div class="mailprev" id="e-prev"></div></div>
         <div class="pdfacts" style="padding:0">
-          <span class="pdfhint" id="e-hint"></span>
+          <span class="pdfhint" id="e-hint">Se descarga el PDF de cada cotización, tal como está en el sistema, para que lo adjuntes.</span>
           <button type="button" class="ghost" data-x2>Cancelar</button>
           <button type="submit" class="primary">${ENVIO_LABEL}</button>
         </div>
@@ -2653,9 +2651,8 @@ function(t){t.__bidiEngine__=t.prototype.__bidiEngine__=function(t){var r,n,i,a,
     o.querySelector("[data-x]").onclick=cerrar;
     o.querySelector("[data-x2]").onclick=cerrar;
     const selTpl=o.querySelector("#e-tpl"),sub_=o.querySelector("#e-sub"),body=o.querySelector("#e-body"),prev=o.querySelector("#e-prev");
-    const entradaEnt=o.querySelector("#e-ent");
+
     const varsDe=x=>{const v=Object.assign({},x.vars);
-      if(uno&&entradaEnt&&entradaEnt.value.trim())v.entrega=entradaEnt.value.trim();
       const marcados=[...o.querySelectorAll('.mailrow[data-cid="'+x.cot.id+'"] .mc:checked')];
       if(marcados.length){const c=x.cons.find(k=>k.email===marcados[0].dataset.mail);if(c&&c.nombre)v.contacto=c.nombre;}
       return v;};
@@ -2664,7 +2661,6 @@ function(t){t.__bidiEngine__=t.prototype.__bidiEngine__=function(t){var r,n,i,a,
     selTpl.addEventListener("change",()=>{const p=cat("plantillas").find(x=>x.id===selTpl.value);
       if(p){sub_.value=p.asunto||"";body.value=p.cuerpo||"";pinta();}});
     [sub_,body].forEach(el=>el.addEventListener("input",pinta));
-    if(entradaEnt)entradaEnt.addEventListener("input",pinta);
     o.addEventListener("change",e=>{if(e.target.classList&&(e.target.classList.contains("mc")||e.target.classList.contains("mi")))pinta();});
     pinta();
     o.querySelector("#envform").addEventListener("submit",e=>{e.preventDefault();
@@ -2677,7 +2673,7 @@ function(t){t.__bidiEngine__=t.prototype.__bidiEngine__=function(t){var r,n,i,a,
         const v=varsDe(x);
         items.push({cot:x.cot,to:dirs.join(", "),asunto:aplicaVars(sub_.value,v),cuerpo:aplicaVars(body.value,v)});});
       if(!items.length){toast(sinCorreo.length?"Sin destinatarios: "+sinCorreo.join(", "):"Marca al menos una cotización");return;}
-      if(uno&&entradaEnt){uno.cot.entrega=entradaEnt.value.trim();}
+      // El envío no modifica la cotización: solo registra que salió.
       enviarCorreos(items,(enviados)=>{
         enviados.forEach(it=>{if(it.cot.estatus!=="aceptada"){it.cot.estatus="enviada";}it.cot.enviadaEl=todayStr();});
         ui.cotSel=[];persist();cerrar();render();
