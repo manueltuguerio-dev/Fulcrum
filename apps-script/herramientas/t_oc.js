@@ -82,6 +82,72 @@ const pdfwk=fs.readFileSync(__dirname+'/lib/package/legacy/build/pdf.worker.min.
   chk(/OC-TB-8842/.test(await p.$eval('#ocres',e=>e.textContent)),'al reabrir la OV se ve la validación guardada');
   await p.keyboard.press('Escape');
 
+  /* ---- formato Carnes Premium XO: NUMERO/NUMBER y SUB. TOTAL ---- */
+  await p.click('[data-action="add"][data-type="venta"]');
+  await p.waitForSelector('#lineas .lrow');
+  await p.fill('#f-folio','OV-9003');
+  await p.fill('#f-cli','CARNES PREMIUM XO');
+  await p.fill('#lineas .lrow:nth-child(1) [data-k="desc"]','Placa de acero');
+  await p.fill('#lineas .lrow:nth-child(1) [data-k="cantidad"]','5');
+  await p.fill('#lineas .lrow:nth-child(1) [data-k="precio"]','275');
+  await p.waitForTimeout(200);
+  await p.setInputFiles('#ocpdf',__dirname+'/oc_xo.pdf');
+  await p.waitForSelector('#ocres .ocrow',{timeout:15000});
+  await p.waitForTimeout(400);
+  const xo=await p.$$eval('#ocres .ocrow',n=>n.map(e=>e.className+' :: '+e.textContent.replace(/\s+/g,' ').trim()));
+  chk(/4900000200/.test(xo[0]),'lee el número del recuadro NUMERO/NUMBER: '+xo[0]);
+  chk(/ocok/.test(xo[1])&&/1,375\.00/.test(xo[1]),'compara contra SUB. TOTAL: '+xo[1]);
+  chk(/ocok/.test(xo[2])&&/1,595\.00/.test(xo[2]),'el total no se confunde con el SUB. TOTAL: '+xo[2]);
+  chk((await p.$eval('#f-occ',e=>e.value))==='4900000200','pone el número de OC en la orden de venta');
+
+  /* ---- retenciones en la orden de venta ---- */
+  chk(await p.$('#rets .retadd')!=null,'la orden de venta tiene editor de retenciones');
+  await p.click('#rets .retadd');await p.waitForTimeout(100);
+  await p.fill('#rets .rrow:nth-child(1) [data-k="concepto"]','Retención ISR');
+  await p.dispatchEvent('#rets .rrow:nth-child(1) [data-k="concepto"]','change');
+  await p.waitForTimeout(200);
+  const calcOV=(await p.$eval('#calc',e=>e.textContent)).replace(/\s+/g,' ');
+  chk(/Retención ISR/.test(calcOV)&&/\$1,577\.81/.test(calcOV),'la retención se resta del total de la OV: '+calcOV.slice(0,160));
+  // con la retención puesta, una OC por 1,595.00 ya no cuadra
+  await p.setInputFiles('#ocpdf',__dirname+'/oc_cliente_ok.pdf');
+  await p.waitForTimeout(1200);
+  const xo2=await p.$$eval('#ocres .ocrow',n=>n.map(e=>e.className+' :: '+e.textContent.replace(/\s+/g,' ').trim()));
+  chk(/ocbad/.test(xo2[2]),'con retención el total de esa OC ya no cuadra: '+xo2[2]);
+  // la OC que sí trae la retención cuadra
+  await p.setInputFiles('#ocpdf',__dirname+'/oc_con_retencion.pdf');
+  await p.waitForTimeout(1200);
+  const xo3=await p.$$eval('#ocres .ocrow',n=>n.map(e=>e.className+' :: '+e.textContent.replace(/\s+/g,' ').trim()));
+  chk(/ocok/.test(xo3[1])&&/ocok/.test(xo3[2]),'la OC con retención cuadra: '+xo3[2]);
+  chk(/4900000480/.test(xo3[0]),'y toma su número: '+xo3[0]);
+  await p.click('#modal form button.primary');await p.waitForTimeout(500);
+  const ov3=(await db(p)).ventas.find(v=>v.folio==='OV-9003');
+  chk(ov3&&ov3.retenciones&&ov3.retenciones.length===1,'la OV guarda sus retenciones');
+  chk(ov3&&ov3.ocCliente==='4900000480'&&ov3.ocDoc.valida,'la OV queda con la OC validada');
+  // el PDF de la OV muestra la retención
+  await p.evaluate(id=>document.querySelector(`[data-action="print"][data-type="ov"][data-id="${id}"]`).click(),ov3.id);
+  await p.waitForTimeout(800);
+  const pv=await p.evaluate(()=>{const o=[...document.querySelectorAll('.overlay.on')].pop();return o?o.textContent:'';});
+  chk(/RETENCIÓN ISR/i.test(pv)&&/1,577\.81/.test(pv),'el PDF de la OV imprime la retención y el total neto');
+  await p.evaluate(()=>{document.querySelectorAll('.overlay').forEach(o=>{if(o.id!=='overlay')o.remove();else o.classList.remove('on');});});
+  await p.waitForTimeout(200);
+
+  /* ---- orden sin ninguna etiqueta de número ---- */
+  await p.click('[data-action="add"][data-type="venta"]');
+  await p.waitForSelector('#lineas .lrow');
+  await p.fill('#f-folio','OV-9004');
+  await p.fill('#f-cli','CARNES PREMIUM XO');
+  await p.fill('#lineas .lrow:nth-child(1) [data-k="desc"]','Placa de acero');
+  await p.fill('#lineas .lrow:nth-child(1) [data-k="cantidad"]','5');
+  await p.fill('#lineas .lrow:nth-child(1) [data-k="precio"]','275');
+  await p.waitForTimeout(200);
+  await p.setInputFiles('#ocpdf',__dirname+'/oc_sin_etiqueta.pdf');
+  await p.waitForSelector('#ocres .ocrow',{timeout:15000});
+  await p.waitForTimeout(400);
+  const sn=await p.$$eval('#ocres .ocrow',n=>n.map(e=>e.className+' :: '+e.textContent.replace(/\s+/g,' ').trim()));
+  chk(/4900000315/.test(sn[0]),'toma el número aunque venga sin etiqueta: '+sn[0]);
+  chk(/ocok/.test(sn[1])&&/ocok/.test(sn[2]),'y valida los importes: '+sn[1]);
+  await p.keyboard.press('Escape');await p.waitForTimeout(200);
+
   chk(errs.length===0,'sin errores JS'+(errs.length?': '+errs.join(' | '):''));
   console.log('OK ('+ok.length+')');ok.forEach(m=>console.log('  ok '+m));
   if(bad.length){console.log('FALLAS ('+bad.length+')');bad.forEach(m=>console.log('  XX '+m));}

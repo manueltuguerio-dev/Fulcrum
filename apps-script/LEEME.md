@@ -107,13 +107,15 @@ con el importe de cada centro de costo. La **unidad** se imprime en la columna *
 - Cada **cotización, factura, orden de compra y orden de venta** tiene su propio campo **IVA (%)**,
   que puede diferir del global (útil para tasa 8 % de frontera o 0 %).
 - Cada **cliente** guarda su **margen**, su **IVA** y sus **retenciones**.
-- **Cotizaciones y facturas** llevan un editor de **impuestos y retenciones**: se **agregan** con
+- **Cotizaciones, órdenes de venta y facturas** llevan un editor de **impuestos y retenciones**: se **agregan** con
   *«+ Agregar impuesto o retención»*, se **editan** y se **eliminan** con la **×**. El campo Concepto
   sugiere los impuestos **ya dados de alta** (los de los clientes y los usados en otros documentos)
   y al elegir uno **completa su tasa**.
 - Al escoger el cliente —por el selector *Impuestos de cliente* o escribiendo su nombre en el campo
   Cliente, que **sugiere los clientes dados de alta**— la factura toma **su IVA y sus retenciones**.
-- Las retenciones se **restan del total** de la factura y salen impresas en el PDF.
+- Las retenciones se **restan del total** de la factura y de la orden de venta, y salen impresas
+  en su PDF. Al convertir una cotización en orden de venta, la orden **hereda el IVA y las
+  retenciones** de la cotización.
 - En las **facturas de proveedor** el **IVA se captura como importe** (se respeta el del XML) y
   puede editarse a mano.
 
@@ -129,8 +131,16 @@ Cargas ahí el PDF que mandó el cliente y el sistema:
 3. Guarda el resultado en la orden de venta: en la lista aparece **OC validada** u
    **OC con diferencias**, y al reabrirla se vuelve a ver la validación.
 
-El lector reconoce los formatos habituales (*Orden de compra No.*, *O.C.*, *P.O.*, *Folio*) y
-los importes etiquetados como *Subtotal / Importe neto* y *Total / Gran total / Total a pagar*.
+El lector reconoce:
+
+- **Número de OC**: *Orden de compra No.*, *O.C.*, *P.O.*, *Folio*, el recuadro
+  **NUMERO/NUMBER** de las órdenes con código de barras y, cuando la orden trae el número
+  **sin ninguna etiqueta**, el número largo (9 a 14 dígitos) del documento.
+- **Subtotal**: *SUBTOTAL*, *SUB TOTAL*, **SUB. TOTAL**, *SUB-TOTAL*, *IMPORTE NETO* o *SUMA*.
+- **Total**: *TOTAL*, *GRAN TOTAL*, *TOTAL A PAGAR* o *TOTAL NETO*; los renglones que empiezan
+  por «SUB» se descartan para no confundir el subtotal con el gran total.
+
+La comparación se hace contra el total de la orden de venta **ya neto de retenciones**.
 Funciona con PDF de texto; si el PDF es una imagen escaneada no hay texto que leer y el número de
 OC se captura a mano. La lectura usa **pdf.js**, que se descarga de un CDN: si tu red lo bloquea,
 la app avisa y el campo se llena manualmente.

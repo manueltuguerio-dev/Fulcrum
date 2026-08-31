@@ -1,0 +1,51 @@
+%PDF-1.4
+1 0 obj
+<< /Type /Catalog /Pages 2 0 R >>
+endobj
+2 0 obj
+<< /Type /Pages /Kids [3 0 R] /Count 1 >>
+endobj
+3 0 obj
+<< /Type /Page /Parent 2 0 R /MediaBox [0 0 612 792] /Contents 4 0 R /Resources << /Font << /F1 5 0 R >> >> >>
+endobj
+4 0 obj
+<< /Length 827 >>
+stream
+BT /F1 11 Tf
+1 0 0 1 50 750 Tm (CARNES PREMIUM XO) Tj
+1 0 0 1 50 732 Tm (ORDEN DE COMPRA/) Tj
+1 0 0 1 50 714 Tm (PURCHASE ORDER) Tj
+1 0 0 1 50 696 Tm (FECHA/DATE   28  08  2026) Tj
+1 0 0 1 50 678 Tm (NUMERO/NUMBER) Tj
+1 0 0 1 50 660 Tm (4900000200) Tj
+1 0 0 1 50 642 Tm (CONSIGNAR/CONSIGN TO) Tj
+1 0 0 1 50 624 Tm (PLANTA XO MONTERREY) Tj
+1 0 0 1 50 606 Tm (CARRETERA SAN MIGUEL DULCES) Tj
+1 0 0 1 50 588 Tm (PROVEEDOR/SUPPLIER) Tj
+1 0 0 1 50 570 Tm (JUAN MANUEL RODRIGUEZ MARTINEZ) Tj
+1 0 0 1 50 552 Tm (ROMJ960604NL9) Tj
+1 0 0 1 50 534 Tm (L.A.B/F.O.B   CONDICIONES/TERMS.   MONEDA/CURRENCY   MXN) Tj
+1 0 0 1 50 516 Tm () Tj
+1 0 0 1 50 498 Tm (1  PZ  PLACA DE ACERO   1,375.00) Tj
+1 0 0 1 50 480 Tm (SUB. TOTAL      1,375.00) Tj
+1 0 0 1 50 462 Tm (I.V.A.            220.00) Tj
+1 0 0 1 50 444 Tm (TOTAL         1,595.00) Tj
+ET
+endstream
+endobj
+5 0 obj
+<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica /Encoding /WinAnsiEncoding >>
+endobj
+xref
+0 6
+0000000000 65535 f 
+0000000009 00000 n 
+0000000058 00000 n 
+0000000115 00000 n 
+0000000241 00000 n 
+0000001119 00000 n 
+trailer
+<< /Size 6 /Root 1 0 R >>
+startxref
+1216
+%%EOF

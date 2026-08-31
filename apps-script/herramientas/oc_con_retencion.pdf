@@ -1,0 +1,41 @@
+%PDF-1.4
+1 0 obj
+<< /Type /Catalog /Pages 2 0 R >>
+endobj
+2 0 obj
+<< /Type /Pages /Kids [3 0 R] /Count 1 >>
+endobj
+3 0 obj
+<< /Type /Page /Parent 2 0 R /MediaBox [0 0 612 792] /Contents 4 0 R /Resources << /Font << /F1 5 0 R >> >> >>
+endobj
+4 0 obj
+<< /Length 374 >>
+stream
+BT /F1 11 Tf
+1 0 0 1 50 750 Tm (CARNES PREMIUM XO) Tj
+1 0 0 1 50 732 Tm (ORDEN DE COMPRA/ PURCHASE ORDER) Tj
+1 0 0 1 50 714 Tm (NUMERO/NUMBER) Tj
+1 0 0 1 50 696 Tm (4900000480) Tj
+1 0 0 1 50 678 Tm (SUB. TOTAL      1,375.00) Tj
+1 0 0 1 50 660 Tm (I.V.A.            220.00) Tj
+1 0 0 1 50 642 Tm (RET. ISR 1.25%       17.19) Tj
+1 0 0 1 50 624 Tm (TOTAL         1,577.81) Tj
+ET
+endstream
+endobj
+5 0 obj
+<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica /Encoding /WinAnsiEncoding >>
+endobj
+xref
+0 6
+0000000000 65535 f 
+0000000009 00000 n 
+0000000058 00000 n 
+0000000115 00000 n 
+0000000241 00000 n 
+0000000666 00000 n 
+trailer
+<< /Size 6 /Root 1 0 R >>
+startxref
+763
+%%EOF

@@ -51,7 +51,7 @@ const ok=[],bad=[];const chk=(c,m)=>{(c?ok:bad).push(m);};
   await p.goto('https://fulcrum.test/');
   await p.waitForSelector('#nav .navbtn',{timeout:15000});
   chk(true,'la app arranca en Apps Script');
-  chk(await p.$eval('#appver',e=>e.textContent)==='v19-2026-08-31','versión v19 en pantalla');
+  chk(await p.$eval('#appver',e=>e.textContent)==='v20-2026-08-31','versión v20 en pantalla');
   chk(await p.$('#view [data-error]')==null,'sin recuadro de error');
 
   // cliente con impuestos
@@ -146,15 +146,17 @@ const ok=[],bad=[];const chk=(c,m)=>{(c?ok:bad).push(m);};
   await p.fill('#lineas .lrow:nth-child(1) [data-k="cantidad"]','5');
   await p.fill('#lineas .lrow:nth-child(1) [data-k="precio"]','275');
   await p.waitForTimeout(200);
-  await p.setInputFiles('#ocpdf',__dirname+'/oc_cliente_ok.pdf');
+  // el cliente de la prueba tiene retención ISR: se usa la OC que ya la trae
+  await p.setInputFiles('#ocpdf',__dirname+'/oc_con_retencion.pdf');
   await p.waitForSelector('#ocres .ocrow',{timeout:15000});
   await p.waitForTimeout(400);
   const ocres=await p.$$eval('#ocres .ocrow',n=>n.map(e=>e.className+':'+e.textContent.replace(/\s+/g,' ').trim()));
   chk(ocres.every(r=>/ocok/.test(r)),'la OC se valida en Apps Script: '+ocres.join(' | '));
-  chk((await p.$eval('#f-occ',e=>e.value))==='OC-TB-8842','el número de OC se llena solo en Apps Script');
+  chk((await p.$eval('#f-occ',e=>e.value))==='4900000480','el número de OC se llena solo en Apps Script');
   await p.click('#modal form button.primary');await p.waitForTimeout(2000);
   const ovg=await p.evaluate(()=>{const s=window.__DB.state;return s.ventas.find(v=>v.folio==='OV-GAS1');});
-  chk(ovg&&ovg.ocCliente==='OC-TB-8842'&&ovg.ocDoc&&ovg.ocDoc.valida,'la OV se guarda validada en el servidor');
+  chk(ovg&&ovg.ocCliente==='4900000480'&&ovg.ocDoc&&ovg.ocDoc.valida,'la OV se guarda validada en el servidor');
+  chk(ovg&&ovg.retenciones&&ovg.retenciones.length===1,'la OV heredó la retención del cliente en Apps Script');
   chk(errs.length===0,'sin errores JS'+(errs.length?': '+errs.join(' | '):''));
   console.log('OK ('+ok.length+')');ok.forEach(m=>console.log('  ok '+m));
   if(bad.length){console.log('FALLAS ('+bad.length+')');bad.forEach(m=>console.log('  XX '+m));}
