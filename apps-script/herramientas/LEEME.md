@@ -21,6 +21,9 @@ No forman parte de la aplicación: son los scripts con los que se aplicaron y se
 | `patch_sin_redondeo.py` | Quita el redondeo de la cantidad por unidad de medida |
 | `patch_adjunto.py` | El correo adjunta la cotización del sistema y el envío no modifica datos |
 | `t_v17.js` | Prueba en navegador de todo lo anterior (39 comprobaciones) |
+| `patch_oc_pdf.py` | Lector del PDF de la orden de compra del cliente en la orden de venta |
+| `t_oc.js` | Prueba en navegador: lectura del folio, validación de subtotal y total y aviso de diferencias |
+| `oc_cliente_ok.pdf` / `oc_cliente_dif.pdf` | Órdenes de compra de prueba (una cuadra, la otra no) |
 | `t_gas.js` | Simula el entorno de Apps Script (`Index.html` + `getRecursos`) y repite las pruebas sobre el bundle |
 
 Los parches ya están aplicados; volver a ejecutarlos falla a propósito (verifican que el texto

@@ -9,6 +9,8 @@ const index=fs.readFileSync(dir+'/Index.html','utf8');
 const lib=(fs.readFileSync(__dirname+'/erp.html','utf8').match(/<script>([\s\S]*?)<\/script>/g)||[])[0]
   .replace(/^<script>/,'').replace(/<\/script>$/,'');
 let libServida=false;
+const pdfjs=fs.readFileSync(__dirname+'/lib/package/legacy/build/pdf.min.js','utf8');
+const pdfwk=fs.readFileSync(__dirname+'/lib/package/legacy/build/pdf.worker.min.js','utf8');
 const ok=[],bad=[];const chk=(c,m)=>{(c?ok:bad).push(m);};
 
 (async()=>{
@@ -17,6 +19,8 @@ const ok=[],bad=[];const chk=(c,m)=>{(c?ok:bad).push(m);};
   const errs=[];p.on('pageerror',e=>errs.push(String(e)));
   await p.route('**/*',route=>{
     const u=route.request().url();
+    if(/pdf\.worker\.min\.js/.test(u))return route.fulfill({status:200,body:pdfwk,contentType:'application/javascript'});
+    if(/pdf\.min\.js/.test(u))return route.fulfill({status:200,body:pdfjs,contentType:'application/javascript'});
     if(u.startsWith('https://cdn.')){const body=libServida?'':lib;libServida=true;
       return route.fulfill({status:200,body,contentType:'application/javascript'});}
     if(u==='https://fulcrum.test/')return route.fulfill({status:200,contentType:'text/html',body:index});
@@ -47,7 +51,7 @@ const ok=[],bad=[];const chk=(c,m)=>{(c?ok:bad).push(m);};
   await p.goto('https://fulcrum.test/');
   await p.waitForSelector('#nav .navbtn',{timeout:15000});
   chk(true,'la app arranca en Apps Script');
-  chk(await p.$eval('#appver',e=>e.textContent)==='v18-2026-08-30','versión v18 en pantalla');
+  chk(await p.$eval('#appver',e=>e.textContent)==='v19-2026-08-31','versión v19 en pantalla');
   chk(await p.$('#view [data-error]')==null,'sin recuadro de error');
 
   // cliente con impuestos
@@ -131,6 +135,26 @@ const ok=[],bad=[];const chk=(c,m)=>{(c?ok:bad).push(m);};
   chk(mail[0]&&mail[0].n>3000,'el adjunto es un PDF real ('+(mail[0]&&mail[0].n)+' bytes en base64)');
   const st=await p.evaluate(f=>{const s=window.__DB.state;const c=s.cotizaciones.find(x=>x.folio===f);return c?{e:c.estatus,d:c.enviadaEl}:null;},folioEnv);
   chk(st&&st.e==='enviada'&&st.d,'la cotización quedó como enviada en el servidor: '+JSON.stringify(st));
+  // ---- lector de la OC del cliente ----
+  await p.click('[data-view="ventas"]');await p.waitForTimeout(250);
+  await p.click('[data-action="add"][data-type="venta"]');
+  await p.waitForSelector('#lineas .lrow');
+  chk(await p.$('#ocpdf')!=null,'apartado de la OC del cliente en Apps Script');
+  await p.fill('#f-folio','OV-GAS1');
+  await p.fill('#f-cli','CLIENTE GAS');
+  await p.fill('#lineas .lrow:nth-child(1) [data-k="desc"]','Placa de acero');
+  await p.fill('#lineas .lrow:nth-child(1) [data-k="cantidad"]','5');
+  await p.fill('#lineas .lrow:nth-child(1) [data-k="precio"]','275');
+  await p.waitForTimeout(200);
+  await p.setInputFiles('#ocpdf',__dirname+'/oc_cliente_ok.pdf');
+  await p.waitForSelector('#ocres .ocrow',{timeout:15000});
+  await p.waitForTimeout(400);
+  const ocres=await p.$$eval('#ocres .ocrow',n=>n.map(e=>e.className+':'+e.textContent.replace(/\s+/g,' ').trim()));
+  chk(ocres.every(r=>/ocok/.test(r)),'la OC se valida en Apps Script: '+ocres.join(' | '));
+  chk((await p.$eval('#f-occ',e=>e.value))==='OC-TB-8842','el número de OC se llena solo en Apps Script');
+  await p.click('#modal form button.primary');await p.waitForTimeout(2000);
+  const ovg=await p.evaluate(()=>{const s=window.__DB.state;return s.ventas.find(v=>v.folio==='OV-GAS1');});
+  chk(ovg&&ovg.ocCliente==='OC-TB-8842'&&ovg.ocDoc&&ovg.ocDoc.valida,'la OV se guarda validada en el servidor');
   chk(errs.length===0,'sin errores JS'+(errs.length?': '+errs.join(' | '):''));
   console.log('OK ('+ok.length+')');ok.forEach(m=>console.log('  ok '+m));
   if(bad.length){console.log('FALLAS ('+bad.length+')');bad.forEach(m=>console.log('  XX '+m));}

@@ -117,6 +117,24 @@ con el importe de cada centro de costo. La **unidad** se imprime en la columna *
 - En las **facturas de proveedor** el **IVA se captura como importe** (se respeta el del XML) y
   puede editarse a mano.
 
+## Orden de venta: lectura de la OC del cliente
+
+Al crear o editar una **orden de venta** hay un apartado **Orden de compra del cliente (PDF)**.
+Cargas ahí el PDF que mandó el cliente y el sistema:
+
+1. Extrae el **número de orden de compra** y lo escribe solo en el campo *OC del cliente*.
+2. Lee el **subtotal** y el **total** del PDF y los compara con los de la orden de venta que estás
+   capturando; cada renglón se marca en **verde** si coincide (tolerancia de 5 centavos) o en
+   **rojo** con la **diferencia** exacta si no cuadra. Si un dato no viene en el PDF, lo indica.
+3. Guarda el resultado en la orden de venta: en la lista aparece **OC validada** u
+   **OC con diferencias**, y al reabrirla se vuelve a ver la validación.
+
+El lector reconoce los formatos habituales (*Orden de compra No.*, *O.C.*, *P.O.*, *Folio*) y
+los importes etiquetados como *Subtotal / Importe neto* y *Total / Gran total / Total a pagar*.
+Funciona con PDF de texto; si el PDF es una imagen escaneada no hay texto que leer y el número de
+OC se captura a mano. La lectura usa **pdf.js**, que se descarga de un CDN: si tu red lo bloquea,
+la app avisa y el campo se llena manualmente.
+
 ## Cotizar desde un XML de proveedor
 
 En **Costos · facturas de proveedores** marca una o varias facturas y pulsa **Cotizar a cliente**.

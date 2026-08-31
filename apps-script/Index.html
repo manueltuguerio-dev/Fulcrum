@@ -186,6 +186,17 @@
   .rrow input{background:var(--bg);border:1px solid var(--border);border-radius:8px;padding:7px 8px;font-size:13px;color:var(--text);font-family:inherit;width:100%}
   .rrow input:focus{outline:none;border-color:var(--accent);box-shadow:0 0 0 3px var(--accent-soft)}
   .rrow input[type=number]{text-align:right}
+  .drop-sm{padding:14px;gap:2px}
+  .drop-sm b{font-size:13px}
+  .ocres{margin-top:8px;border:1px solid var(--border);border-radius:10px;overflow:hidden}
+  .ocrow{display:flex;justify-content:space-between;gap:12px;padding:8px 12px;font-size:12.5px;border-bottom:1px solid var(--border)}
+  .ocrow:last-of-type{border-bottom:0}
+  .ocrow span:first-child{font-weight:600;color:var(--text)}
+  .ocrow span:last-child{color:var(--text-dim);text-align:right}
+  .ocrow.ocok{background:color-mix(in srgb,var(--good) 10%,transparent)}
+  .ocrow.ocbad{background:color-mix(in srgb,var(--bad) 12%,transparent)}
+  .ocrow.ocwarn{background:color-mix(in srgb,var(--warn) 12%,transparent)}
+  .ocfile{padding:6px 12px;font-size:11px;color:var(--text-faint);background:var(--bg)}
   .maillist{max-height:220px}
   .mailrow{padding:8px 9px;border-bottom:1px solid var(--border)}
   .mailrow:last-child{border-bottom:0}
@@ -315,7 +326,7 @@
       <button class="ghost" data-action="cierre-guardar">Guardar cierre del mes</button>
       <div style="display:flex;gap:8px"><button class="ghost" data-action="reset" style="flex:1">Datos de ejemplo</button><button class="ghost" data-action="vaciar" style="flex:1">Vaciar todo</button></div>
       <div style="display:flex;align-items:center;gap:8px;justify-content:center"><span class="pill p-good" id="syncbadge">Guardado</span></div>
-      <p class="mini">Los datos se guardan en tu Google Sheet. Los PDF se pueden descargar, guardar en Drive o enviar por correo.<br>Version del codigo: <b id="appver">v18-2026-08-30</b></p>
+      <p class="mini">Los datos se guardan en tu Google Sheet. Los PDF se pueden descargar, guardar en Drive o enviar por correo.<br>Version del codigo: <b id="appver">v19-2026-08-31</b></p>
     </div>
   </aside>
   <main id="view"></main>
@@ -326,6 +337,8 @@
 
 <script src="https://cdn.jsdelivr.net/npm/jspdf@2.5.2/dist/jspdf.umd.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/jspdf-autotable@3.8.2/dist/jspdf.plugin.autotable.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js"></script>
 <script>
 (function () {
   function fallo(msg) {
