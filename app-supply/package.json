@@ -1,0 +1,21 @@
+{
+  "name": "fulcrum-supply-assurance",
+  "version": "1.0.0",
+  "private": true,
+  "description": "MX Supply Assurance Process - deteccion de riesgo de stockout y consolidado por proveedor",
+  "main": "server.js",
+  "type": "commonjs",
+  "scripts": {
+    "start": "node server.js",
+    "cli": "node cli.js",
+    "verificar": "node test/verify.js"
+  },
+  "dependencies": {
+    "express": "^4.21.2",
+    "multer": "^1.4.5-lts.1",
+    "jszip": "^3.10.1",
+    "exceljs": "^4.4.0",
+    "nodemailer": "^6.9.16",
+    "sax": "^1.4.1"
+  }
+}

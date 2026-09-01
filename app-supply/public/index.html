@@ -1,0 +1,313 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>MX Supply Assurance</title>
+<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>📦</text></svg>">
+<style>
+  :root{
+    --tinta:#111827; --tenue:#6b7280; --linea:#e5e7eb; --fondo:#f6f7f9; --panel:#fff;
+    --marca:#1f3864; --marca-suave:#eef2f9;
+    --rojo:#9c0006; --rojo-fondo:#ffc7ce; --verde:#166534; --verde-fondo:#dcfce7;
+    --ambar:#92400e; --ambar-fondo:#fef3c7;
+    --radio:10px;
+  }
+  *{box-sizing:border-box}
+  body{margin:0;background:var(--fondo);color:var(--tinta);
+    font:14px/1.5 "Segoe UI",system-ui,-apple-system,Arial,sans-serif}
+  header{background:var(--marca);color:#fff;padding:14px 22px;display:flex;align-items:baseline;gap:14px;flex-wrap:wrap}
+  header h1{margin:0;font-size:17px;font-weight:600;letter-spacing:.2px}
+  header span{font-size:12px;color:#b9c6e2}
+  nav{display:flex;gap:2px;background:#fff;border-bottom:1px solid var(--linea);padding:0 22px;overflow-x:auto}
+  nav button{background:none;border:0;border-bottom:2px solid transparent;padding:11px 16px;
+    font:inherit;font-weight:500;color:var(--tenue);cursor:pointer;white-space:nowrap}
+  nav button:hover{color:var(--tinta)}
+  nav button[aria-selected=true]{color:var(--marca);border-bottom-color:var(--marca)}
+  main{max-width:1180px;margin:0 auto;padding:22px}
+  section[hidden]{display:none}
+  .panel{background:var(--panel);border:1px solid var(--linea);border-radius:var(--radio);padding:20px;margin-bottom:18px}
+  .panel h2{margin:0 0 4px;font-size:15px}
+  .panel p.ayuda{margin:0 0 16px;color:var(--tenue);font-size:13px}
+  .rejilla{display:grid;gap:14px;grid-template-columns:repeat(auto-fit,minmax(230px,1fr))}
+  label{display:block;font-size:12px;font-weight:600;color:#374151;margin-bottom:5px}
+  label .nota{font-weight:400;color:var(--tenue)}
+  input[type=text],input[type=date],input[type=number],input[type=email],input[type=password],select,textarea{
+    width:100%;padding:8px 10px;border:1px solid #d1d5db;border-radius:7px;font:inherit;background:#fff}
+  input:focus,select:focus,textarea:focus{outline:2px solid var(--marca);outline-offset:-1px;border-color:var(--marca)}
+  textarea{resize:vertical;min-height:64px}
+  input[type=file]{width:100%;padding:9px;border:1px dashed #cbd5e1;border-radius:7px;background:#fbfcfd;font:inherit}
+  .btn{background:var(--marca);color:#fff;border:0;border-radius:7px;padding:9px 18px;font:inherit;
+    font-weight:600;cursor:pointer}
+  .btn:hover{filter:brightness(1.12)}
+  .btn:disabled{opacity:.5;cursor:not-allowed;filter:none}
+  .btn.claro{background:#fff;color:var(--marca);border:1px solid #c7d2e5}
+  .btn.claro:hover{background:var(--marca-suave);filter:none}
+  .btn.chico{padding:5px 11px;font-size:12px}
+  .acciones{display:flex;gap:10px;flex-wrap:wrap;align-items:center;margin-top:16px}
+  table{width:100%;border-collapse:collapse;font-size:13px}
+  th,td{text-align:left;padding:7px 10px;border-bottom:1px solid var(--linea);vertical-align:top}
+  th{font-size:11px;text-transform:uppercase;letter-spacing:.4px;color:var(--tenue);
+    background:#fafbfc;position:sticky;top:0}
+  td.num,th.num{text-align:right;font-variant-numeric:tabular-nums}
+  .desplaza{max-height:440px;overflow:auto;border:1px solid var(--linea);border-radius:8px}
+  .marca{display:inline-block;padding:1px 8px;border-radius:999px;font-size:11px;font-weight:600}
+  .marca.rojo{background:var(--rojo-fondo);color:var(--rojo)}
+  .marca.verde{background:var(--verde-fondo);color:var(--verde)}
+  .marca.ambar{background:var(--ambar-fondo);color:var(--ambar)}
+  .aviso{border-left:3px solid;padding:10px 14px;border-radius:0 7px 7px 0;margin-bottom:10px;font-size:13px}
+  .aviso.err{background:#fef2f2;border-color:var(--rojo);color:#7f1d1d}
+  .aviso.adv{background:var(--ambar-fondo);border-color:#d97706;color:var(--ambar)}
+  .aviso.ok{background:var(--verde-fondo);border-color:#16a34a;color:var(--verde)}
+  .aviso.info{background:var(--marca-suave);border-color:var(--marca);color:#1e3a5f}
+  .cifras{display:grid;gap:12px;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));margin-bottom:16px}
+  .cifra{background:#fff;border:1px solid var(--linea);border-radius:var(--radio);padding:14px}
+  .cifra b{display:block;font-size:24px;font-weight:600;font-variant-numeric:tabular-nums;line-height:1.2}
+  .cifra small{color:var(--tenue);font-size:11.5px;text-transform:uppercase;letter-spacing:.4px}
+  .cifra.alerta b{color:var(--rojo)}
+  ol.pasos{margin:0;padding-left:0;list-style:none;counter-reset:p}
+  ol.pasos li{counter-increment:p;padding:11px 0 11px 42px;position:relative;border-bottom:1px solid var(--linea);font-size:13px}
+  ol.pasos li:last-child{border-bottom:0}
+  ol.pasos li::before{content:counter(p);position:absolute;left:0;top:11px;width:26px;height:26px;
+    background:var(--marca);color:#fff;border-radius:50%;display:grid;place-items:center;font-size:12px;font-weight:700}
+  ol.pasos b{display:block;margin-bottom:2px}
+  .fila-radio{display:flex;gap:18px;flex-wrap:wrap;margin-bottom:12px}
+  .fila-radio label{display:flex;gap:7px;align-items:flex-start;font-weight:500;font-size:13px;
+    margin:0;cursor:pointer;padding:9px 13px;border:1px solid #d1d5db;border-radius:8px;flex:1;min-width:250px}
+  .fila-radio label:has(input:checked){border-color:var(--marca);background:var(--marca-suave)}
+  .fila-radio input{margin-top:3px}
+  .fila-radio small{display:block;color:var(--tenue);font-weight:400;margin-top:2px}
+  .cargando{display:inline-block;width:15px;height:15px;border:2px solid #ffffff66;border-top-color:#fff;
+    border-radius:50%;animation:giro .7s linear infinite;vertical-align:-3px;margin-right:7px}
+  @keyframes giro{to{transform:rotate(360deg)}}
+  code{background:#f1f3f5;padding:1px 5px;border-radius:4px;font-size:12px}
+  .previa{border:1px solid var(--linea);border-radius:8px;padding:14px;background:#fff;max-height:380px;overflow:auto}
+  details{border:1px solid var(--linea);border-radius:8px;padding:10px 14px;margin-top:12px;background:#fff}
+  summary{cursor:pointer;font-weight:600;font-size:13px}
+  .vacio{padding:26px;text-align:center;color:var(--tenue);font-size:13px}
+</style>
+</head>
+<body>
+
+<header>
+  <h1>MX Supply Assurance</h1>
+  <span>Riesgo de faltante por numero de parte y consolidado por proveedor</span>
+</header>
+
+<nav role="tablist">
+  <button role="tab" aria-selected="true" data-tab="proceso">1. Proceso</button>
+  <button role="tab" aria-selected="false" data-tab="resultado">2. Resultado</button>
+  <button role="tab" aria-selected="false" data-tab="contactos">3. Contactos</button>
+  <button role="tab" aria-selected="false" data-tab="correo">4. Correo</button>
+</nav>
+
+<main>
+
+<!-- ==================== PROCESO ==================== -->
+<section id="tab-proceso">
+  <div class="panel">
+    <h2>Archivos</h2>
+    <p class="ayuda">Los dos archivos se procesan en esta computadora. No se suben a ningun servicio.</p>
+    <div class="rejilla">
+      <div>
+        <label>Libro MX Supply Assurance Process <span class="nota">(.xlsx)</span></label>
+        <input type="file" id="fMx" accept=".xlsx,.xlsm">
+      </div>
+      <div>
+        <label>Archivo Data <span class="nota">(.xlsx, hoja Export)</span></label>
+        <input type="file" id="fData" accept=".xlsx,.xlsm,.csv">
+      </div>
+    </div>
+  </div>
+
+  <div class="panel">
+    <h2>Paso 1 &middot; Sustituir el comprador</h2>
+    <p class="ayuda">Al copiar Data a la hoja Details, el valor de DEFAULT_BUYER se reemplaza por el nombre.</p>
+    <div id="sust"></div>
+    <button class="btn claro chico" id="addSust" type="button">Agregar otra sustitucion</button>
+  </div>
+
+  <div class="panel">
+    <h2>Paso 3 &middot; Ventana de riesgo</h2>
+    <p class="ayuda">Define en que semanas cuenta el rojo. El rojo es la proyeccion negativa: el formato condicional
+      <code>&lt; 0</code> con relleno <code>#FFC7CE</code> de la hoja.</p>
+    <div class="fila-radio">
+      <label><input type="radio" name="modo" value="rango" checked>
+        <span>Rango de fechas
+          <small>Cuenta el rojo en cualquier semana que toque el rango. Por omision, del dia de hoy al fin del mes siguiente.</small>
+        </span></label>
+      <label><input type="radio" name="modo" value="week">
+        <span>Una sola columna de semana
+          <small>El paso literal: filtrar el color solo en la columna que elijas.</small>
+        </span></label>
+    </div>
+
+    <div class="rejilla" id="camposRango">
+      <div><label>Desde</label><input type="date" id="desde"></div>
+      <div><label>Hasta</label><input type="date" id="hasta"></div>
+    </div>
+    <div class="rejilla" id="camposSemana" hidden>
+      <div><label>Columna de semana</label>
+        <select id="columna"></select>
+      </div>
+    </div>
+
+    <div class="rejilla" style="margin-top:14px">
+      <div><label>Fecha de corrida <span class="nota">(el TODAY de la columna L)</span></label>
+        <input type="date" id="hoy"></div>
+      <div><label>Estatus a conservar <span class="nota">(columna L9)</span></label>
+        <select id="estatus" multiple size="3" style="height:auto">
+          <option value="SHORTAGE" selected>SHORTAGE</option>
+          <option value="OK PER LT">OK PER LT</option>
+          <option value="OK">OK</option>
+        </select></div>
+    </div>
+
+    <details>
+      <summary>Opciones avanzadas</summary>
+      <label style="margin-top:10px;font-weight:500;display:flex;gap:8px;align-items:center">
+        <input type="checkbox" id="incluirOpenPO" checked>
+        Leer la hoja Open_PO para llenar las filas Promise y Need. Quitalo si quieres una corrida mas rapida;
+        esas dos filas quedarian en cero hasta que Excel recalcule.
+      </label>
+    </details>
+
+    <div class="acciones">
+      <button class="btn" id="procesar">Procesar</button>
+      <span id="estado" style="color:var(--tenue);font-size:13px"></span>
+    </div>
+  </div>
+
+  <div id="errProceso"></div>
+</section>
+
+<!-- ==================== RESULTADO ==================== -->
+<section id="tab-resultado" hidden>
+  <div id="sinResultado" class="panel vacio">Todavia no hay una corrida. Ve a <b>1. Proceso</b>, carga los dos archivos y presiona Procesar.</div>
+  <div id="conResultado" hidden>
+    <div class="cifras" id="cifras"></div>
+    <div id="avisos"></div>
+
+    <div class="panel">
+      <h2>Que se hizo</h2>
+      <ol class="pasos" id="pasos"></ol>
+      <div class="acciones">
+        <button class="btn" id="dlLibro">Descargar el libro MX</button>
+        <button class="btn claro" id="dlCons">Descargar el consolidado</button>
+      </div>
+    </div>
+
+    <div class="panel">
+      <h2>Consolidado por proveedor</h2>
+      <p class="ayuda">Un renglon por proveedor, con sus numeros de parte unicos en riesgo. Los que no tienen correo
+        registrado no se pueden enviar hasta cargarlos en <b>3. Contactos</b>.</p>
+      <div class="desplaza">
+        <table>
+          <thead><tr>
+            <th>Proveedor</th><th class="num">Partes</th><th class="num">Renglones</th>
+            <th class="num">Faltante</th><th>Mas proximo</th><th>Correo</th>
+          </tr></thead>
+          <tbody id="tblProv"></tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ==================== CONTACTOS ==================== -->
+<section id="tab-contactos" hidden>
+  <div class="panel">
+    <h2>Cargar catalogo</h2>
+    <p class="ayuda">Excel o CSV con una columna de proveedor y otra de correo. Si los encabezados dicen
+      &laquo;proveedor&raquo; y &laquo;correo&raquo; se detectan solos; si no, se toma la columna A y la B.
+      Se aceptan varios correos por proveedor separados por coma o punto y coma.</p>
+    <div class="rejilla">
+      <div><label>Archivo</label><input type="file" id="fContactos" accept=".xlsx,.csv"></div>
+      <div><label>Al importar</label>
+        <select id="modoImport">
+          <option value="false">Agregar y actualizar lo que ya existe</option>
+          <option value="true">Reemplazar todo el catalogo</option>
+        </select></div>
+    </div>
+    <div class="acciones"><button class="btn" id="importar">Importar</button></div>
+    <div id="msgContactos"></div>
+  </div>
+
+  <div class="panel">
+    <h2>Catalogo <span id="totalContactos" style="font-weight:400;color:var(--tenue)"></span></h2>
+    <div class="rejilla" style="margin-bottom:12px">
+      <div><label>Proveedor <span class="nota">(tal como aparece en la columna SUPPLIER)</span></label>
+        <input type="text" id="nuevoProv" list="listaProv" placeholder="ENDRIES INTERNATIONAL INC">
+        <datalist id="listaProv"></datalist></div>
+      <div><label>Correos</label><input type="text" id="nuevoMail" placeholder="compras@proveedor.com; ventas@proveedor.com"></div>
+    </div>
+    <button class="btn claro chico" id="guardarContacto">Guardar</button>
+    <div class="desplaza" style="margin-top:14px">
+      <table><thead><tr><th>Proveedor</th><th>Correos</th><th style="width:80px"></th></tr></thead>
+        <tbody id="tblContactos"></tbody></table>
+    </div>
+  </div>
+</section>
+
+<!-- ==================== CORREO ==================== -->
+<section id="tab-correo" hidden>
+  <div class="panel">
+    <h2>Servidor de correo</h2>
+    <p class="ayuda">Outlook / Microsoft 365 usa <code>smtp.office365.com</code> puerto <code>587</code>.
+      Si el envio se rechaza con un error de autenticacion, casi siempre es que TI tiene deshabilitado SMTP AUTH
+      para el buzon.</p>
+    <div class="rejilla">
+      <div><label>Servidor</label><input type="text" id="smtpHost" placeholder="smtp.office365.com"></div>
+      <div><label>Puerto</label><input type="number" id="smtpPort" value="587"></div>
+      <div><label>Usuario</label><input type="email" id="smtpUser" placeholder="tu.cuenta@empresa.com"></div>
+      <div><label>Contrasena</label><input type="password" id="smtpPass" placeholder="(sin cambios)"></div>
+      <div><label>Remitente</label><input type="email" id="smtpFrom" placeholder="igual al usuario"></div>
+      <div><label>Copia a <span class="nota">(opcional)</span></label><input type="text" id="cc" placeholder="jefe@empresa.com"></div>
+    </div>
+    <label style="margin-top:12px;font-weight:500;display:flex;gap:8px;align-items:center">
+      <input type="checkbox" id="guardarPass"> Guardar la contrasena en este equipo
+      <span class="nota">(queda en datos/smtp.json, solo lectura para tu usuario)</span>
+    </label>
+    <div class="acciones">
+      <button class="btn claro" id="probarSmtp">Probar conexion</button>
+      <button class="btn claro" id="guardarSmtp">Guardar configuracion</button>
+    </div>
+    <div id="msgSmtp"></div>
+  </div>
+
+  <div class="panel">
+    <h2>Mensaje</h2>
+    <div class="rejilla">
+      <div style="grid-column:1/-1"><label>Asunto <span class="nota">se puede usar {proveedor}, {partes} y {ventana}</span></label>
+        <input type="text" id="asunto" value="Material en riesgo de faltante - {proveedor} - {partes} parte(s)"></div>
+    </div>
+    <div class="rejilla" style="margin-top:12px">
+      <div style="grid-column:1/-1"><label>Saludo</label><input type="text" id="saludo" value="Buen dia,"></div>
+      <div style="grid-column:1/-1"><label>Introduccion</label><textarea id="intro">Les comparto el material que tenemos en riesgo de faltante para la ventana indicada. Agradecemos confirmar fecha de entrega para cada numero de parte.</textarea></div>
+      <div style="grid-column:1/-1"><label>Cierre</label><textarea id="cierre">El detalle completo va adjunto en Excel. Quedo al pendiente de su respuesta.</textarea></div>
+      <div><label>Firma</label><input type="text" id="firma" placeholder="Luis Rodriguez"></div>
+    </div>
+    <label style="margin-top:12px;font-weight:500;display:flex;gap:8px;align-items:center">
+      <input type="checkbox" id="adjuntar" checked> Adjuntar el Excel con el detalle de ese proveedor
+    </label>
+  </div>
+
+  <div class="panel">
+    <h2>Envio</h2>
+    <p class="ayuda">Revisa la vista previa antes de enviar. Solo se manda a los proveedores marcados que tengan correo.</p>
+    <div id="listaEnvio" class="desplaza" style="max-height:280px"><div class="vacio">Procesa los archivos primero.</div></div>
+    <div class="acciones">
+      <button class="btn claro" id="verPrevia">Ver vista previa</button>
+      <button class="btn claro" id="dlBorradores">Descargar borradores .eml</button>
+      <button class="btn" id="enviar">Enviar correos</button>
+    </div>
+    <div id="msgCorreo"></div>
+    <div id="previa"></div>
+  </div>
+</section>
+
+</main>
+
+<script src="app.js"></script>
+</body>
+</html>
