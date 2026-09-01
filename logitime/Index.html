@@ -145,6 +145,33 @@
     .cli-tabla td.num,.cli-tabla th.num { text-align:right;font-variant-numeric:tabular-nums; }
     .cli-bar         { height:5px;border-radius:3px;background:var(--brand);display:inline-block;min-width:2px;vertical-align:middle; }
 
+    /* Medidores circulares */
+    .gauge-strip     { display:grid;gap:12px;grid-template-columns:repeat(auto-fit,minmax(126px,1fr)); }
+    .gauge           { text-align:center; }
+    .gauge-svg       { width:88px;height:88px; }
+    .gauge-num       { font-size:19px;font-weight:800;fill:var(--txt);
+                       font-variant-numeric:tabular-nums; }
+    .gauge-k         { font-size:12px;font-weight:600;margin-top:2px; }
+    .gauge-s         { font-size:10.5px;color:var(--muted);margin-top:1px; }
+
+    /* Mapa de calor día × hora */
+    .heat            { overflow-x:auto; }
+    .heat-tabla      { border-collapse:separate;border-spacing:3px;font-size:10px; }
+    .heat-tabla th   { color:var(--muted);font-weight:600;padding:0 2px;font-size:9.5px; }
+    .heat-dia        { text-align:right;padding-right:5px !important; }
+    .heat-c          { width:26px;height:22px;border-radius:5px;background:var(--line);
+                       display:flex;align-items:center;justify-content:center;
+                       color:#fff;font-size:9.5px;font-weight:700; }
+    .heat-key        { display:flex;align-items:center;gap:4px;margin-top:9px;
+                       font-size:10px;color:var(--muted); }
+    .heat-key i      { width:16px;height:9px;border-radius:3px;background:var(--brand);display:inline-block; }
+
+    .adi-resumen     { display:grid;grid-template-columns:1fr 1fr;gap:10px; }
+    .adi-resumen > div { background:var(--bg);border:1px solid var(--line);border-radius:9px;padding:9px 11px; }
+    .flu-cli         { font-size:9px;text-transform:uppercase;letter-spacing:.05em;
+                       background:var(--badge-curso-bg);color:var(--badge-curso-txt);
+                       border-radius:4px;padding:1px 5px; }
+
     /* Rendimiento en vivo dentro de la tarjeta de maniobra */
     .prod-grid       { display:grid;gap:6px;grid-template-columns:repeat(auto-fit,minmax(84px,1fr));margin-top:8px; }
     .prod            { background:var(--bg);border:1px solid var(--line);border-radius:8px;padding:7px 9px;text-align:center; }
@@ -154,6 +181,33 @@
     .prod-s          { font-size:9.5px;color:var(--muted);margin-top:1px; }
     .prod-empty      { margin-top:8px;font-size:11.5px;color:var(--amber);background:var(--badge-ambar-bg);
                        border:1px solid var(--badge-ambar-bg);border-radius:8px;padding:7px 10px; }
+
+    /* ════════════════════════════════════════════
+       EVIDENCIA FOTOGRÁFICA
+    ════════════════════════════════════════════ */
+    .fotos-acciones  { display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin-bottom:12px; }
+    .foto-btn        { display:inline-flex;align-items:center;gap:7px;cursor:pointer;
+                       background:var(--brand);color:#fff;border-radius:9px;padding:11px 16px;
+                       font-size:14px;font-weight:600;margin:0;line-height:1.2; }
+    .foto-btn.ghost  { background:transparent;border:1px solid var(--line);color:var(--txt); }
+    .foto-btn:active { transform:scale(.97); }
+    .fotos-estado    { font-family:ui-monospace,Menlo,Consolas,monospace;font-size:12px;
+                       font-weight:700;border-radius:999px;padding:4px 11px; }
+    .fotos-estado.falta { background:var(--badge-rojo-bg);color:var(--badge-rojo-txt); }
+    .fotos-estado.listo { background:var(--badge-verde-bg);color:var(--badge-verde-txt); }
+    .fotos-tiras     { display:grid;gap:8px;grid-template-columns:repeat(auto-fill,minmax(84px,1fr)); }
+    .foto-mini       { position:relative;aspect-ratio:1;border-radius:9px;background-size:cover;
+                       background-position:center;border:1px solid var(--line); }
+    .foto-x          { position:absolute;top:3px;right:3px;width:24px;height:24px;min-height:0;
+                       padding:0;border-radius:50%;background:rgba(0,0,0,.62);color:#fff;
+                       font-size:12px;line-height:1;display:flex;align-items:center;justify-content:center; }
+    .adi-row         { display:flex;gap:6px;align-items:center;margin-bottom:7px;flex-wrap:wrap; }
+    .adi-total       { text-align:right;font-size:13px;margin-top:8px;color:var(--muted); }
+    .adi-total b     { color:var(--green);font-size:15px; }
+
+    .barra-accion    { position:sticky;bottom:0;z-index:20;padding:12px 14px;
+                       backdrop-filter:blur(8px);border-color:var(--brand); }
+    .barra-accion .row > button:first-child { flex:1;min-width:200px; }
 
     .radio-row       { display:flex;gap:8px;flex-wrap:wrap;padding:4px 0; }
     .radio-op        { display:inline-flex;align-items:center;gap:6px;cursor:pointer;
@@ -323,8 +377,33 @@
       </div>
 
       <div id="msg-nueva" class="aviso err" style="display:none;margin-top:14px"></div>
+    </div>
 
-      <div class="row" style="margin-top:14px">
+    <!-- Evidencia fotográfica: sin ella el cronómetro no arranca -->
+    <div class="card" id="card-fotos">
+      <div class="row" style="justify-content:space-between;margin-bottom:10px">
+        <h2 style="margin:0">Evidencia de la unidad <span class="req-star">*</span></h2>
+        <span id="fotos-estado" class="fotos-estado falta">0 fotos</span>
+      </div>
+      <p class="muted" style="margin:0 0 12px">
+        Se guardan en Drive, en una carpeta por unidad. Toma placas, sellos,
+        estado de la carga y daños visibles.
+      </p>
+      <div class="fotos-acciones">
+        <label class="foto-btn">📷 Tomar foto
+          <input type="file" accept="image/*" capture="environment" multiple
+                 onchange="Fotos.agregar(this)" hidden>
+        </label>
+        <label class="foto-btn ghost">🖼 Galería
+          <input type="file" accept="image/*" multiple onchange="Fotos.agregar(this)" hidden>
+        </label>
+        <button class="ghost sm" type="button" onclick="Fotos.limpiar()">Quitar todas</button>
+      </div>
+      <div id="fotos-tiras" class="fotos-tiras"></div>
+    </div>
+
+    <div class="card barra-accion">
+      <div class="row">
         <button id="btn-iniciar" onclick="Nueva.iniciar()">▶ Iniciar con cronómetro</button>
         <button class="ghost" onclick="Nueva.duplicar()">⧉ Duplicar para siguiente</button>
         <button class="ghost" onclick="Nueva.limpiar()">Limpiar formulario</button>
@@ -581,6 +660,12 @@
     <div id="p-aviso"></div>
     <div id="p-kpis" class="kpi-strip"></div>
 
+    <!-- Medidores: porcentajes que se leen de un vistazo -->
+    <div class="card">
+      <h2>Salud de la operación</h2>
+      <div id="p-medidores" class="gauge-strip"></div>
+    </div>
+
     <div class="pnl-2col">
       <div class="card">
         <h2>Distribución del semáforo</h2>
@@ -589,6 +674,39 @@
       <div class="card">
         <h2>Volumen por tipo de maniobra</h2>
         <div id="p-barras"></div>
+      </div>
+    </div>
+
+    <div class="pnl-2col">
+      <div class="card">
+        <h2>Carga por día de la semana</h2>
+        <div id="p-dias-graf"></div>
+      </div>
+      <div class="card">
+        <h2>Cuándo se trabaja · día × hora</h2>
+        <div id="p-heat"></div>
+      </div>
+    </div>
+
+    <div class="pnl-2col">
+      <div class="card">
+        <h2>Top clientes por volumen</h2>
+        <div id="p-clientes"></div>
+      </div>
+      <div class="card">
+        <h2>Ranking de montacarguistas</h2>
+        <div id="p-operadores"></div>
+      </div>
+    </div>
+
+    <div class="pnl-2col">
+      <div class="card">
+        <h2>Uso de andenes</h2>
+        <div id="p-andenes"></div>
+      </div>
+      <div class="card">
+        <h2>Servicios adicionales facturados</h2>
+        <div id="p-adicionales"></div>
       </div>
     </div>
 
@@ -655,6 +773,9 @@
       <button id="adm-btn-cat"                onclick="Admin.sub('cat')">Catálogos</button>
       <button id="adm-btn-flu"                onclick="Admin.sub('flu')">Flujos y etapas</button>
       <button id="adm-btn-dep"                onclick="Admin.sub('dep')">Departamentos</button>
+      <button id="adm-btn-equ"                onclick="Admin.sub('equ')">Equipos</button>
+      <button id="adm-btn-adi"                onclick="Admin.sub('adi')">Adicionales</button>
+      <button id="adm-btn-his"                onclick="Admin.sub('his')">Historial</button>
       <button id="adm-btn-sem"                onclick="Admin.sub('sem')">Semáforos</button>
       <button id="adm-btn-usr"                onclick="Admin.sub('usr')">Usuarios</button>
       <button id="adm-btn-tem"                onclick="Admin.sub('tem')">Tiempos estimados</button>
@@ -681,6 +802,15 @@
             <button class="danger sm" onclick="Admin.eliminarFlujo()">Eliminar flujo</button>
             <button class="ghost sm" onclick="Admin.cerrarFlujo()">Cerrar ✕</button>
           </div>
+        </div>
+        <div class="row" style="margin-bottom:12px;gap:8px;align-items:flex-end">
+          <div style="flex:1;min-width:200px">
+            <label>Aplica a</label>
+            <select id="adm-flu-cliente" onchange="Admin.variantePorCliente()"></select>
+          </div>
+          <span class="muted" style="flex:2;min-width:200px">
+            Elige un cliente para darle su propia secuencia sin tocar la genérica.
+          </span>
         </div>
         <div class="scroll"><table id="adm-tabla-flu"></table></div>
         <div class="row" style="margin-top:12px;gap:8px">
@@ -716,6 +846,75 @@
       <div class="card">
         <h2>Departamentos registrados</h2>
         <div class="scroll"><table id="adm-tabla-dep"></table></div>
+      </div>
+    </div>
+
+    <!-- Equipos / cuadrillas -->
+    <div id="adm-equ" class="hidden">
+      <div class="card">
+        <h2>Alta de equipo</h2>
+        <p class="muted" style="margin:0 0 12px">
+          Un equipo agrupa gente y montacargas. Se asigna a empleados, a usuarios
+          y a cada unidad del inventario.
+        </p>
+        <div class="grid">
+          <input type="hidden" id="equ-id">
+          <div><label>Nombre <span class="req-star">*</span></label><input id="equ-nombre" placeholder="Equipo A"></div>
+          <div><label>Turno</label><input id="equ-turno" placeholder="Día / Madrugada"></div>
+          <div style="grid-column:1/-1"><label>Descripción</label><input id="equ-desc"></div>
+        </div>
+        <div class="row" style="margin-top:12px">
+          <button onclick="Admin.guardarEqu()">Guardar equipo</button>
+          <button class="ghost" onclick="Admin.limpiarEqu()">Cancelar</button>
+        </div>
+      </div>
+      <div class="card">
+        <h2>Equipos registrados</h2>
+        <div class="scroll"><table id="adm-tabla-equ"></table></div>
+      </div>
+    </div>
+
+    <!-- Catálogo de servicios adicionales -->
+    <div id="adm-adi" class="hidden">
+      <div class="card">
+        <h2>Alta de concepto adicional</h2>
+        <p class="muted" style="margin:0 0 12px">
+          Deja el cliente vacío para que el concepto esté disponible para todos.
+        </p>
+        <div class="grid">
+          <input type="hidden" id="adi-id">
+          <div><label>Concepto <span class="req-star">*</span></label><input id="adi-concepto" placeholder="Maniobra extra, reestiba…"></div>
+          <div><label>Cliente</label><select id="adi-cliente"></select></div>
+          <div><label>Unidad</label><input id="adi-unidad" placeholder="Tarima, hora, servicio"></div>
+          <div><label>Precio</label><input type="number" step="any" min="0" id="adi-precio" value="0"></div>
+        </div>
+        <div class="row" style="margin-top:12px">
+          <button onclick="Admin.guardarAdi()">Guardar concepto</button>
+          <button class="ghost" onclick="Admin.limpiarAdi()">Cancelar</button>
+        </div>
+      </div>
+      <div class="card">
+        <h2>Conceptos registrados</h2>
+        <div class="scroll"><table id="adm-tabla-adi"></table></div>
+      </div>
+    </div>
+
+    <!-- Historial de acciones -->
+    <div id="adm-his" class="hidden">
+      <div class="card">
+        <div class="row" style="justify-content:space-between;margin-bottom:12px">
+          <h2 style="margin:0">Quién hizo qué</h2>
+          <div class="row" style="gap:8px">
+            <select id="his-dias" onchange="Admin.cargarHis()" style="width:auto;padding:6px 10px;font-size:12px">
+              <option value="1">Hoy</option>
+              <option value="7" selected>Últimos 7 días</option>
+              <option value="30">Últimos 30 días</option>
+              <option value="365">Último año</option>
+            </select>
+            <button class="ghost sm" onclick="Admin.cargarHis()">↺ Recargar</button>
+          </div>
+        </div>
+        <div id="dt-historial"></div>
       </div>
     </div>
 
@@ -943,8 +1142,21 @@
     <h2 id="sup-titulo" style="margin:0 0 8px;font-size:16px;font-weight:700;text-transform:none;letter-spacing:0;color:var(--txt)">Validar registros</h2>
     <p class="muted" id="sup-intro" style="margin:0 0 12px"></p>
     <label>Comentario del supervisor <span class="req-star">*</span></label>
-    <textarea id="sup-texto" style="min-height:110px"
+    <textarea id="sup-texto" style="min-height:100px"
               placeholder="Ej. Se verificó con el operador: fueron 45 atados en 3 viajes, el tiempo es correcto."></textarea>
+
+    <div id="sup-adicionales" style="margin-top:16px">
+      <div class="row" style="justify-content:space-between;margin-bottom:8px">
+        <h2 style="margin:0">Servicios adicionales</h2>
+        <button class="ghost sm" type="button" onclick="Supervision.agregarAdicional()">+ Agregar</button>
+      </div>
+      <p class="muted" style="margin:0 0 10px">
+        Conceptos fuera de la tarifa base. El catálogo se filtra por el cliente de la maniobra.
+      </p>
+      <div id="sup-adi-lista"></div>
+      <div class="adi-total" id="sup-adi-total"></div>
+    </div>
+
     <div id="sup-aviso" class="aviso err" style="display:none;margin-top:10px"></div>
     <div class="row" style="margin-top:14px;justify-content:flex-end;gap:8px">
       <button class="ghost" onclick="Supervision.cerrar()">Cancelar</button>
@@ -981,6 +1193,7 @@ var STATE = {
   curso:       [],          // maniobras en curso
   cursoSig:    '',          // firma estructural para evitar redibujar
   cursoRecibido: 0,         // Date.now() al recibir los datos
+  minFotos:    5,
   autoSync:    false,
   autoSyncId:  null,
   tickId:      null,
@@ -1085,6 +1298,82 @@ var UI = {
   }
 };
 var $ = UI.$;
+
+/* ══════════════════════════════════════════════════════════════
+   FOTOS — evidencia obligatoria al arrancar el cronómetro
+   Se comprimen en el navegador antes de subir: una foto de celular
+   pesa 4 MB y tarda una eternidad en viajar a Apps Script.
+══════════════════════════════════════════════════════════════ */
+var Fotos = {
+  lista: [],          // [{ nombre, tipo, datos, preview }]
+  MAX_LADO: 1400,
+  CALIDAD: 0.72,
+
+  agregar: function(input) {
+    var files = Array.prototype.slice.call(input.files || []);
+    if (!files.length) return;
+    input.value = '';                      // permite volver a elegir la misma foto
+    UI.toast('Procesando ' + files.length + ' foto(s)…', '');
+    var pendientes = files.length;
+    files.forEach(function(f) {
+      Fotos._comprimir(f, function(item) {
+        if (item) Fotos.lista.push(item);
+        if (--pendientes === 0) Fotos.render();
+      });
+    });
+  },
+
+  _comprimir: function(file, cb) {
+    if (!/^image\//.test(file.type)) { cb(null); return; }
+    var lector = new FileReader();
+    lector.onload = function(ev) {
+      var img = new Image();
+      img.onload = function() {
+        var escala = Math.min(1, Fotos.MAX_LADO / Math.max(img.width, img.height));
+        var w = Math.round(img.width * escala), h = Math.round(img.height * escala);
+        var cv = document.createElement('canvas');
+        cv.width = w; cv.height = h;
+        cv.getContext('2d').drawImage(img, 0, 0, w, h);
+        var url = cv.toDataURL('image/jpeg', Fotos.CALIDAD);
+        cb({
+          nombre:  (file.name || 'foto').replace(/\.[^.]+$/, '') + '.jpg',
+          tipo:    'image/jpeg',
+          datos:   url.split(',')[1],
+          preview: url
+        });
+      };
+      img.onerror = function() { cb(null); };
+      img.src = ev.target.result;
+    };
+    lector.onerror = function() { cb(null); };
+    lector.readAsDataURL(file);
+  },
+
+  quitar: function(i) { Fotos.lista.splice(i, 1); Fotos.render(); },
+  limpiar: function() { Fotos.lista = []; Fotos.render(); },
+
+  render: function() {
+    var cont = $('fotos-tiras');
+    if (!cont) return;
+    var min = STATE.minFotos;
+    var n = Fotos.lista.length;
+
+    cont.innerHTML = Fotos.lista.map(function(f, i) {
+      return '<div class="foto-mini" style="background-image:url(' + f.preview + ')">' +
+        '<button type="button" class="foto-x" onclick="Fotos.quitar(' + i + ')" ' +
+        'aria-label="Quitar foto">✕</button></div>';
+    }).join('');
+
+    var faltan = Math.max(0, min - n);
+    var est = $('fotos-estado');
+    est.className = 'fotos-estado ' + (faltan ? 'falta' : 'listo');
+    est.textContent = faltan
+      ? n + ' de ' + min + ' · faltan ' + faltan
+      : '✓ ' + n + ' foto(s) listas';
+  },
+
+  completas: function() { return Fotos.lista.length >= STATE.minFotos; }
+};
 
 /* ══════════════════════════════════════════════════════════════
    CHIPS — selección múltiple con un solo toque
@@ -1764,6 +2053,8 @@ var CAMPO_META = {
                       onchange: 'Nueva.onTipoManiobra()',
                       hint: 'Un registro = una maniobra. No combines operaciones.' },
   aditamento:       { tipo: 'select', cat: 'ADITAMENTOS', vacio: '—' },
+  anden:            { tipo: 'select', cat: 'ANDENES', vacio: '—' },
+  equipo:           { tipo: 'select', cat: 'EQUIPOS',  vacio: '—' },
   toneladas_netas:  { tipo: 'number', step: 'any', min: '0' },
   atados:           { tipo: 'number', min: '0' },
   piezas_sueltas:   { tipo: 'number', min: '0' },
@@ -1820,6 +2111,7 @@ var App = {
   cargarCatalogos: function() {
     API.call('getCatalogos', [Auth.ctx()], function(c) {
       STATE.cat = c || {};
+      STATE.minFotos = Number(c.MIN_FOTOS === undefined ? 5 : c.MIN_FOTOS);
       // Si la hoja CAMPOS aún no existe, el formulario igual se arma
       STATE.campos = (c.CAMPOS && c.CAMPOS.length) ? c.CAMPOS : Nueva.camposFallback();
       Nueva.construirFormulario();
@@ -1838,9 +2130,11 @@ var App = {
       $('edit-montacargas').innerHTML     = Chips.html('chips-edit-monta', c.MONTACARGAS, []);
 
       App.camposExtra(c);
+      Fotos.render();
 
       API.call('getTurnoActual', [], function(r) {
-        if (r.fecha && $('fecha')) $('fecha').value = r.fecha;
+        // La fecha se propone con la de hoy, pero queda editable
+        if ($('fecha')) $('fecha').value = r.fecha || new Date().toISOString().slice(0, 10);
         // El turno puede ser radio o select según cómo esté configurado el campo
         if (!r.turno) return;
         var rd = document.querySelector('input[name="rd-turno"][value="' + r.turno + '"]');
@@ -2113,12 +2407,26 @@ var Nueva = {
   iniciar: function() {
     var d = Nueva.payload();
     if (!Nueva.validar(d, 'msg-nueva')) return;
-    var btn = $('btn-iniciar');
-    btn.disabled = true; btn.textContent = 'Iniciando…';
 
-    API.call('iniciarManiobra', [d], function(r) {
+    if (!Fotos.completas()) {
+      var faltan = STATE.minFotos - Fotos.lista.length;
+      UI.aviso('msg-nueva', 'Faltan ' + faltan + ' foto(s) de evidencia. ' +
+        'Se piden ' + STATE.minFotos + ' para poder arrancar el cronómetro.', 'err');
+      $('card-fotos').scrollIntoView({ behavior: 'smooth', block: 'center' });
+      return;
+    }
+    d.fotos = Fotos.lista.map(function(f) {
+      return { nombre: f.nombre, tipo: f.tipo, datos: f.datos };
+    });
+
+    var btn = $('btn-iniciar');
+    btn.disabled = true;
+    btn.textContent = 'Subiendo ' + d.fotos.length + ' fotos…';
+
+    API.call('iniciarManiobra', [d, Auth.ctx()], function(r) {
       btn.disabled = false; btn.textContent = '▶ Iniciar con cronómetro';
-      UI.toast('✓ Maniobra ' + r.folio + ' iniciada · Etapa 1: ' + r.etapa.nombre, 'ok');
+      UI.toast('✓ ' + r.folio + ' iniciada · ' + r.etapa.nombre +
+               (r.evidencias ? ' · ' + r.evidencias + ' fotos en Drive' : ''), 'ok');
       Nueva.limpiar();
       App.tab('curso');
     }, function(msg) {
@@ -2143,7 +2451,7 @@ var Nueva = {
       UI.aviso('msg-manual', 'Ingresa hora de inicio y hora de fin', 'err');
       return;
     }
-    API.call('registrarManiobra', [d], function(r) {
+    API.call('registrarManiobra', [d, Auth.ctx()], function(r) {
       UI.aviso('msg-manual', '');
       UI.toast('✓ ' + r.folio + ' guardada · ' + UI.fmtMin(r.tiempo_total_min), 'ok');
       Nueva.limpiar();
@@ -2167,6 +2475,7 @@ var Nueva = {
       if ($(k)) $(k).value = '';
     });
     document.querySelectorAll('.campo-invalido').forEach(function(e) { e.classList.remove('campo-invalido'); });
+    Fotos.limpiar();
     UI.aviso('msg-nueva', ''); UI.aviso('msg-manual', '');
   }
 };
@@ -2433,7 +2742,7 @@ var Curso = {
 
   /* ── Acciones ── */
   pausar: function(id) {
-    API.call('pausarEtapa', [id], function() { Curso.cargar(); });
+    API.call('pausarEtapa', [id, Auth.ctx()], function() { Curso.cargar(); });
   },
 
   reparar: function(id) {
@@ -2446,7 +2755,7 @@ var Curso = {
 
   noAplica: function(id) {
     if (!confirm('¿Marcar esta etapa como "No aplica" y avanzar a la siguiente?')) return;
-    API.call('marcarEtapaNoAplica', [id], function(r) {
+    API.call('marcarEtapaNoAplica', [id, Auth.ctx()], function(r) {
       UI.toast(r.maniobra_finalizada ? '✓ Maniobra finalizada' : '✓ Siguiente: ' + r.siguiente.nombre, 'ok');
       Curso.cargar();
     });
@@ -2505,7 +2814,7 @@ var Curso = {
       dano_maniobra_desc: $('modal-dano-desc').value
     };
     Curso.cerrarModal();
-    API.call('finalizarEtapa', [id, extras], function(r) {
+    API.call('finalizarEtapa', [id, extras, Auth.ctx()], function(r) {
       if (r.maniobra_finalizada) {
         var extra = r.min_por_atado ? ' · ' + r.min_por_atado + ' min/atado' : '';
         if (r.min_montacargas_por_ton) extra += ' · ' + r.min_montacargas_por_ton + ' min-montacargas/ton';
@@ -2563,7 +2872,7 @@ var Curso = {
       hora_liberacion:      $('edit-hora_liberacion').value
     };
     Curso.cerrarEdit();
-    API.call('editarManiobra', [id, d], function() {
+    API.call('editarManiobra', [id, d, Auth.ctx()], function() {
       UI.toast('✓ Maniobra actualizada', 'ok');
       Curso.cargar();
     });
@@ -2571,7 +2880,7 @@ var Curso = {
 
   forzarCierre: function(id) {
     if (!confirm('¿Forzar el cierre de esta maniobra? Se cerrarán todas sus etapas abiertas.')) return;
-    API.call('forzarCierreManiobra', [id], function() {
+    API.call('forzarCierreManiobra', [id, Auth.ctx()], function() {
       UI.toast('✓ Maniobra cerrada', 'ok');
       Curso.cargar();
     });
@@ -2579,7 +2888,7 @@ var Curso = {
 
   eliminar: function(id) {
     if (!confirm('¿Eliminar esta maniobra y todas sus etapas? No se puede deshacer.')) return;
-    API.call('eliminarManiobra', [id], function() {
+    API.call('eliminarManiobra', [id, Auth.ctx()], function() {
       UI.toast('Maniobra eliminada', 'ok');
       Curso.cargar();
     });
@@ -2600,7 +2909,7 @@ var Lista = {
           { label: '⛔ Forzar cierre', clase: 'warn',
             confirmar: '¿Forzar el cierre de {n} maniobra(s)?',
             fn: function(ids) {
-              API.call('forzarCierreManiobrasLote', [ids], function(r) {
+              API.call('forzarCierreManiobrasLote', [ids, Auth.ctx()], function(r) {
                 UI.toast('✓ ' + r.cerradas + ' maniobra(s) cerradas', 'ok');
                 Lista.dt.sel = {}; Lista.cargar();
               });
@@ -2633,7 +2942,7 @@ var Lista = {
           { label: '🗑 Eliminar', clase: 'danger',
             confirmar: '¿Eliminar {n} maniobra(s) y sus etapas? No se puede deshacer.',
             fn: function(ids) {
-              API.call('eliminarManiobrasLote', [ids], function(r) {
+              API.call('eliminarManiobrasLote', [ids, Auth.ctx()], function(r) {
                 UI.toast('✓ ' + r.eliminados + ' maniobra(s) eliminadas', 'ok');
                 Lista.dt.sel = {}; Lista.cargar();
               });
@@ -2938,11 +3247,29 @@ var Incidencias = {
 ══════════════════════════════════════════════════════════════ */
 var Supervision = {
   ids: [], modo: 'validar', alTerminar: null,
+  adicionales: [], catalogo: [],
 
   abrir: function(ids, modo, cb) {
     Supervision.ids = [].concat(ids || []);
     Supervision.modo = modo || 'validar';
     Supervision.alTerminar = cb || null;
+    Supervision.adicionales = [];
+    Supervision.catalogo = [];
+
+    // Los adicionales solo tienen sentido sobre una maniobra concreta
+    var unaSola = Supervision.ids.length === 1;
+    $('sup-adicionales').style.display = unaSola ? '' : 'none';
+    if (unaSola) {
+      var id = Supervision.ids[0];
+      API.call('getAdicionalesManiobra', [id], function(r) {
+        Supervision.adicionales = (r && r.filas) || [];
+        Supervision.renderAdi();
+      });
+      API.call('getAdicionalesCatalogo', [Supervision._clienteDe(id)], function(cat) {
+        Supervision.catalogo = cat || [];
+        Supervision.renderAdi();
+      });
+    }
     $('sup-titulo').textContent = Supervision.modo === 'validar'
       ? 'Validar ' + Supervision.ids.length + ' registro(s)'
       : 'Comentar ' + Supervision.ids.length + ' registro(s)';
@@ -2957,6 +3284,86 @@ var Supervision = {
 
   cerrar: function() { UI.hide('modal-sup'); Supervision.ids = []; },
 
+  /** Busca el cliente en los datos que ya están cargados en pantalla */
+  _clienteDe: function(id) {
+    var cli = '';
+    [Lista.dt, Panel.dtRev].forEach(function(t) {
+      if (!t || !t.datos) return;
+      t.datos.forEach(function(r) { if (String(r.id) === String(id) && r.cliente) cli = r.cliente; });
+    });
+    return cli;
+  },
+
+  agregarAdicional: function() {
+    Supervision.adicionales.push({ concepto: '', cantidad: 1, unidad: '', precio: 0 });
+    Supervision.renderAdi();
+  },
+
+  quitarAdicional: function(i) { Supervision.adicionales.splice(i, 1); Supervision.renderAdi(); },
+
+  /** Al elegir del catálogo se arrastran unidad y precio */
+  elegirConcepto: function(i, valor) {
+    var a = Supervision.adicionales[i];
+    if (!a) return;
+    a.concepto = valor;
+    Supervision.catalogo.forEach(function(c) {
+      if (c.concepto === valor) { a.unidad = c.unidad; a.precio = c.precio; }
+    });
+    Supervision.renderAdi();
+  },
+
+  campo: function(i, k, v) {
+    var a = Supervision.adicionales[i];
+    if (!a) return;
+    a[k] = (k === 'cantidad' || k === 'precio') ? Number(v || 0) : v;
+    Supervision.totalAdi();
+  },
+
+  renderAdi: function() {
+    var cont = $('sup-adi-lista');
+    if (!cont) return;
+    if (!Supervision.adicionales.length) {
+      cont.innerHTML = '<p class="muted" style="margin:0">Sin adicionales. Agrega uno si aplica.</p>';
+      Supervision.totalAdi();
+      return;
+    }
+    var opciones = Supervision.catalogo.map(function(c) { return c.concepto; });
+
+    cont.innerHTML = Supervision.adicionales.map(function(a, i) {
+      var enCatalogo = opciones.indexOf(a.concepto) >= 0;
+      return '<div class="adi-row">' +
+        '<select onchange="Supervision.elegirConcepto(' + i + ',this.value)" style="flex:2;min-width:140px">' +
+          '<option value="">— Concepto —</option>' +
+          opciones.map(function(o) {
+            return '<option' + (o === a.concepto ? ' selected' : '') + '>' + UI.esc(o) + '</option>';
+          }).join('') +
+          (a.concepto && !enCatalogo
+            ? '<option selected>' + UI.esc(a.concepto) + '</option>' : '') +
+        '</select>' +
+        '<input type="number" min="0" step="any" value="' + a.cantidad + '" placeholder="Cant."' +
+          ' style="flex:0 0 82px" oninput="Supervision.campo(' + i + ',\'cantidad\',this.value)">' +
+        '<input value="' + UI.esc(a.unidad || '') + '" placeholder="Unidad"' +
+          ' style="flex:0 0 92px" oninput="Supervision.campo(' + i + ',\'unidad\',this.value)">' +
+        '<input type="number" min="0" step="any" value="' + (a.precio || 0) + '" placeholder="Precio"' +
+          ' style="flex:0 0 92px" oninput="Supervision.campo(' + i + ',\'precio\',this.value)">' +
+        '<button class="danger xs" type="button" onclick="Supervision.quitarAdicional(' + i + ')">✕</button>' +
+      '</div>';
+    }).join('');
+    Supervision.totalAdi();
+  },
+
+  totalAdi: function() {
+    var t = Supervision.adicionales.reduce(function(s, a) {
+      return s + (Number(a.cantidad || 0) * Number(a.precio || 0));
+    }, 0);
+    var el = $('sup-adi-total');
+    if (el) {
+      el.innerHTML = Supervision.adicionales.length
+        ? 'Importe de adicionales: <b>$' + t.toFixed(2) + '</b>'
+        : '';
+    }
+  },
+
   confirmar: function() {
     var texto = ($('sup-texto').value || '').trim();
     if (texto.length < 5) {
@@ -2966,11 +3373,17 @@ var Supervision = {
     var fn  = Supervision.modo === 'validar' ? 'validarRegistros' : 'comentarManiobra';
     var ids = Supervision.ids;
     var cb  = Supervision.alTerminar;
+    var adi = Supervision.ids.length === 1 ? Supervision.adicionales.slice() : null;
     Supervision.cerrar();
 
     API.call(fn, [ids, (STATE.usr && STATE.usr.nombre) || '', texto], function(r) {
       UI.toast('✓ ' + (r.validados || r.comentados || 0) + ' registro(s) actualizados', 'ok');
-      if (cb) cb();
+      // Los adicionales se guardan aparte, contra la maniobra
+      if (adi) {
+        API.call('guardarAdicionalesManiobra', [ids[0], adi, Auth.ctx()], function() {
+          if (cb) cb();
+        });
+      } else if (cb) cb();
     });
   }
 };
@@ -3014,6 +3427,18 @@ var Panel = {
     if (!STATE.usr) return;
     var dias = $('p-dias').value;
 
+    // Tablero ejecutivo: doce indicadores en cinco formatos distintos
+    API.call('indicadoresAvanzados', [dias, Panel.opts()], function(a) {
+      Panel.kpis(a);
+      Panel.medidores(a);
+      Panel.barrasSimples('p-dias-graf', a.por_dia_semana, 'n', 'Sin actividad registrada.');
+      Panel.heatmap(a.heatmap);
+      Panel.rankingBarras('p-clientes', a.top_clientes, 'Sin clientes con maniobras cerradas.');
+      Panel.rankingBarras('p-operadores', a.ranking_operadores, 'Sin montacarguistas registrados en las maniobras.');
+      Panel.rankingBarras('p-andenes', a.por_anden, 'Nadie ha capturado el andén todavía.');
+      Panel.adicionales(a.adicionales);
+    });
+
     API.call('indicadores', [dias], function(k) {
       Panel.kpis(k);
       Panel.donut(k.semaforo || {});
@@ -3040,15 +3465,17 @@ var Panel = {
     Panel.cargarEtapas();
   },
 
-  /* ── KPIs ── */
-  kpis: function(k) {
+  /* ── 1 a 8 · Marcadores ── */
+  kpis: function(a) {
     var cards = [
-      ['📦', 'Maniobras finalizadas', UI.fmtNum(k.maniobras), 'en el período', 'var(--brand)'],
-      ['⏱', 'En curso ahora',         UI.fmtNum(k.en_curso),  'maniobras activas', 'var(--amber)'],
-      ['📊', 'Tiempo promedio',       UI.fmtMin(k.promedio_min), 'por maniobra', 'var(--green)'],
-      ['⚡', 'Tiempo efectivo',       UI.fmtMin(k.promedio_efectivo_min), 'sin demoras', '#06b6d4'],
-      ['⏸', 'Demora acumulada',      UI.fmtMin(k.demora_total_min), 'total del período', '#8b5cf6'],
-      ['⚠', 'Con daños',             UI.fmtNum(k.danos), 'maniobras', 'var(--red)']
+      ['📦', 'Maniobras cerradas',  UI.fmtNum(a.finalizadas),        'en el período',       'var(--brand)'],
+      ['⏱', 'En curso ahora',       UI.fmtNum(a.activas),            'con cronómetro vivo', 'var(--amber)'],
+      ['🎯', 'Mediana',             UI.fmtMin(a.mediana_min),        'el tiempo típico',    'var(--green)'],
+      ['📈', 'Percentil 80',        UI.fmtMin(a.p80_min),            '8 de cada 10 caben',  '#06b6d4'],
+      ['⚖️', 'Toneladas movidas',   UI.fmtNum(a.toneladas),          'netas',               '#8b5cf6'],
+      ['🚀', 'Ton por hora',        UI.fmtNum(a.ton_por_hora),       'productividad',       '#ec4899'],
+      ['🚜', 'Min-montacargas',     UI.fmtNum(a.min_montacargas),    'consumo de equipo',   '#f97316'],
+      ['🕓', 'Ocupación del spot',  UI.fmtMin(a.ocupacion_mediana),  'mediana',             '#6366f1']
     ];
     $('p-kpis').innerHTML = cards.map(function(c) {
       return '<div class="kpi-card" style="--k:' + c[4] + '">' +
@@ -3057,6 +3484,149 @@ var Panel = {
         '<div class="kpi-v">' + c[2] + '</div>' +
         '<div class="kpi-s">' + UI.esc(c[3]) + '</div></div>';
     }).join('');
+  },
+
+  /* ── 9 a 12 · Medidores de porcentaje ── */
+  medidores: function(a) {
+    var uso = a.utilizacion_montacargas || {};
+    var datos = [
+      ['Dentro de estándar', a.pct_verde, '#1fa971', a.semaforo.VERDE + ' de ' +
+        (a.semaforo.VERDE + a.semaforo['ÁMBAR'] + a.semaforo.ROJO) + ' en verde'],
+      ['Calidad del dato',   a.pct_calidad, '#2f6df6', a.en_revision + ' en revisión'],
+      ['Tiempo en paro',     a.pct_paro, a.pct_paro > 20 ? '#e5484d' : '#f5a524', 'del tiempo total'],
+      ['Uso de montacargas', uso.pct || 0, '#8b5cf6', (uso.en_uso || 0) + ' de ' + (uso.total || 0) + ' en uso'],
+      ['Maniobras con daño', a.pct_con_dano, a.pct_con_dano > 10 ? '#e5484d' : '#06b6d4', 'del total cerrado']
+    ];
+    $('p-medidores').innerHTML = datos.map(function(d) {
+      var pct = Math.max(0, Math.min(100, Number(d[1]) || 0));
+      var R = 34, C = 2 * Math.PI * R;
+      var lleno = C * pct / 100;
+      return '<div class="gauge">' +
+        '<svg viewBox="0 0 84 84" class="gauge-svg">' +
+          '<circle cx="42" cy="42" r="' + R + '" fill="none" stroke="var(--line)" stroke-width="9"/>' +
+          '<circle cx="42" cy="42" r="' + R + '" fill="none" stroke="' + d[2] + '" stroke-width="9" ' +
+            'stroke-linecap="round" stroke-dasharray="' + lleno + ' ' + (C - lleno) + '" ' +
+            'transform="rotate(-90 42 42)"/>' +
+          '<text x="42" y="47" text-anchor="middle" class="gauge-num">' + pct + '%</text>' +
+        '</svg>' +
+        '<div class="gauge-k">' + UI.esc(d[0]) + '</div>' +
+        '<div class="gauge-s">' + UI.esc(d[3]) + '</div>' +
+      '</div>';
+    }).join('');
+  },
+
+  /** Barras verticales sencillas (carga por día de la semana) */
+  barrasSimples: function(destino, filas, campo, vacio) {
+    var el = $(destino);
+    if (!el) return;
+    if (!filas || !filas.length) {
+      el.innerHTML = '<p class="muted" style="margin:0">' + UI.esc(vacio) + '</p>';
+      return;
+    }
+    var max = filas.reduce(function(m, f) { return Math.max(m, Number(f[campo]) || 0); }, 0) || 1;
+    var W = 480, H = 170, pad = 26;
+    var ancho = (W - pad * 2) / filas.length;
+
+    el.innerHTML = '<div class="chart"><svg viewBox="0 0 ' + W + ' ' + H + '">' +
+      filas.map(function(f, i) {
+        var v = Number(f[campo]) || 0;
+        var h = Math.max(2, v / max * (H - 54));
+        var x = pad + i * ancho, y = H - 30 - h;
+        return '<rect class="bar bar-anim" x="' + (x + 5) + '" y="' + y + '" width="' + (ancho - 10) +
+            '" height="' + h + '" rx="5" fill="' + Panel.color(i) + '" ' +
+            'style="transform-origin:' + (x + 5) + 'px ' + (H - 30) + 'px;animation-delay:' + (i * 40) + 'ms">' +
+            '<title>' + UI.esc(f.nombre) + ': ' + v + ' maniobras · promedio ' +
+            UI.fmtMin(f.promedio_min) + '</title></rect>' +
+          '<text class="val" x="' + (x + ancho / 2) + '" y="' + (y - 5) + '" text-anchor="middle">' +
+            (v || '') + '</text>' +
+          '<text class="lbl" x="' + (x + ancho / 2) + '" y="' + (H - 12) + '" text-anchor="middle">' +
+            UI.esc(f.nombre.slice(0, 3)) + '</text>';
+      }).join('') + '</svg></div>';
+  },
+
+  /** Mapa de calor día × hora */
+  heatmap: function(filas) {
+    var el = $('p-heat');
+    if (!filas || !filas.length) {
+      el.innerHTML = '<p class="muted" style="margin:0">Aún no hay suficientes maniobras para dibujar el mapa.</p>';
+      return;
+    }
+    var DIAS = ['Dom','Lun','Mar','Mié','Jue','Vie','Sáb'];
+    var mapa = {}, max = 0;
+    filas.forEach(function(f) {
+      mapa[f.dia + '|' + f.hora] = f.n;
+      if (f.n > max) max = f.n;
+    });
+    // Solo se dibujan las horas con actividad, para que quepa en pantalla
+    var horas = [];
+    for (var h = 0; h < 24; h++) {
+      for (var d = 0; d < 7; d++) {
+        if (mapa[d + '|' + h]) { horas.push(h); break; }
+      }
+    }
+    if (!horas.length) horas = [6, 12, 18];
+
+    var html = '<div class="heat"><table class="heat-tabla"><tr><th></th>' +
+      horas.map(function(h) { return '<th>' + h + '</th>'; }).join('') + '</tr>';
+    for (var dd = 0; dd < 7; dd++) {
+      html += '<tr><th class="heat-dia">' + DIAS[dd] + '</th>';
+      horas.forEach(function(h) {
+        var v = mapa[dd + '|' + h] || 0;
+        var op = max ? (0.12 + 0.88 * (v / max)) : 0;
+        html += '<td><div class="heat-c" title="' + DIAS[dd] + ' ' + h + ':00 · ' + v + ' maniobra(s)" ' +
+          'style="' + (v ? 'background:var(--brand);opacity:' + op.toFixed(2) : '') + '">' +
+          (v || '') + '</div></td>';
+      });
+      html += '</tr>';
+    }
+    el.innerHTML = html + '</table><div class="heat-key">' +
+      '<span>menos</span><i style="opacity:.15"></i><i style="opacity:.4"></i>' +
+      '<i style="opacity:.7"></i><i style="opacity:1"></i><span>más</span></div></div>';
+  },
+
+  /** Ranking con barra proporcional dentro de la tabla */
+  rankingBarras: function(destino, filas, vacio) {
+    var el = $(destino);
+    if (!el) return;
+    if (!filas || !filas.length) {
+      el.innerHTML = '<p class="muted" style="margin:0">' + UI.esc(vacio) + '</p>';
+      return;
+    }
+    var max = filas.reduce(function(m, f) { return Math.max(m, f.n); }, 0) || 1;
+    el.innerHTML = '<table class="cli-tabla">' +
+      '<tr><th>Nombre</th><th class="num">Maniobras</th><th></th><th class="num">Ton</th><th class="num">Prom.</th></tr>' +
+      filas.map(function(f, i) {
+        return '<tr><td>' + UI.esc(f.nombre) + '</td>' +
+          '<td class="num"><b>' + f.n + '</b></td>' +
+          '<td style="width:88px"><span class="cli-bar" style="width:' +
+            Math.round(f.n / max * 78) + 'px;background:' + Panel.color(i) + '"></span></td>' +
+          '<td class="num">' + (f.toneladas || '—') + '</td>' +
+          '<td class="num">' + UI.fmtMin(f.promedio_min) + '</td></tr>';
+      }).join('') + '</table>';
+  },
+
+  adicionales: function(a) {
+    var el = $('p-adicionales');
+    if (!a || !a.top || !a.top.length) {
+      el.innerHTML = '<p class="muted" style="margin:0">Sin servicios adicionales capturados en el período.</p>';
+      return;
+    }
+    var max = a.top.reduce(function(m, x) { return Math.max(m, x.n); }, 0) || 1;
+    el.innerHTML =
+      '<div class="adi-resumen">' +
+        '<div><div class="met-k">Conceptos cargados</div><div class="met-v">' + a.conceptos + '</div></div>' +
+        '<div><div class="met-k">Importe</div><div class="met-v" style="color:var(--green)">$' +
+          Number(a.importe || 0).toFixed(2) + '</div></div>' +
+      '</div>' +
+      '<table class="cli-tabla" style="margin-top:10px">' +
+      '<tr><th>Concepto</th><th class="num">Cantidad</th><th></th><th class="num">Importe</th></tr>' +
+      a.top.map(function(x, i) {
+        return '<tr><td>' + UI.esc(x.nombre) + '</td>' +
+          '<td class="num"><b>' + x.n + '</b></td>' +
+          '<td style="width:80px"><span class="cli-bar" style="width:' +
+            Math.round(x.n / max * 70) + 'px;background:' + Panel.color(i + 3) + '"></span></td>' +
+          '<td class="num">$' + Number(x.importe || 0).toFixed(2) + '</td></tr>';
+      }).join('') + '</table>';
   },
 
   /* ── Dona del semáforo ── */
@@ -3445,10 +4015,11 @@ var Panel = {
 ══════════════════════════════════════════════════════════════ */
 var Admin = {
   campos: [], catalogos: [], catActivo: null, catItems: [], tiempos: [], semaforos: [],
-  flujos: {}, flujoActivo: '', flujoEtapas: [], departamentos: [],
+  flujos: {}, flujoActivo: '', flujoCliente: '', flujoEtapas: [],
+  departamentos: [], equipos: [], adicionales: [], dtHis: null,
 
   sub: function(s) {
-    ['cam','cat','flu','dep','sem','usr','tem'].forEach(function(k) {
+    ['cam','cat','flu','dep','equ','adi','his','sem','usr','tem'].forEach(function(k) {
       var el = $('adm-' + k), b = $('adm-btn-' + k);
       if (el) el.classList.toggle('hidden', k !== s);
       if (b)  b.classList.toggle('active', k === s);
@@ -3457,6 +4028,9 @@ var Admin = {
     if (s === 'cat') Admin.cargarCat();
     if (s === 'flu') Admin.cargarFlujos();
     if (s === 'dep') Admin.cargarDeps();
+    if (s === 'equ') Admin.cargarEqu();
+    if (s === 'adi') Admin.cargarAdi();
+    if (s === 'his') Admin.cargarHis();
     if (s === 'sem') Admin.cargarSem();
     if (s === 'usr') Admin.cargarUsr();
     if (s === 'tem') Admin.cargarTem();
@@ -3468,11 +4042,15 @@ var Admin = {
       Admin.departamentos = deps || [];
       API.call('getFlujosEtapas', [], function(mapa) {
         Admin.flujos = mapa || {};
-        var nombres = Object.keys(Admin.flujos).sort();
-        $('adm-flu-lista').innerHTML = nombres.length
-          ? nombres.map(function(f) {
-              return '<button class="ghost sm" onclick="Admin.editarFlujo(\'' + UI.esc(f) + '\')">' +
-                UI.esc(f) + ' <span style="opacity:.6">(' + Admin.flujos[f].length + ' etapas)</span></button>';
+        var claves = Object.keys(Admin.flujos).sort();
+        $('adm-flu-lista').innerHTML = claves.length
+          ? claves.map(function(k) {
+              var p = k.split('@@');
+              var etiqueta = p[0] + (p[1] ? ' · ' + p[1] : '');
+              return '<button class="ghost sm" onclick="Admin.editarFlujo(\'' +
+                encodeURIComponent(k) + '\')">' +
+                (p[1] ? '<span class="flu-cli">cliente</span> ' : '') + UI.esc(etiqueta) +
+                ' <span style="opacity:.6">(' + Admin.flujos[k].length + ')</span></button>';
             }).join('')
           : '<span class="muted">Sin flujos configurados. Crea el primero.</span>';
       });
@@ -3487,27 +4065,49 @@ var Admin = {
       }).join('');
   },
 
-  editarFlujo: function(f) {
-    Admin.flujoActivo = f;
-    Admin.flujoEtapas = (Admin.flujos[f] || []).map(function(e) {
+  editarFlujo: function(claveEnc) {
+    var clave = decodeURIComponent(claveEnc);
+    var p = clave.split('@@');
+    Admin.flujoActivo  = p[0];
+    Admin.flujoCliente = p[1] || '';
+    Admin.flujoEtapas = (Admin.flujos[clave] || []).map(function(e) {
       return { etapa: e.etapa, departamento: e.departamento, tiempo_est: e.tiempo_est };
     });
-    $('adm-flu-titulo').textContent = 'Flujo: ' + f;
-    $('adm-flu-depto').innerHTML = Admin.optsDepto('');
-    Admin.renderFlujo();
-    UI.show('adm-flu-editor');
+    Admin._abrirEditorFlujo();
   },
 
   nuevoFlujo: function() {
     var f = prompt('Nombre del flujo (ej. ENTRADA, SALIDA, TRANSBORDO):');
     if (!f || !f.trim()) return;
-    Admin.flujoActivo = f.trim().toUpperCase().replace(/\s+/g, '_');
-    Admin.flujoEtapas = [];
-    $('adm-flu-titulo').textContent = 'Nuevo flujo: ' + Admin.flujoActivo;
+    Admin.flujoActivo  = f.trim().toUpperCase().replace(/\s+/g, '_');
+    Admin.flujoCliente = '';
+    Admin.flujoEtapas  = [];
+    Admin._abrirEditorFlujo();
+    $('adm-flu-etapa').focus();
+  },
+
+  /** Copia la secuencia genérica para adaptarla a un cliente */
+  variantePorCliente: function() {
+    var cli = $('adm-flu-cliente').value;
+    Admin.flujoCliente = cli;
+    Admin._tituloFlujo();
+    UI.toast(cli
+      ? 'Editando la variante de ' + cli + '. Guarda para crearla.'
+      : 'Editando la secuencia genérica del flujo.', '');
+  },
+
+  _tituloFlujo: function() {
+    $('adm-flu-titulo').textContent = 'Flujo ' + Admin.flujoActivo +
+      (Admin.flujoCliente ? ' · ' + Admin.flujoCliente : ' · genérico');
+  },
+
+  _abrirEditorFlujo: function() {
+    UI.opts('adm-flu-cliente', STATE.cat.CLIENTES, '— Genérico (todos) —');
+    $('adm-flu-cliente').value = Admin.flujoCliente;
     $('adm-flu-depto').innerHTML = Admin.optsDepto('');
+    Admin._tituloFlujo();
     Admin.renderFlujo();
     UI.show('adm-flu-editor');
-    $('adm-flu-etapa').focus();
   },
 
   renderFlujo: function() {
@@ -3558,7 +4158,8 @@ var Admin = {
 
   guardarFlujo: function() {
     if (!Admin.flujoActivo) return;
-    API.call('guardarFlujoEtapas', [Admin.flujoActivo, Admin.flujoEtapas], function(r) {
+    API.call('guardarFlujoEtapas',
+             [Admin.flujoActivo, Admin.flujoEtapas, Admin.flujoCliente, Auth.ctx()], function(r) {
       UI.toast('✓ Flujo guardado con ' + r.etapas + ' etapa(s)', 'ok');
       Admin.cargarFlujos();
       App.cargarCatalogos();
@@ -3569,7 +4170,7 @@ var Admin = {
     if (!Admin.flujoActivo) return;
     if (!confirm('¿Eliminar la secuencia del flujo "' + Admin.flujoActivo + '"? ' +
                  'Las maniobras ya registradas no se tocan.')) return;
-    API.call('eliminarFlujoEtapas', [Admin.flujoActivo], function() {
+    API.call('eliminarFlujoEtapas', [Admin.flujoActivo, Admin.flujoCliente, Auth.ctx()], function() {
       UI.toast('Flujo eliminado', 'ok');
       Admin.cerrarFlujo();
       Admin.cargarFlujos();
@@ -3577,7 +4178,165 @@ var Admin = {
     });
   },
 
-  cerrarFlujo: function() { Admin.flujoActivo = ''; Admin.flujoEtapas = []; UI.hide('adm-flu-editor'); },
+  cerrarFlujo: function() {
+    Admin.flujoActivo = ''; Admin.flujoCliente = ''; Admin.flujoEtapas = [];
+    UI.hide('adm-flu-editor');
+  },
+
+  /* ── Equipos / cuadrillas ── */
+  cargarEqu: function() {
+    API.call('getEquipos', [false], function(lista) {
+      Admin.equipos = lista || [];
+      $('adm-tabla-equ').innerHTML =
+        '<tr><th>Nombre</th><th>Turno</th><th>Descripción</th><th>Estado</th><th></th></tr>' +
+        (Admin.equipos.length
+          ? Admin.equipos.map(function(e) {
+              return '<tr><td><b>' + UI.esc(e.nombre) + '</b></td>' +
+                '<td>' + UI.esc(e.turno || '—') + '</td>' +
+                '<td style="white-space:normal">' + UI.esc(e.descripcion || '—') + '</td>' +
+                '<td><span class="badge ' + (e.activo ? 'VERDE' : 'ROJO') + '">' +
+                  (e.activo ? 'Activo' : 'Inactivo') + '</span></td>' +
+                '<td style="white-space:nowrap">' +
+                  '<button class="ghost xs" onclick="Admin.editarEqu(\'' + e.id + '\')">Editar</button> ' +
+                  '<button class="danger xs" onclick="Admin.eliminarEqu(\'' + e.id + '\')">Eliminar</button>' +
+                '</td></tr>';
+            }).join('')
+          : '<tr><td colspan="5" class="dt-empty">Sin equipos</td></tr>');
+    });
+  },
+
+  editarEqu: function(id) {
+    var e = null;
+    Admin.equipos.forEach(function(x) { if (x.id === id) e = x; });
+    if (!e) return;
+    $('equ-id').value = e.id;
+    $('equ-nombre').value = e.nombre;
+    $('equ-turno').value = e.turno;
+    $('equ-desc').value = e.descripcion;
+    $('equ-nombre').focus();
+  },
+
+  guardarEqu: function() {
+    var d = {
+      id: $('equ-id').value,
+      nombre: ($('equ-nombre').value || '').trim(),
+      turno: $('equ-turno').value,
+      descripcion: $('equ-desc').value
+    };
+    if (!d.nombre) { UI.toast('El nombre es obligatorio', 'err'); return; }
+    API.call('guardarEquipo', [d, Auth.ctx()], function() {
+      UI.toast('✓ Equipo guardado', 'ok');
+      Admin.limpiarEqu();
+      Admin.cargarEqu();
+      App.cargarCatalogos();
+    });
+  },
+
+  limpiarEqu: function() {
+    $('equ-id').value = $('equ-nombre').value = $('equ-turno').value = $('equ-desc').value = '';
+  },
+
+  eliminarEqu: function(id) {
+    if (!confirm('¿Eliminar este equipo? Las asignaciones existentes quedarán en blanco.')) return;
+    API.call('eliminarEquipo', [id, Auth.ctx()], function() {
+      UI.toast('Equipo eliminado', 'ok');
+      Admin.cargarEqu();
+      App.cargarCatalogos();
+    });
+  },
+
+  /* ── Catálogo de adicionales ── */
+  cargarAdi: function() {
+    UI.opts('adi-cliente', STATE.cat.CLIENTES, '— Todos los clientes —');
+    API.call('getAdicionalesCatalogo', [''], function(lista) {
+      Admin.adicionales = lista || [];
+      $('adm-tabla-adi').innerHTML =
+        '<tr><th>Concepto</th><th>Cliente</th><th>Unidad</th><th class="num">Precio</th><th></th></tr>' +
+        (Admin.adicionales.length
+          ? Admin.adicionales.map(function(a) {
+              return '<tr><td><b>' + UI.esc(a.concepto) + '</b></td>' +
+                '<td>' + (a.cliente ? UI.esc(a.cliente) : '<span class="muted">Todos</span>') + '</td>' +
+                '<td>' + UI.esc(a.unidad || '—') + '</td>' +
+                '<td class="num">$' + Number(a.precio || 0).toFixed(2) + '</td>' +
+                '<td style="white-space:nowrap">' +
+                  '<button class="ghost xs" onclick="Admin.editarAdi(\'' + a.id + '\')">Editar</button> ' +
+                  '<button class="danger xs" onclick="Admin.eliminarAdi(\'' + a.id + '\')">Eliminar</button>' +
+                '</td></tr>';
+            }).join('')
+          : '<tr><td colspan="5" class="dt-empty">Sin conceptos registrados</td></tr>');
+    });
+  },
+
+  editarAdi: function(id) {
+    var a = null;
+    Admin.adicionales.forEach(function(x) { if (x.id === id) a = x; });
+    if (!a) return;
+    $('adi-id').value = a.id;
+    $('adi-concepto').value = a.concepto;
+    $('adi-cliente').value = a.cliente;
+    $('adi-unidad').value = a.unidad;
+    $('adi-precio').value = a.precio;
+    $('adi-concepto').focus();
+  },
+
+  guardarAdi: function() {
+    var d = {
+      id: $('adi-id').value,
+      concepto: ($('adi-concepto').value || '').trim(),
+      cliente: $('adi-cliente').value,
+      unidad: $('adi-unidad').value,
+      precio: $('adi-precio').value
+    };
+    if (!d.concepto) { UI.toast('El concepto es obligatorio', 'err'); return; }
+    API.call('guardarAdicionalCatalogo', [d, Auth.ctx()], function() {
+      UI.toast('✓ Concepto guardado', 'ok');
+      Admin.limpiarAdi();
+      Admin.cargarAdi();
+    });
+  },
+
+  limpiarAdi: function() {
+    ['adi-id','adi-concepto','adi-unidad'].forEach(function(k) { $(k).value = ''; });
+    $('adi-precio').value = '0';
+    $('adi-cliente').value = '';
+  },
+
+  eliminarAdi: function(id) {
+    if (!confirm('¿Eliminar este concepto del catálogo?')) return;
+    API.call('eliminarAdicionalCatalogo', [id, Auth.ctx()], function() {
+      UI.toast('Concepto eliminado', 'ok');
+      Admin.cargarAdi();
+    });
+  },
+
+  /* ── Historial de acciones ── */
+  cargarHis: function() {
+    if (!Admin.dtHis) {
+      Admin.dtHis = DT.crear({
+        mount: 'dt-historial', nombre: 'historial', idKey: 'id',
+        seleccionable: false,
+        vacio: 'Sin movimientos registrados en el período.',
+        movil: ['fecha', 'usuario', 'accion', 'folio', 'detalle'],
+        filtros: [
+          { key: 'usuario', label: 'Usuario' },
+          { key: 'accion',  label: 'Acción' },
+          { key: 'entidad', label: 'Entidad' }
+        ],
+        cols: [
+          { key: 'fecha',   label: 'Fecha y hora' },
+          { key: 'usuario', label: 'Usuario' },
+          { key: 'rol',     label: 'Rol' },
+          { key: 'accion',  label: 'Acción' },
+          { key: 'entidad', label: 'Entidad' },
+          { key: 'folio',   label: 'Folio' },
+          { key: 'detalle', label: 'Detalle' }
+        ]
+      });
+    }
+    API.call('getHistorial', [{ dias: Number($('his-dias').value), limite: 800 }], function(r) {
+      DT.setDatos(Admin.dtHis, (r && r.filas) || []);
+    });
+  },
 
   /* ── Departamentos ── */
   cargarDeps: function() {

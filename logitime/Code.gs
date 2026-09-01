@@ -31,6 +31,14 @@ var HOJA_CAM  = 'CAMPOS';
 var HOJA_SEM  = 'SEMAFOROS';
 var HOJA_DEP  = 'DEPARTAMENTOS';
 var HOJA_FLU  = 'FLUJOS_ETAPAS';
+var HOJA_HIS  = 'HISTORIAL';
+var HOJA_ADI  = 'ADICIONALES';
+var HOJA_ADM  = 'ADICIONALES_MAN';
+var HOJA_EQU  = 'EQUIPOS';
+
+/** Carpeta raíz de evidencias en Drive */
+var DRIVE_RAIZ = 'LogiTime — Evidencias';
+var MIN_FOTOS  = 5;
 
 /* ════════════════════════════════════════════════════════════
    CATÁLOGOS Y ETAPAS POR DEFECTO
@@ -44,6 +52,7 @@ var DEFAULT_CONFIG = {
 
   // Mínimo de registros para que el dashboard muestre un tiempo
   N_MINIMO_DASHBOARD: '5',
+  MIN_FOTOS_INICIO: '5',
   // Rangos humanamente posibles: fuera de esto la fila se marca REVISIÓN
   ANOMALIA_MIN_POR_ATADO_MIN: '0.3', ANOMALIA_MIN_POR_ATADO_MAX: '25',
   ANOMALIA_MIN_POR_TON_MIN:   '0.5', ANOMALIA_MIN_POR_TON_MAX:   '90',
@@ -75,6 +84,7 @@ var CATALOGOS_DEFAULT = {
   UNIDADES_MEDIDA:   ['Tarima', 'Caja', 'Saco', 'Pieza', 'Tonelada'],
   CAUSAS_DEMORA:     ['Esperando camión', 'Falla de equipo', 'Falta de espacio',
                       'Documentación', 'Comida', 'Cambio de turno', 'Otro'],
+  ANDENES:           ['Andén 1', 'Andén 2', 'Andén 3', 'Andén 4', 'Andén 5', 'Andén 6', 'Patio'],
   TIPOS_MANIOBRA:    TIPOS_MANIOBRA_DEFAULT,
   ADITAMENTOS:       ['Clamp de cartón', 'Cuchillas', 'Roll clamp', 'Doble pallet']
 };
@@ -123,6 +133,8 @@ var CAMPOS_DEFAULT = [
   ['tipo_equipo',        'Tipo de equipo',           'esenciales', true,  true,  60],
   ['montacarguistas',    'Montacarguistas',          'esenciales', true,  true,  70],
   ['montacargas',        'Montacargas asignados',    'esenciales', false, true,  80],
+  ['anden',              'Andén',                    'esenciales', false, true,  82],
+  ['equipo',             'Equipo / cuadrilla',       'esenciales', false, true,  84],
   ['ayudantes',          'Ayudantes',                'esenciales', false, true,  90],
   ['aditamento',         'Aditamento',               'esenciales', false, true,  95],
 
@@ -175,7 +187,8 @@ var COLUMNAS = [
   'Min por atado', 'Min por tonelada', 'Min montacargas', 'Min montacargas por ton',
   'Prueba controlada', 'Etiqueta prueba',
   'Revisión', 'Motivo revisión', 'Validado por',
-  'Min por tarima', 'Comentario supervisor'
+  'Min por tarima', 'Comentario supervisor',
+  'Andén', 'Equipo', 'Carpeta evidencias', 'Fotos', 'Adicionales'
 ];
 
 // Índices de las columnas nuevas (para no contar a mano)
@@ -184,7 +197,8 @@ var C_TIPO_MAN = 40, C_TON = 41, C_ATADOS = 42, C_PZAS = 43, C_ADIT = 44,
     C_MIN_ATADO = 48, C_MIN_TON = 49, C_MIN_MONTA = 50, C_MIN_MONTA_TON = 51,
     C_PRUEBA = 52, C_ETIQ_PRUEBA = 53,
     C_REVISION = 54, C_MOTIVO_REV = 55, C_VALIDADO = 56,
-    C_MIN_TARIMA = 57, C_COMENT_SUP = 58;
+    C_MIN_TARIMA = 57, C_COMENT_SUP = 58,
+    C_ANDEN = 59, C_EQUIPO = 60, C_CARPETA = 61, C_FOTOS = 62, C_ADICIONALES = 63;
 var C_MIN_PIEZA = 30;   // columna original "Min/pieza", ahora sobre piezas sueltas
 
 /** Columnas de MANIOBRAS que guardan una hora "HH:mm" y deben ser texto plano */
@@ -204,12 +218,18 @@ var COL_ETA = [
 ];
 var C_ETA_DEPTO = 19;
 
-var COL_EMP = ['ID', 'Nombre', 'Posición', 'Montacargas', 'Activo'];
-var COL_USR = ['ID', 'Email', 'Nombre', 'PIN', 'Rol', 'Activo', 'Timestamp', 'Departamento'];
+var COL_EMP = ['ID', 'Nombre', 'Posición', 'Montacargas', 'Activo', 'Equipo'];
+var COL_USR = ['ID', 'Email', 'Nombre', 'PIN', 'Rol', 'Activo', 'Timestamp', 'Departamento', 'Equipo'];
 var COL_DEP = ['ID', 'Nombre', 'Descripción', 'Activo'];
-var COL_FLU = ['Flujo', 'Orden', 'Etapa', 'Departamento', 'Tiempo estimado (min)', 'Activo'];
+var COL_EQU = ['ID', 'Nombre', 'Descripción', 'Turno', 'Activo'];
+// Cliente vacío = secuencia genérica del flujo; con cliente = secuencia a la medida
+var COL_FLU = ['Flujo', 'Orden', 'Etapa', 'Departamento', 'Tiempo estimado (min)', 'Activo', 'Cliente'];
+var COL_HIS = ['ID', 'Fecha', 'Usuario', 'Rol', 'Acción', 'Entidad', 'ID entidad', 'Folio', 'Detalle'];
+var COL_ADI = ['ID', 'Cliente', 'Concepto', 'Unidad', 'Precio', 'Activo'];
+var COL_ADM = ['ID', 'ID_maniobra', 'Folio', 'Cliente', 'Concepto', 'Cantidad', 'Unidad',
+               'Precio', 'Importe', 'Observaciones', 'Registrado_por', 'Timestamp'];
 var COL_MON = ['ID', 'Código', 'Tipo', 'Marca', 'Modelo', 'Capacidad (ton)',
-               'Estado', 'Ubicación', 'Notas', 'Activo', 'Timestamp'];
+               'Estado', 'Ubicación', 'Notas', 'Activo', 'Timestamp', 'Equipo'];
 var COL_CAM = ['Campo', 'Etiqueta', 'Sección', 'Obligatorio', 'Visible', 'Orden', 'Departamentos'];
 var COL_SEM = ['Tipo maniobra', 'Verde hasta (min)', 'Amarillo hasta (min)'];
 var COL_INC = ['ID', 'Fecha', 'Folio maniobra', 'Empleado', 'Tipo', 'Severidad',
@@ -825,6 +845,8 @@ function validarRegistros(ids, quien, comentario) {
       // Los comentarios se acumulan: nunca se pisa el historial anterior
       var previo = String(row[C_COMENT_SUP] || '').trim();
       row[C_COMENT_SUP] = (previo ? previo + '\n' : '') + '[' + sello + '] ' + texto;
+      bitacora_({ nombre: quien, rol: 'SUPERVISOR' }, 'Validó registro', 'MANIOBRA',
+                String(row[0]), String(row[1] || ''), texto);
       n++;
     });
     if (n) rango.setValues(vals);
@@ -850,6 +872,8 @@ function comentarManiobra(ids, quien, comentario) {
       if (!set[String(row[0])]) return;
       var previo = String(row[C_COMENT_SUP] || '').trim();
       row[C_COMENT_SUP] = (previo ? previo + '\n' : '') + '[' + sello + '] ' + texto;
+      bitacora_({ nombre: quien, rol: 'SUPERVISOR' }, 'Comentó registro', 'MANIOBRA',
+                String(row[0]), String(row[1] || ''), texto);
       n++;
     });
     if (n) rango.setValues(vals);
@@ -951,6 +975,244 @@ function formatearFechas() {
 }
 
 /* ════════════════════════════════════════════════════════════
+   HISTORIAL — bitácora de quién hizo qué
+   Cada acción que toca datos deja rastro. Nunca lanza excepción:
+   una falla al registrar no debe tumbar la operación.
+════════════════════════════════════════════════════════════ */
+
+function bitacora_(ctx, accion, entidad, idEntidad, folio, detalle) {
+  try {
+    var sh = hoja_(HOJA_HIS, COL_HIS);
+    var quien = (ctx && (ctx.nombre || ctx.email)) || usuario_();
+    var rol   = (ctx && ctx.rol) || '';
+    sh.appendRow([
+      uuid_(), new Date(), String(quien), String(rol),
+      String(accion || ''), String(entidad || ''), String(idEntidad || ''),
+      String(folio || ''), String(detalle || '')
+    ]);
+  } catch (e) { /* la bitácora nunca bloquea la operación */ }
+}
+
+function getHistorial(filtros) {
+  return seguro_('getHistorial', function() {
+    filtros = filtros || {};
+    var sh = hoja_(HOJA_HIS, COL_HIS);
+    if (sh.getLastRow() < 2) return { ok: true, filas: [] };
+
+    var vals  = sh.getRange(2, 1, sh.getLastRow() - 1, COL_HIS.length).getValues();
+    var tz    = Session.getScriptTimeZone();
+    var limite = null;
+    if (filtros.dias) {
+      limite = new Date();
+      limite.setDate(limite.getDate() - Number(filtros.dias));
+      limite.setHours(0, 0, 0, 0);
+    }
+    var out = [];
+    for (var i = vals.length - 1; i >= 0; i--) {
+      var r = vals[i];
+      if (!String(r[0] || '').trim()) continue;
+      var ms = toMs_(r[1]);
+      if (limite && ms && new Date(ms) < limite) continue;
+      if (filtros.usuario && String(r[2]) !== filtros.usuario) continue;
+      if (filtros.entidad && String(r[5]) !== filtros.entidad) continue;
+      if (filtros.id_entidad && String(r[6]) !== String(filtros.id_entidad)) continue;
+      out.push({
+        id:      String(r[0]),
+        fecha:   ms ? Utilities.formatDate(new Date(ms), tz, 'dd/MM/yyyy HH:mm:ss') : '',
+        usuario: String(r[2] || ''),
+        rol:     String(r[3] || ''),
+        accion:  String(r[4] || ''),
+        entidad: String(r[5] || ''),
+        id_entidad: String(r[6] || ''),
+        folio:   String(r[7] || ''),
+        detalle: String(r[8] || '')
+      });
+      if (out.length >= Number(filtros.limite || 500)) break;
+    }
+    return { ok: true, filas: out };
+  });
+}
+
+/* ════════════════════════════════════════════════════════════
+   EQUIPOS / CUADRILLAS
+   Se asignan a montacargas, a empleados y a usuarios.
+════════════════════════════════════════════════════════════ */
+
+function getEquipos(soloActivos) {
+  var sh = hoja_(HOJA_EQU, COL_EQU);
+  if (sh.getLastRow() < 2) {
+    sh.getRange(2, 1, 2, COL_EQU.length).setValues([
+      [uuid_(), 'Equipo A', 'Cuadrilla principal', '', true],
+      [uuid_(), 'Equipo B', 'Cuadrilla de apoyo',  '', true]
+    ]);
+  }
+  return sh.getRange(2, 1, Math.max(1, sh.getLastRow() - 1), COL_EQU.length).getValues()
+    .filter(function(r) { return String(r[1] || '').trim(); })
+    .map(function(r) {
+      return { id: String(r[0]), nombre: String(r[1]).trim(),
+               descripcion: String(r[2] || ''), turno: String(r[3] || ''),
+               activo: r[4] === '' || r[4] === null || r[4] === undefined ? true : bool_(r[4]) };
+    })
+    .filter(function(e) { return soloActivos ? e.activo : true; });
+}
+
+function guardarEquipo(data, ctx) {
+  return seguro_('guardarEquipo', function() {
+    var sh = hoja_(HOJA_EQU, COL_EQU);
+    var nombre = String(data.nombre || '').trim();
+    if (!nombre) return { ok: false, error: 'El nombre del equipo es obligatorio' };
+    if (sh.getLastRow() >= 2) {
+      var vals = sh.getRange(2, 1, sh.getLastRow() - 1, 2).getValues();
+      for (var i = 0; i < vals.length; i++) {
+        if (String(vals[i][1]).trim().toLowerCase() === nombre.toLowerCase() &&
+            String(vals[i][0]) !== String(data.id || '')) {
+          return { ok: false, error: 'Ya existe el equipo ' + nombre };
+        }
+      }
+    }
+    var id  = data.id || uuid_();
+    var row = [id, nombre, data.descripcion || '', data.turno || '', data.activo !== false];
+    var fila = data.id ? buscarFila_(sh, data.id) : -1;
+    if (fila > 0) sh.getRange(fila, 1, 1, COL_EQU.length).setValues([row]);
+    else          sh.appendRow(row);
+    bitacora_(ctx, fila > 0 ? 'Editó equipo' : 'Creó equipo', 'EQUIPO', id, '', nombre);
+    return { ok: true, id: id };
+  });
+}
+
+function eliminarEquipo(id, ctx) {
+  return seguro_('eliminarEquipo', function() {
+    var sh   = hoja_(HOJA_EQU, COL_EQU);
+    var fila = buscarFila_(sh, id);
+    if (fila > 0) {
+      var nombre = String(sh.getRange(fila, 2).getValue() || '');
+      sh.deleteRow(fila);
+      bitacora_(ctx, 'Eliminó equipo', 'EQUIPO', id, '', nombre);
+    }
+    return { ok: true };
+  });
+}
+
+/* ════════════════════════════════════════════════════════════
+   SERVICIOS ADICIONALES
+   Catálogo por cliente y captura contra cada maniobra.
+════════════════════════════════════════════════════════════ */
+
+function getAdicionalesCatalogo(cliente) {
+  var sh = hoja_(HOJA_ADI, COL_ADI);
+  if (sh.getLastRow() < 2) return [];
+  var c = String(cliente || '').trim().toLowerCase();
+  return sh.getRange(2, 1, sh.getLastRow() - 1, COL_ADI.length).getValues()
+    .filter(function(r) { return String(r[2] || '').trim(); })
+    .map(function(r) {
+      return { id: String(r[0]), cliente: String(r[1] || ''), concepto: String(r[2]).trim(),
+               unidad: String(r[3] || ''), precio: Number(r[4] || 0),
+               activo: r[5] === '' || r[5] === null || r[5] === undefined ? true : bool_(r[5]) };
+    })
+    .filter(function(a) {
+      if (!a.activo) return false;
+      if (!c) return true;
+      // Sin cliente = concepto disponible para todos
+      return !a.cliente || a.cliente.trim().toLowerCase() === c;
+    });
+}
+
+function guardarAdicionalCatalogo(data, ctx) {
+  return seguro_('guardarAdicionalCatalogo', function() {
+    var sh = hoja_(HOJA_ADI, COL_ADI);
+    var concepto = String(data.concepto || '').trim();
+    if (!concepto) return { ok: false, error: 'El concepto es obligatorio' };
+    var id  = data.id || uuid_();
+    var row = [id, String(data.cliente || ''), concepto, String(data.unidad || ''),
+               Number(data.precio || 0), data.activo !== false];
+    var fila = data.id ? buscarFila_(sh, data.id) : -1;
+    if (fila > 0) sh.getRange(fila, 1, 1, COL_ADI.length).setValues([row]);
+    else          sh.appendRow(row);
+    bitacora_(ctx, fila > 0 ? 'Editó adicional' : 'Creó adicional', 'ADICIONAL', id, '',
+              concepto + (data.cliente ? ' · ' + data.cliente : ' · todos'));
+    return { ok: true, id: id };
+  });
+}
+
+function eliminarAdicionalCatalogo(id, ctx) {
+  return seguro_('eliminarAdicionalCatalogo', function() {
+    var sh   = hoja_(HOJA_ADI, COL_ADI);
+    var fila = buscarFila_(sh, id);
+    if (fila > 0) {
+      var concepto = String(sh.getRange(fila, 3).getValue() || '');
+      sh.deleteRow(fila);
+      bitacora_(ctx, 'Eliminó adicional', 'ADICIONAL', id, '', concepto);
+    }
+    return { ok: true };
+  });
+}
+
+/** Adicionales cargados a una maniobra */
+function getAdicionalesManiobra(idManiobra) {
+  return seguro_('getAdicionalesManiobra', function() {
+    var sh = hoja_(HOJA_ADM, COL_ADM);
+    if (sh.getLastRow() < 2) return { ok: true, filas: [] };
+    var filas = sh.getRange(2, 1, sh.getLastRow() - 1, COL_ADM.length).getValues()
+      .filter(function(r) {
+        return String(r[0] || '').trim() &&
+               (!idManiobra || String(r[1]) === String(idManiobra));
+      })
+      .map(function(r) {
+        return { id: String(r[0]), id_maniobra: String(r[1]), folio: String(r[2] || ''),
+                 cliente: String(r[3] || ''), concepto: String(r[4] || ''),
+                 cantidad: Number(r[5] || 0), unidad: String(r[6] || ''),
+                 precio: Number(r[7] || 0), importe: Number(r[8] || 0),
+                 observaciones: String(r[9] || ''), registrado_por: String(r[10] || '') };
+      });
+    return { ok: true, filas: filas };
+  });
+}
+
+/** Reemplaza los adicionales de una maniobra por la lista recibida */
+function guardarAdicionalesManiobra(idManiobra, items, ctx) {
+  return seguro_('guardarAdicionalesManiobra', function() {
+    var shM  = hoja_(HOJA, COLUMNAS);
+    var fila = buscarFila_(shM, idManiobra);
+    if (fila < 0) return { ok: false, error: 'Maniobra no encontrada' };
+
+    var folio   = String(shM.getRange(fila, 2).getValue() || '');
+    var cliente = String(shM.getRange(fila, 7).getValue() || '');
+    var sh = hoja_(HOJA_ADM, COL_ADM);
+
+    // Se limpian los anteriores de esta maniobra y se reescriben
+    if (sh.getLastRow() >= 2) {
+      var ids = sh.getRange(2, 1, sh.getLastRow() - 1, 2).getValues();
+      for (var i = ids.length - 1; i >= 0; i--) {
+        if (String(ids[i][1]) === String(idManiobra)) sh.deleteRow(i + 2);
+      }
+    }
+
+    var limpios = (items || [])
+      .filter(function(a) { return String(a.concepto || '').trim() && Number(a.cantidad || 0) > 0; })
+      .map(function(a) {
+        var cant   = Number(a.cantidad || 0);
+        var precio = Number(a.precio || 0);
+        return [uuid_(), idManiobra, folio, cliente, String(a.concepto).trim(),
+                cant, String(a.unidad || ''), precio, _redondea_(cant * precio, 2),
+                String(a.observaciones || ''),
+                (ctx && (ctx.nombre || ctx.email)) || usuario_(), new Date()];
+      });
+
+    if (limpios.length) {
+      sh.getRange(sh.getLastRow() + 1, 1, limpios.length, COL_ADM.length).setValues(limpios);
+    }
+
+    // Resumen legible en la propia fila de la maniobra
+    var resumen = limpios.map(function(r) { return r[4] + ' x' + r[5]; }).join('; ');
+    shM.getRange(fila, C_ADICIONALES + 1).setValue(resumen);
+
+    bitacora_(ctx, 'Actualizó adicionales', 'MANIOBRA', idManiobra, folio,
+              limpios.length + ' concepto(s): ' + (resumen || 'ninguno'));
+    return { ok: true, guardados: limpios.length, resumen: resumen };
+  });
+}
+
+/* ════════════════════════════════════════════════════════════
    DEPARTAMENTOS
    Definen quién es responsable de cada etapa y qué campos ve
    cada usuario. El rol MASTER siempre ve y opera todo.
@@ -1038,14 +1300,24 @@ function _sembrarFlujos_(sh) {
   var filas = [];
   Object.keys(ETAPAS_FLUJO).forEach(function(flujo) {
     ETAPAS_FLUJO[flujo].forEach(function(etapa, i) {
-      filas.push([flujo, i + 1, etapa, '', Number(tiempos[etapa] || 0), true]);
+      filas.push([flujo, i + 1, etapa, '', Number(tiempos[etapa] || 0), true, '']);
     });
   });
   if (filas.length) sh.getRange(2, 1, filas.length, COL_FLU.length).setValues(filas);
   return filas.length;
 }
 
-/** { ENTRADA: [{orden, etapa, departamento, tiempo_est}], ... } */
+/** Clave interna de una secuencia: "FLUJO" o "FLUJO@@Cliente" */
+function _claveFlujo_(flujo, cliente) {
+  var f = String(flujo || '').trim().toUpperCase();
+  var c = String(cliente || '').trim();
+  return c ? f + '@@' + c : f;
+}
+
+/**
+ * Todas las secuencias, indexadas por clave.
+ * { "ENTRADA": [...], "ENTRADA@@Celulosa del Norte": [...] }
+ */
 function getFlujosEtapas() {
   var sh = hoja_(HOJA_FLU, COL_FLU);
   _sembrarFlujos_(sh);
@@ -1056,62 +1328,147 @@ function getFlujosEtapas() {
     var etapa = String(r[2] || '').trim();
     if (!flujo || !etapa) return;
     if (r[5] === false) return;                       // etapa desactivada
-    if (!out[flujo]) out[flujo] = [];
-    out[flujo].push({
-      orden:        Number(r[1] || out[flujo].length + 1),
+    var clave = _claveFlujo_(flujo, r[6]);
+    if (!out[clave]) out[clave] = [];
+    out[clave].push({
+      orden:        Number(r[1] || out[clave].length + 1),
       etapa:        etapa,
       departamento: String(r[3] || ''),
-      tiempo_est:   Number(r[4] || 0)
+      tiempo_est:   Number(r[4] || 0),
+      flujo:        flujo,
+      cliente:      String(r[6] || '')
     });
   });
-  Object.keys(out).forEach(function(f) {
-    out[f].sort(function(a, b) { return a.orden - b.orden; });
+  Object.keys(out).forEach(function(k) {
+    out[k].sort(function(a, b) { return a.orden - b.orden; });
   });
   return out;
 }
 
-/** Guarda la secuencia completa de un flujo, reemplazando la anterior */
-function guardarFlujoEtapas(flujo, items) {
+/**
+ * Guarda la secuencia de un flujo. Si se pasa cliente, guarda la variante
+ * a la medida de ese cliente sin tocar la genérica.
+ */
+function guardarFlujoEtapas(flujo, items, cliente, ctx) {
   return seguro_('guardarFlujoEtapas', function() {
     var nombre = String(flujo || '').trim().toUpperCase();
     if (!nombre) return { ok: false, error: 'Falta el nombre del flujo' };
+    var cli = String(cliente || '').trim();
 
     var limpios = (items || [])
       .filter(function(i) { return String(i.etapa || '').trim(); })
       .map(function(i, idx) {
         return [nombre, idx + 1, String(i.etapa).trim(),
                 String(i.departamento || ''), Number(i.tiempo_est || 0),
-                i.activo !== false];
+                i.activo !== false, cli];
       });
     if (!limpios.length) return { ok: false, error: 'El flujo necesita al menos una etapa' };
 
     var sh = hoja_(HOJA_FLU, COL_FLU);
-    _borrarFilasFlujo_(sh, nombre);
+    _borrarFilasFlujo_(sh, nombre, cli);
     sh.getRange(sh.getLastRow() + 1, 1, limpios.length, COL_FLU.length).setValues(limpios);
 
     // El flujo debe existir también en el catálogo para poder elegirlo
     _asegurarValoresCatalogo_('FLUJOS', [nombre]);
+    bitacora_(ctx, 'Guardó secuencia de etapas', 'FLUJO', _claveFlujo_(nombre, cli), '',
+              nombre + (cli ? ' · ' + cli : ' · genérico') + ' → ' + limpios.length + ' etapas');
     return { ok: true, etapas: limpios.length };
   });
 }
 
-function _borrarFilasFlujo_(sh, nombre) {
+/** Borra las filas de un flujo; si se indica cliente, solo las de ese cliente */
+function _borrarFilasFlujo_(sh, nombre, cliente) {
   if (sh.getLastRow() < 2) return 0;
-  var vals = sh.getRange(2, 1, sh.getLastRow() - 1, 1).getValues();
+  var cli  = String(cliente || '').trim().toLowerCase();
+  var vals = sh.getRange(2, 1, sh.getLastRow() - 1, COL_FLU.length).getValues();
   var n = 0;
   for (var i = vals.length - 1; i >= 0; i--) {
-    if (String(vals[i][0]).trim().toUpperCase() === nombre) { sh.deleteRow(i + 2); n++; }
+    if (String(vals[i][0]).trim().toUpperCase() !== nombre) continue;
+    if (String(vals[i][6] || '').trim().toLowerCase() !== cli) continue;
+    sh.deleteRow(i + 2);
+    n++;
   }
   return n;
 }
 
-function eliminarFlujoEtapas(flujo) {
+function eliminarFlujoEtapas(flujo, cliente, ctx) {
   return seguro_('eliminarFlujoEtapas', function() {
     var nombre = String(flujo || '').trim().toUpperCase();
     var sh = hoja_(HOJA_FLU, COL_FLU);
-    var n = _borrarFilasFlujo_(sh, nombre);
+    var n = _borrarFilasFlujo_(sh, nombre, cliente);
+    bitacora_(ctx, 'Eliminó secuencia de etapas', 'FLUJO', _claveFlujo_(nombre, cliente), '',
+              nombre + (cliente ? ' · ' + cliente : ' · genérico'));
     return { ok: true, eliminadas: n };
   });
+}
+
+/* ════════════════════════════════════════════════════════════
+   EVIDENCIA FOTOGRÁFICA EN DRIVE
+   Una carpeta por unidad y, dentro, una por maniobra.
+════════════════════════════════════════════════════════════ */
+
+function _carpeta_(padre, nombre) {
+  var it = padre.getFoldersByName(nombre);
+  return it.hasNext() ? it.next() : padre.createFolder(nombre);
+}
+
+function _carpetaRaiz_() {
+  var props = PropertiesService.getScriptProperties();
+  var id = props.getProperty('LOGITIME_DRIVE_ID');
+  if (id) {
+    try { return DriveApp.getFolderById(id); } catch (e) {}
+  }
+  var it = DriveApp.getFoldersByName(DRIVE_RAIZ);
+  var f  = it.hasNext() ? it.next() : DriveApp.createFolder(DRIVE_RAIZ);
+  props.setProperty('LOGITIME_DRIVE_ID', f.getId());
+  return f;
+}
+
+/**
+ * Sube las fotos de una maniobra.
+ * fotos: [{ nombre, tipo, datos }] con datos en base64 sin encabezado.
+ */
+function subirEvidencias(idManiobra, unidad, folio, fotos, ctx) {
+  return seguro_('subirEvidencias', function() {
+    var lista = [].concat(fotos || []);
+    if (!lista.length) return { ok: false, error: 'No se recibió ninguna foto' };
+
+    var carpetaUnidad = _carpeta_(_carpetaRaiz_(), String(unidad || 'SIN UNIDAD').trim() || 'SIN UNIDAD');
+    var carpeta = _carpeta_(carpetaUnidad, String(folio || idManiobra));
+
+    var urls = [];
+    lista.forEach(function(f, i) {
+      try {
+        var bytes = Utilities.base64Decode(String(f.datos || ''));
+        var blob  = Utilities.newBlob(bytes, f.tipo || 'image/jpeg',
+          (f.nombre || ('foto_' + (i + 1) + '.jpg')));
+        urls.push(carpeta.createFile(blob).getUrl());
+      } catch (e) { /* una foto corrupta no debe tirar el lote */ }
+    });
+
+    if (!urls.length) return { ok: false, error: 'No se pudo guardar ninguna foto' };
+
+    // Se anota la carpeta y el conteo en la maniobra, si ya existe
+    if (idManiobra) {
+      var sh   = hoja_(HOJA, COLUMNAS);
+      var fila = buscarFila_(sh, idManiobra);
+      if (fila > 0) {
+        sh.getRange(fila, C_CARPETA + 1).setValue(carpeta.getUrl());
+        var previas = Number(sh.getRange(fila, C_FOTOS + 1).getValue() || 0);
+        sh.getRange(fila, C_FOTOS + 1).setValue(previas + urls.length);
+      }
+    }
+    bitacora_(ctx, 'Subió evidencias', 'MANIOBRA', idManiobra, folio,
+              urls.length + ' foto(s) en ' + carpeta.getName());
+    return { ok: true, carpeta: carpeta.getUrl(), subidas: urls.length, urls: urls };
+  });
+}
+
+/** Mínimo de fotos exigido al arrancar el cronómetro */
+function getMinimoFotos() {
+  var cfg = getConfigObj();
+  var n = Number(cfg.MIN_FOTOS_INICIO);
+  return isFinite(n) && n >= 0 ? n : MIN_FOTOS;
 }
 
 /* ════════════════════════════════════════════════════════════
@@ -1134,7 +1491,8 @@ function getMontacargas(soloActivos) {
         estado:     String(r[6] || 'disponible'),
         ubicacion:  String(r[7] || ''),
         notas:      String(r[8] || ''),
-        activo:     r[9] === '' || r[9] === null || r[9] === undefined ? true : bool_(r[9])
+        activo:     r[9] === '' || r[9] === null || r[9] === undefined ? true : bool_(r[9]),
+        equipo:     String(r[11] || '')
       };
     })
     .filter(function(m) { return soloActivos ? m.activo : true; });
@@ -1164,7 +1522,7 @@ function guardarMontacargas(data) {
     var row = [id, codigo, data.tipo || '', data.marca || '', data.modelo || '',
                data.capacidad === '' || data.capacidad === undefined ? '' : Number(data.capacidad),
                estado, data.ubicacion || '', data.notas || '',
-               data.activo !== false, new Date()];
+               data.activo !== false, new Date(), data.equipo || ''];
 
     if (fila > 0) sh.getRange(fila, 1, 1, COL_MON.length).setValues([row]);
     else          sh.appendRow(row);
@@ -1293,9 +1651,13 @@ function setup() {
   // CAMPOS del formulario
   _sembrarCampos_(hoja_(HOJA_CAM, COL_CAM));
 
-  // DEPARTAMENTOS y secuencias de etapas por flujo
+  // DEPARTAMENTOS, EQUIPOS y secuencias de etapas por flujo
   getDepartamentos(false);
+  getEquipos(false);
   _sembrarFlujos_(hoja_(HOJA_FLU, COL_FLU));
+  hoja_(HOJA_HIS, COL_HIS);
+  hoja_(HOJA_ADI, COL_ADI);
+  hoja_(HOJA_ADM, COL_ADM);
 
   // SEMÁFOROS por tipo de maniobra
   var semSh = hoja_(HOJA_SEM, COL_SEM);
@@ -1308,6 +1670,7 @@ function setup() {
   _asegurarValoresCatalogo_('ADITAMENTOS',    CATALOGOS_DEFAULT.ADITAMENTOS);
   _asegurarValoresCatalogo_('TURNOS',         CATALOGOS_DEFAULT.TURNOS);
   _asegurarValoresCatalogo_('CAUSAS_DEMORA',  CATALOGOS_DEFAULT.CAUSAS_DEMORA);
+  _asegurarValoresCatalogo_('ANDENES',        CATALOGOS_DEFAULT.ANDENES);
 
   // Formato de fecha estricto dd/MM/yyyy
   try { formatearFechas(); } catch (e) {}
@@ -1458,6 +1821,9 @@ function getCatalogos(ctx) {
   });
   out.SECUENCIAS     = seq;
   out.DEPARTAMENTOS  = getDepartamentos(true).map(function(d) { return d.nombre; });
+  out.EQUIPOS        = getEquipos(true).map(function(e) { return e.nombre; });
+  out.ADICIONALES    = getAdicionalesCatalogo('');
+  out.MIN_FOTOS      = getMinimoFotos();
   out.CAMPOS         = getCamposConfig(ctx);
   out.SEMAFOROS      = getSemaforos();
   // El catálogo de tipos de maniobra es cerrado: si la hoja no lo trae, se usa el maestro
@@ -1576,7 +1942,8 @@ function getEmpleados() {
     .map(function(r) {
       return { id: String(r[0]), nombre: String(r[1]), posicion: String(r[2]),
                montacargas: String(r[3] || ''),
-               activo: r[4] === '' || r[4] === null || r[4] === undefined ? true : bool_(r[4]) };
+               activo: r[4] === '' || r[4] === null || r[4] === undefined ? true : bool_(r[4]),
+               equipo: String(r[5] || '') };
     });
 }
 
@@ -1585,12 +1952,14 @@ function guardarEmpleado(data) {
   if (data.id) {
     var fila = buscarFila_(sh, data.id);
     if (fila > 0) {
-      sh.getRange(fila, 1, 1, COL_EMP.length).setValues([[data.id, data.nombre, data.posicion, data.montacargas || '', data.activo !== false]]);
+      sh.getRange(fila, 1, 1, COL_EMP.length).setValues([[data.id, data.nombre, data.posicion,
+        data.montacargas || '', data.activo !== false, data.equipo || '']]);
       return { ok: true, id: data.id };
     }
   }
   var id = uuid_();
-  sh.appendRow([id, data.nombre, data.posicion, data.montacargas || '', data.activo !== false]);
+  sh.appendRow([id, data.nombre, data.posicion, data.montacargas || '',
+                data.activo !== false, data.equipo || '']);
   return { ok: true, id: id };
 }
 
@@ -1680,19 +2049,36 @@ function eliminarIncidenciasLote(ids) {
    ETAPAS — LÓGICA INTERNA
 ════════════════════════════════════════════════════════════ */
 
-/** Secuencia configurada del flujo; si la hoja no la tiene, usa la de fábrica */
-function _secuenciaFlujo_(flujo) {
+/**
+ * Secuencia que aplica a una maniobra.
+ * Prioridad: la del cliente → la genérica del flujo → la de fábrica.
+ */
+function _secuenciaFlujo_(flujo, cliente) {
   var f = String(flujo || '').trim().toUpperCase();
-  var conf = getFlujosEtapas()[f];
-  if (conf && conf.length) return conf;
+  var todas = getFlujosEtapas();
+
+  if (cliente) {
+    var propia = todas[_claveFlujo_(f, cliente)];
+    if (propia && propia.length) return propia;
+  }
+  var generica = todas[f];
+  if (generica && generica.length) return generica;
+
   return (ETAPAS_FLUJO[f] || []).map(function(e, i) {
     return { orden: i + 1, etapa: e, departamento: '', tiempo_est: 0 };
   });
 }
 
 /** Solo los nombres, para el resto del código que ya trabajaba así */
-function _etapasFlujo(flujo) {
-  return _secuenciaFlujo_(flujo).map(function(s) { return s.etapa; });
+function _etapasFlujo(flujo, cliente) {
+  return _secuenciaFlujo_(flujo, cliente).map(function(s) { return s.etapa; });
+}
+
+/** Cliente de una maniobra, por id */
+function _clienteDe_(idManiobra) {
+  var sh   = hoja_(HOJA, COLUMNAS);
+  var fila = buscarFila_(sh, idManiobra);
+  return fila > 0 ? String(sh.getRange(fila, 7).getValue() || '') : '';
 }
 
 /**
@@ -1731,11 +2117,11 @@ function _fmtObs(data) {
   return prefix + (data.observaciones || '');
 }
 
-function iniciarManiobra(data) {
+function iniciarManiobra(data, ctx) {
   return seguro_('iniciarManiobra', function() {
     data = data || {};
 
-    var faltan = _validarObligatorios_(data);
+    var faltan = _validarObligatorios_(data, ctx);
     if (faltan.length)
       return { ok: false, error: 'Faltan campos obligatorios: ' + faltan.join(', '), campos_faltantes: faltan };
 
@@ -1750,8 +2136,18 @@ function iniciarManiobra(data) {
     var tz      = Session.getScriptTimeZone();
     var fecha   = data.fecha || Utilities.formatDate(ahora, tz, 'yyyy-MM-dd');
     var flujo   = String(data.flujo || '').toUpperCase();
-    var secuencia = _secuenciaFlujo_(flujo);
+    // La secuencia del cliente manda sobre la genérica del flujo
+    var secuencia = _secuenciaFlujo_(flujo, data.cliente);
     if (!secuencia.length) return { ok: false, error: 'Flujo sin etapas definidas: ' + flujo };
+
+    // El cronómetro no arranca sin evidencia fotográfica
+    var minFotos = getMinimoFotos();
+    var fotos    = [].concat(data.fotos || []);
+    if (minFotos > 0 && fotos.length < minFotos) {
+      return { ok: false, requiere_fotos: true, min_fotos: minFotos,
+        error: 'Agrega al menos ' + minFotos + ' fotos de la unidad antes de iniciar. ' +
+               'Llevas ' + fotos.length + '.' };
+    }
 
     var lista   = secuencia.map(function(s) { return s.etapa; });
     var primera = secuencia[0];
@@ -1768,7 +2164,8 @@ function iniciarManiobra(data) {
       listaTexto_(data.ayudantes),
       'en_curso', ahora, '', 0, '', '', '', 0, '', '', '',
       data.dano_origen ? 'SÍ' : 'NO', data.dano_origen_desc || '',
-      'NO', '', _fmtObs(data), 'EN CURSO', usuario_(), ahora,
+      'NO', '', _fmtObs(data), 'EN CURSO',
+      (ctx && (ctx.nombre || ctx.email)) || usuario_(), ahora,
       monta,
       data.tipo_maniobra || '',
       data.toneladas_netas === '' || data.toneladas_netas === undefined ? '' : Number(data.toneladas_netas),
@@ -1778,7 +2175,9 @@ function iniciarManiobra(data) {
       data.hora_posicionamiento || '', data.hora_liberacion || '', '',
       '', '', '', '',
       data.prueba_controlada ? 'SÍ' : 'NO', data.etiqueta_prueba || '',
-      '', '', ''
+      '', '', '',
+      '', '',
+      data.anden || '', data.equipo || '', '', 0, ''
     ]);
 
     var tiempoEst = primera.tiempo_est || tiempos[primera.etapa] || 0;
@@ -1787,17 +2186,29 @@ function iniciarManiobra(data) {
     // El montacargas queda ocupado mientras la maniobra esté activa
     _setEstadoPorCodigo_(_codigosMontacargas_(monta), 'en_uso');
 
+    // Evidencia fotográfica a Drive: una carpeta por unidad
+    var eviden = { ok: false };
+    if (fotos.length) {
+      eviden = subirEvidencias(id, data.no_unidad, folio, fotos, ctx);
+    }
+
+    bitacora_(ctx, 'Inició maniobra', 'MANIOBRA', id, folio,
+              flujo + ' · ' + (data.cliente || '') + ' · unidad ' + (data.no_unidad || '') +
+              ' · ' + fotos.length + ' foto(s)');
+
     return { ok: true, id: id, folio: folio,
+      evidencias: eviden.ok ? eviden.subidas : 0,
+      carpeta: eviden.ok ? eviden.carpeta : '',
       etapa: { id: idEtapa, num: 1, nombre: primera.etapa, total: lista.length,
                tiempo_estimado_min: tiempoEst, departamento: primera.departamento }
     };
   });
 }
 
-function registrarManiobra(data) {
+function registrarManiobra(data, ctx) {
   return seguro_('registrarManiobra', function() {
     data = data || {};
-    var faltan = _validarObligatorios_(data);
+    var faltan = _validarObligatorios_(data, ctx);
     if (faltan.length)
       return { ok: false, error: 'Faltan campos obligatorios: ' + faltan.join(', '), campos_faltantes: faltan };
 
@@ -1838,23 +2249,27 @@ function registrarManiobra(data) {
       data.hora_posicionamiento || '', data.hora_liberacion || '', '',
       '', '', '', '',
       data.prueba_controlada ? 'SÍ' : 'NO', data.etiqueta_prueba || '',
-      '', '', ''
+      '', '', '',
+      '', '',
+      data.anden || '', data.equipo || '', '', 0, ''
     ];
 
     // Las métricas de costeo se calculan aquí mismo: el registro ya nace cerrado
     var m = _aplicarMetricas_(row, cfg, getSemaforos());
     sh.appendRow(row);
 
+    bitacora_(ctx, 'Registró maniobra retroactiva', 'MANIOBRA', id, folio,
+              String(data.flujo || '') + ' · ' + (data.cliente || '') + ' · ' + total + ' min');
     return { ok: true, id: id, folio: folio, tiempo_total_min: total,
              revision: m.revision, motivo_revision: m.motivo };
   });
 }
 
-function eliminarManiobra(id) {
-  return eliminarManiobrasLote([id]);
+function eliminarManiobra(id, ctx) {
+  return eliminarManiobrasLote([id], ctx);
 }
 
-function eliminarManiobrasLote(ids) {
+function eliminarManiobrasLote(ids, ctx) {
   return seguro_('eliminarManiobrasLote', function() {
     var lista = [].concat(ids || []).map(String).filter(Boolean);
     if (!lista.length) return { ok: true, eliminados: 0 };
@@ -1872,6 +2287,8 @@ function eliminarManiobrasLote(ids) {
         if (!set[String(mans[i][0])]) continue;
         // El equipo asignado vuelve al inventario antes de borrar el registro
         _setEstadoPorCodigo_(_codigosMontacargas_(mans[i][39]), 'disponible');
+        bitacora_(ctx, 'Eliminó maniobra', 'MANIOBRA', String(mans[i][0]),
+                  String(mans[i][1] || ''), String(mans[i][6] || ''));
         sh.deleteRow(i + 2);
         n++;
       }
@@ -1890,7 +2307,7 @@ function eliminarManiobrasLote(ids) {
   });
 }
 
-function editarManiobra(id, data) {
+function editarManiobra(id, data, ctx) {
   return seguro_('editarManiobra', function() {
     var sh   = hoja_(HOJA, COLUMNAS);
     var fila = buscarFila_(sh, id);
@@ -1929,6 +2346,9 @@ function editarManiobra(id, data) {
     if (data.atados           !== undefined) row[C_ATADOS] = data.atados         === '' ? '' : Number(data.atados);
     if (data.piezas_sueltas   !== undefined) row[C_PZAS]   = data.piezas_sueltas === '' ? '' : Number(data.piezas_sueltas);
     if (data.aditamento       !== undefined) row[C_ADIT]   = data.aditamento;
+    if (data.anden            !== undefined) row[C_ANDEN]  = data.anden;
+    if (data.equipo           !== undefined) row[C_EQUIPO] = data.equipo;
+    if (data.fecha            !== undefined && String(data.fecha).trim()) row[2] = data.fecha;
     if (data.hora_posicionamiento !== undefined) row[C_H_POS] = data.hora_posicionamiento;
     if (data.hora_liberacion      !== undefined) row[C_H_LIB] = data.hora_liberacion;
     if (data.prueba_controlada    !== undefined) row[C_PRUEBA] = data.prueba_controlada ? 'SÍ' : 'NO';
@@ -1938,15 +2358,17 @@ function editarManiobra(id, data) {
     if (String(row[20] || '') === 'finalizada') _aplicarMetricas_(row, getConfigObj(), getSemaforos());
 
     sh.getRange(fila, 1, 1, COLUMNAS.length).setValues([row]);
+    bitacora_(ctx, 'Editó maniobra', 'MANIOBRA', id, String(row[1] || ''),
+              Object.keys(data || {}).join(', '));
     return { ok: true };
   });
 }
 
-function forzarCierreManiobra(id) {
-  return forzarCierreManiobrasLote([id]);
+function forzarCierreManiobra(id, ctx) {
+  return forzarCierreManiobrasLote([id], ctx);
 }
 
-function forzarCierreManiobrasLote(ids) {
+function forzarCierreManiobrasLote(ids, ctx) {
   return seguro_('forzarCierreManiobrasLote', function() {
     var lista = [].concat(ids || []).map(String).filter(Boolean);
     if (!lista.length) return { ok: true, cerradas: 0 };
@@ -1981,6 +2403,7 @@ function forzarCierreManiobrasLote(ids) {
       mans.forEach(function(r, i) {
         if (!set[String(r[0])]) return;
         _cerrarManiobra(String(r[0]), i + 2, sh, shEta, {});   // libera el equipo por dentro
+        bitacora_(ctx, 'Forzó cierre', 'MANIOBRA', String(r[0]), String(r[1] || ''), '');
         n++;
       });
     }
@@ -2064,7 +2487,12 @@ function getManiobras(filtros) {
         revision:            String(r[C_REVISION] || ''),
         motivo_revision:     String(r[C_MOTIVO_REV] || ''),
         validado_por:        String(r[C_VALIDADO] || ''),
-        comentario_supervisor: String(r[C_COMENT_SUP] || '')
+        comentario_supervisor: String(r[C_COMENT_SUP] || ''),
+        anden:               String(r[C_ANDEN] || ''),
+        equipo:              String(r[C_EQUIPO] || ''),
+        carpeta_evidencias:  String(r[C_CARPETA] || ''),
+        fotos:               Number(r[C_FOTOS] || 0),
+        adicionales:         String(r[C_ADICIONALES] || '')
       });
       if (out.length >= limite) break;
     }
@@ -2190,6 +2618,10 @@ function getManiobrasEnCurso(ctx) {
         hora_posicionamiento: horaTexto_(r[C_H_POS]),
         hora_liberacion:      horaTexto_(r[C_H_LIB]),
         prueba_controlada:    String(r[C_PRUEBA] || 'NO'),
+        anden:                String(r[C_ANDEN] || ''),
+        equipo:               String(r[C_EQUIPO] || ''),
+        carpeta_evidencias:   String(r[C_CARPETA] || ''),
+        fotos:                Number(r[C_FOTOS] || 0),
         completado_seg:  completadoSeg,
         etapa_actual:    etapaActual,
         // Puede operar el cronómetro solo si la etapa activa es de su área
@@ -2206,7 +2638,7 @@ function getManiobrasEnCurso(ctx) {
    ETAPAS — OPERACIONES
 ════════════════════════════════════════════════════════════ */
 
-function pausarEtapa(idEtapa) {
+function pausarEtapa(idEtapa, ctx) {
   return seguro_('pausarEtapa', function() {
     var shEta = hoja_(HOJA_ETA, COL_ETA);
     var fila  = buscarFila_(shEta, idEtapa);
@@ -2238,11 +2670,13 @@ function pausarEtapa(idEtapa) {
       nuevo = 'en_pausa';
     }
     SpreadsheetApp.flush();
+    bitacora_(ctx, nuevo === 'en_pausa' ? 'Pausó etapa' : 'Reanudó etapa', 'ETAPA', idEtapa,
+              String(rowData[2] || ''), String(rowData[4] || ''));
     return { ok: true, estado: nuevo };
   });
 }
 
-function finalizarEtapa(idEtapa, extras) {
+function finalizarEtapa(idEtapa, extras, ctx) {
   return seguro_('finalizarEtapa', function() {
     extras = extras || {};
     var shEta = hoja_(HOJA_ETA, COL_ETA);
@@ -2286,11 +2720,14 @@ function finalizarEtapa(idEtapa, extras) {
     if (extras.observaciones) updRow[16] = extras.observaciones;
     shEta.getRange(fila, 1, 1, COL_ETA.length).setValues([updRow]);
 
+    bitacora_(ctx, 'Finalizó etapa', 'ETAPA', idEtapa, folio,
+              String(rowData[4] || '') + ' · ' + tiempoMin + ' min' +
+              (Number(extras.demora_min || 0) ? ' · paro ' + extras.demora_min + ' min' : ''));
     return _avanzarOManiobra(idManiobra, folio, numEtapa, extras);
   });
 }
 
-function marcarEtapaNoAplica(idEtapa) {
+function marcarEtapaNoAplica(idEtapa, ctx) {
   return seguro_('marcarEtapaNoAplica', function() {
     var shEta = hoja_(HOJA_ETA, COL_ETA);
     var fila  = buscarFila_(shEta, idEtapa);
@@ -2306,6 +2743,8 @@ function marcarEtapaNoAplica(idEtapa) {
     shEta.getRange(fila,  6).setValue('no_aplica');
     shEta.getRange(fila, 14).setValue('SÍ');
 
+    bitacora_(ctx, 'Marcó etapa como no aplica', 'ETAPA', idEtapa, folio,
+              String(rowData[4] || ''));
     return _avanzarOManiobra(idManiobra, folio, numEtapa, {});
   });
 }
@@ -2365,7 +2804,7 @@ function _avanzarOManiobra(idManiobra, folio, numActual, extras) {
   if (filaM < 0) return { ok: false, error: 'Maniobra no encontrada: ' + idManiobra };
 
   var flujo  = String(shM.getRange(filaM, 5).getValue() || '');
-  var secuencia = _secuenciaFlujo_(flujo);
+  var secuencia = _secuenciaFlujo_(flujo, String(shM.getRange(filaM, 7).getValue() || ''));
   var sigNum = numActual + 1;
   var shEta  = hoja_(HOJA_ETA, COL_ETA);
 
@@ -2757,6 +3196,185 @@ function analisisPruebaControlada(dias, etiqueta) {
   });
 }
 
+/**
+ * Tablero ejecutivo: doce indicadores clave pensados para presentarse
+ * en formatos distintos (marcador, medidor, barras, mapa de calor, ranking).
+ */
+function indicadoresAvanzados(dias, opts) {
+  return seguro_('indicadoresAvanzados', function() {
+    opts = opts || {};
+    dias = Number(dias || 30);
+    var sh  = hoja_(HOJA, COLUMNAS);
+    var cfg = getConfigObj();
+    var tz  = Session.getScriptTimeZone();
+
+    var base = {
+      ok: true, periodo_dias: dias,
+      total: 0, finalizadas: 0, activas: 0, en_revision: 0,
+      mediana_min: 0, p80_min: 0,
+      toneladas: 0, atados: 0, tarimas: 0,
+      ton_por_hora: 0, min_montacargas: 0,
+      pct_verde: 0, pct_paro: 0, pct_calidad: 0, pct_con_dano: 0,
+      ocupacion_mediana: 0, cumplimiento_estimado: 0,
+      semaforo: { VERDE: 0, 'ÁMBAR': 0, ROJO: 0 },
+      por_turno: [], por_anden: [], por_equipo: [], por_dia_semana: [],
+      top_clientes: [], ranking_operadores: [], heatmap: [],
+      utilizacion_montacargas: { total: 0, en_uso: 0, disponibles: 0, mantenimiento: 0, pct: 0 },
+      adicionales: { conceptos: 0, importe: 0, top: [] }
+    };
+    if (sh.getLastRow() < 2) return base;
+
+    var vals = sh.getRange(2, 1, sh.getLastRow() - 1, COLUMNAS.length).getValues();
+    var limite = new Date();
+    limite.setDate(limite.getDate() - dias);
+    limite.setHours(0, 0, 0, 0);
+
+    var tiempos = [], ocupaciones = [], paroTotal = 0, minTotal = 0;
+    var conEst = 0, dentroEst = 0, conDano = 0;
+    var turno = {}, anden = {}, equipo = {}, cliente = {}, operador = {}, diaSem = {};
+    var heat = {};   // "dia|hora" → conteo
+    var DIAS = ['Domingo','Lunes','Martes','Miércoles','Jueves','Viernes','Sábado'];
+
+    function sumar(mapa, clave, min, ton) {
+      clave = String(clave || '').trim();
+      if (!clave) return;
+      if (!mapa[clave]) mapa[clave] = { nombre: clave, n: 0, suma: 0, con: 0, ton: 0 };
+      mapa[clave].n++;
+      mapa[clave].ton += Number(ton || 0);
+      if (min > 0) { mapa[clave].suma += min; mapa[clave].con++; }
+    }
+    function lista(mapa, tope) {
+      return Object.keys(mapa).map(function(k) {
+        var m = mapa[k];
+        return { nombre: m.nombre, n: m.n, toneladas: _redondea_(m.ton, 1),
+                 promedio_min: m.con ? Math.round(m.suma / m.con) : 0 };
+      }).sort(function(a, b) { return b.n - a.n; }).slice(0, tope || 999);
+    }
+
+    vals.forEach(function(r) {
+      if (!String(r[0] || '').trim()) return;
+      var estado = String(r[20] || '');
+
+      if (estado === 'en_curso' || estado === 'en_pausa') { base.activas++; return; }
+      if (estado !== 'finalizada') return;
+
+      var ms = toMs_(r[2]) || toMs_(r[22]) || toMs_(r[21]);
+      if (!ms || new Date(ms) < limite) return;
+
+      base.total++;
+      if (String(r[C_REVISION] || '') === 'REVISIÓN') {
+        base.en_revision++;
+        if (!opts.incluirRevision) return;      // no ensucia los promedios
+      }
+      base.finalizadas++;
+
+      var min = Number(r[26] || 0);
+      var ton = Number(r[C_TON] || 0);
+      if (min > 0) { tiempos.push(min); minTotal += min; }
+      paroTotal += Number(r[27] || 0);
+      base.toneladas += ton;
+      base.atados    += Number(r[C_ATADOS] || 0);
+      base.tarimas   += Number(r[14] || 0);
+      base.min_montacargas += Number(r[C_MIN_MONTA] || 0);
+
+      var oc = Number(r[C_OCUPACION] || 0);
+      if (oc > 0) ocupaciones.push(oc);
+
+      var s = String(r[36] || '');
+      if (base.semaforo[s] !== undefined) base.semaforo[s]++;
+      if (String(r[33]) === 'SÍ' || String(r[31]) === 'SÍ') conDano++;
+
+      // ¿Cumplió el tiempo estimado de sus etapas?
+      var est = Number(r[C_MIN_TON] || 0);   // solo para saber si hay referencia
+      var semaforoTipo = semaforoPorTipo_(r[C_TIPO_MAN], min, cfg);
+      if (semaforoTipo !== 'SIN DATO') { conEst++; if (semaforoTipo === 'VERDE') dentroEst++; }
+
+      sumar(turno,   r[3],          min, ton);
+      sumar(anden,   r[C_ANDEN],    min, ton);
+      sumar(equipo,  r[C_EQUIPO],   min, ton);
+      sumar(cliente, r[6],          min, ton);
+      textoLista_(r[18]).forEach(function(op) { sumar(operador, op, min, ton); });
+
+      var f = new Date(ms);
+      sumar(diaSem, DIAS[f.getDay()], min, ton);
+
+      var hora = Number(Utilities.formatDate(f, tz, 'H'));
+      var k = f.getDay() + '|' + hora;
+      heat[k] = (heat[k] || 0) + 1;
+    });
+
+    base.mediana_min = _mediana_(tiempos);
+    base.p80_min     = _percentil_(tiempos, 0.8);
+    base.ocupacion_mediana = _mediana_(ocupaciones);
+
+    var horas = minTotal / 60;
+    base.ton_por_hora = horas > 0 ? _redondea_(base.toneladas / horas, 2) : 0;
+
+    var totalSem = base.semaforo.VERDE + base.semaforo['ÁMBAR'] + base.semaforo.ROJO;
+    base.pct_verde   = totalSem ? Math.round(base.semaforo.VERDE / totalSem * 100) : 0;
+    base.pct_paro    = minTotal ? Math.round(paroTotal / minTotal * 100) : 0;
+    base.pct_calidad = base.total ? Math.round((base.total - base.en_revision) / base.total * 100) : 100;
+    base.pct_con_dano = base.finalizadas ? Math.round(conDano / base.finalizadas * 100) : 0;
+    base.cumplimiento_estimado = conEst ? Math.round(dentroEst / conEst * 100) : 0;
+    base.toneladas = _redondea_(base.toneladas, 1);
+    base.min_montacargas = _redondea_(base.min_montacargas, 0);
+
+    base.por_turno         = lista(turno);
+    base.por_anden         = lista(anden, 12);
+    base.por_equipo        = lista(equipo, 12);
+    base.por_dia_semana    = DIAS.map(function(d) {
+      return (diaSem[d] ? { nombre: d, n: diaSem[d].n,
+                            promedio_min: diaSem[d].con ? Math.round(diaSem[d].suma / diaSem[d].con) : 0 }
+                        : { nombre: d, n: 0, promedio_min: 0 });
+    });
+    base.top_clientes      = lista(cliente, 8);
+    base.ranking_operadores = lista(operador, 10);
+
+    // Mapa de calor día × hora
+    var heatArr = [];
+    for (var d = 0; d < 7; d++) {
+      for (var h = 0; h < 24; h++) {
+        var v = heat[d + '|' + h] || 0;
+        if (v) heatArr.push({ dia: d, dia_nombre: DIAS[d], hora: h, n: v });
+      }
+    }
+    base.heatmap = heatArr;
+
+    // Utilización del inventario
+    var monta = getMontacargas(false);
+    var uso = { total: monta.length, en_uso: 0, disponibles: 0, mantenimiento: 0, pct: 0 };
+    monta.forEach(function(m) {
+      if (m.estado === 'en_uso') uso.en_uso++;
+      else if (m.estado === 'disponible') uso.disponibles++;
+      else if (m.estado === 'mantenimiento') uso.mantenimiento++;
+    });
+    uso.pct = uso.total ? Math.round(uso.en_uso / uso.total * 100) : 0;
+    base.utilizacion_montacargas = uso;
+
+    // Servicios adicionales facturados en el período
+    var shA = hoja_(HOJA_ADM, COL_ADM);
+    if (shA.getLastRow() >= 2) {
+      var porConcepto = {};
+      shA.getRange(2, 1, shA.getLastRow() - 1, COL_ADM.length).getValues().forEach(function(r) {
+        var ms2 = toMs_(r[11]);
+        if (ms2 && new Date(ms2) < limite) return;
+        var c = String(r[4] || '').trim();
+        if (!c) return;
+        base.adicionales.conceptos++;
+        base.adicionales.importe += Number(r[8] || 0);
+        if (!porConcepto[c]) porConcepto[c] = { nombre: c, n: 0, importe: 0 };
+        porConcepto[c].n += Number(r[5] || 0);
+        porConcepto[c].importe += Number(r[8] || 0);
+      });
+      base.adicionales.importe = _redondea_(base.adicionales.importe, 2);
+      base.adicionales.top = Object.keys(porConcepto).map(function(k) { return porConcepto[k]; })
+        .sort(function(a, b) { return b.n - a.n; }).slice(0, 8);
+    }
+
+    return base;
+  });
+}
+
 /** Filas marcadas REVISIÓN pendientes de que un supervisor las valide */
 function getRegistrosEnRevision() {
   return seguro_('getRegistrosEnRevision', function() {
@@ -2904,6 +3522,7 @@ function diagnostico() {
       [HOJA, COLUMNAS], [HOJA_ETA, COL_ETA], [HOJA_CAT, null], [HOJA_TEMS, COL_TEM],
       [HOJA_EMP, COL_EMP], [HOJA_MON, COL_MON], [HOJA_CAM, COL_CAM],
       [HOJA_SEM, COL_SEM], [HOJA_DEP, COL_DEP], [HOJA_FLU, COL_FLU],
+      [HOJA_EQU, COL_EQU], [HOJA_HIS, COL_HIS], [HOJA_ADI, COL_ADI], [HOJA_ADM, COL_ADM],
       [HOJA_INC, COL_INC], [HOJA_CFG, COL_CFG], [HOJA_USR, COL_USR]
     ];
 
