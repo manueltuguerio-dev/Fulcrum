@@ -296,6 +296,7 @@
     .campo-sw        { display:flex;align-items:center;gap:5px;font-size:12px;color:var(--muted);cursor:pointer; }
     .campo-deptos    { display:flex;align-items:center;gap:9px;flex-wrap:wrap;flex:1 1 100%;
                        padding-top:7px;margin-top:2px;border-top:1px dashed var(--line); }
+    .eta-firma       { display:block;font-size:10px;color:var(--muted);margin-top:2px; }
     .eta-depto       { display:inline-block;margin-left:7px;font-size:9.5px;font-weight:600;
                        text-transform:uppercase;letter-spacing:.04em;color:var(--muted);
                        background:var(--bg);border:1px solid var(--line);border-radius:999px;padding:1px 7px; }
@@ -1183,6 +1184,39 @@
   </div>
 </div>
 
+<!-- MODAL: evidencias durante la maniobra -->
+<div id="modal-evid" class="modal-overlay hidden">
+  <div class="modal-box">
+    <h2 id="evid-titulo" style="margin:0 0 6px;font-size:16px;font-weight:700;text-transform:none;letter-spacing:0;color:var(--txt)">Evidencias</h2>
+    <p class="muted" id="evid-sub" style="margin:0 0 12px"></p>
+
+    <div class="row" style="justify-content:space-between;margin-bottom:9px">
+      <span class="muted">Fotos nuevas</span>
+      <span id="evid-estado" class="fotos-estado listo">0</span>
+    </div>
+    <div class="fotos-acciones">
+      <label class="foto-btn">📷 Tomar foto
+        <input type="file" accept="image/*" capture="environment" multiple
+               onchange="Fotos.agregar(this)" hidden>
+      </label>
+      <label class="foto-btn ghost">🖼 Galería
+        <input type="file" accept="image/*" multiple onchange="Fotos.agregar(this)" hidden>
+      </label>
+      <button class="ghost sm" type="button" onclick="Fotos.limpiar()">Quitar todas</button>
+    </div>
+    <div id="evid-tiras" class="fotos-tiras"></div>
+
+    <div id="evid-aviso" class="aviso err" style="display:none;margin-top:10px"></div>
+    <div class="row" style="margin-top:14px;justify-content:flex-end;gap:8px">
+      <a id="evid-carpeta" href="#" target="_blank" rel="noopener"
+         style="display:none;align-self:center;font-size:13px">Ver carpeta en Drive ↗</a>
+      <span class="spacer"></span>
+      <button class="ghost" onclick="Curso.cerrarFotos()">Cancelar</button>
+      <button class="success" id="evid-btn" onclick="Curso.subirFotos()">Subir a Drive</button>
+    </div>
+  </div>
+</div>
+
 <!-- MODAL: comentario de supervisión -->
 <div id="modal-sup" class="modal-overlay hidden">
   <div class="modal-box">
@@ -1242,6 +1276,7 @@ var STATE = {
   cursoRecibido: 0,         // Date.now() al recibir los datos
   minFotos:    5,
   relojId:     null,
+  evidId:      '',
   autoSync:    false,
   autoSyncId:  null,
   tickId:      null,
@@ -1367,6 +1402,12 @@ var Fotos = {
   previas: 0,         // las que la maniobra ya tiene guardadas en Drive
   MAX_LADO: 1400,
   CALIDAD: 0.72,
+  // Dónde se está capturando: el modal de cierre o el de evidencias
+  destino: { tiras: 'fotos-tiras', estado: 'fotos-estado', exigeMinimo: true },
+
+  usar: function(tiras, estado, exigeMinimo) {
+    Fotos.destino = { tiras: tiras, estado: estado, exigeMinimo: !!exigeMinimo };
+  },
 
   agregar: function(input) {
     var files = Array.prototype.slice.call(input.files || []);
@@ -1412,10 +1453,8 @@ var Fotos = {
   limpiar: function() { Fotos.lista = []; Fotos.previas = 0; Fotos.render(); },
 
   render: function() {
-    var cont = $('fotos-tiras');
+    var cont = $(Fotos.destino.tiras);
     if (!cont) return;
-    var min = STATE.minFotos;
-    var n = Fotos.previas + Fotos.lista.length;
 
     cont.innerHTML = Fotos.lista.map(function(f, i) {
       return '<div class="foto-mini" style="background-image:url(' + f.preview + ')">' +
@@ -1423,8 +1462,20 @@ var Fotos = {
         'aria-label="Quitar foto">✕</button></div>';
     }).join('');
 
+    var est = $(Fotos.destino.estado);
+    if (!est) return;
+
+    if (!Fotos.destino.exigeMinimo) {
+      // Captura libre: solo se informa cuántas van
+      est.className = 'fotos-estado listo';
+      est.textContent = Fotos.lista.length
+        ? Fotos.lista.length + ' por subir'
+        : (Fotos.previas ? Fotos.previas + ' ya en Drive' : 'Sin fotos');
+      return;
+    }
+    var min = STATE.minFotos;
+    var n = Fotos.previas + Fotos.lista.length;
     var faltan = Math.max(0, min - n);
-    var est = $('fotos-estado');
     est.className = 'fotos-estado ' + (faltan ? 'falta' : 'listo');
     est.textContent = faltan
       ? n + ' de ' + min + ' · faltan ' + faltan
@@ -2089,6 +2140,9 @@ var Auth = {
       });
     }
 
+    // Se pinta de inmediato con lo que ya sabemos: si el servidor tarda
+    // o falla, la barra igual muestra usuario, fecha y hora
+    Nueva.pintarRegistro(null);
     App.cargarCatalogos();
     if (soloPanel) App.tab('panel');
   },
@@ -2280,6 +2334,7 @@ var Nueva = {
 
   /** Muestra quién captura y en qué fecha; el reloj corre en vivo */
   pintarRegistro: function(r) {
+    if (!$('reg-usuario')) return;
     var u = STATE.usr || {};
     var nombre = u.nombre || u.email || '—';
     $('reg-usuario').textContent = nombre + (u.rol ? ' · ' + u.rol : '') +
@@ -2613,6 +2668,70 @@ var Curso = {
     });
   },
 
+  /* ── Evidencias en cualquier momento de la maniobra ── */
+  abrirFotos: function(id) {
+    var m = null;
+    STATE.curso.forEach(function(x) { if (x.id === id) m = x; });
+    if (!m) return;
+
+    STATE.evidId = id;
+    Fotos.usar('evid-tiras', 'evid-estado', false);
+    Fotos.limpiar();
+    Fotos.previas = Number(m.fotos || 0);
+    Fotos.render();
+
+    $('evid-titulo').textContent = 'Evidencias · ' + (m.folio || '');
+    $('evid-sub').textContent = (m.cliente || '') +
+      (m.no_unidad ? ' · unidad ' + m.no_unidad : '') +
+      (m.fotos ? ' · ' + m.fotos + ' foto(s) ya guardadas' : ' · sin fotos todavía');
+
+    var link = $('evid-carpeta');
+    if (m.carpeta_evidencias) { link.href = m.carpeta_evidencias; link.style.display = ''; }
+    else link.style.display = 'none';
+
+    UI.aviso('evid-aviso', '');
+    UI.show('modal-evid');
+  },
+
+  cerrarFotos: function() {
+    UI.hide('modal-evid');
+    STATE.evidId = '';
+    Fotos.limpiar();
+    // El modal de cierre vuelve a ser el destino por omisión
+    Fotos.usar('fotos-tiras', 'fotos-estado', true);
+  },
+
+  subirFotos: function() {
+    if (!STATE.evidId) return;
+    if (!Fotos.lista.length) {
+      UI.aviso('evid-aviso', 'Agrega al menos una foto antes de subir.', 'err');
+      return;
+    }
+    var m = null;
+    STATE.curso.forEach(function(x) { if (x.id === STATE.evidId) m = x; });
+
+    var btn = $('evid-btn');
+    btn.disabled = true;
+    btn.textContent = 'Subiendo ' + Fotos.lista.length + '…';
+
+    var payload = Fotos.lista.map(function(f) {
+      return { nombre: f.nombre, tipo: f.tipo, datos: f.datos };
+    });
+
+    API.call('subirEvidencias',
+      [STATE.evidId, (m && m.no_unidad) || '', (m && m.folio) || '', payload, Auth.ctx()],
+      function(r) {
+        btn.disabled = false; btn.textContent = 'Subir a Drive';
+        UI.toast('✓ ' + r.subidas + ' foto(s) en Drive', 'ok');
+        Curso.cerrarFotos();
+        Curso.cargar();
+      },
+      function(msg) {
+        btn.disabled = false; btn.textContent = 'Subir a Drive';
+        UI.aviso('evid-aviso', msg, 'err');
+      });
+  },
+
   arrancar: function(id) {
     if (!confirm('¿Arrancar el cronómetro de esta maniobra ahora?')) return;
     API.call('iniciarDesdeBorrador', [id, Auth.ctx()], function(r) {
@@ -2725,10 +2844,21 @@ var Curso = {
       var depto = e.departamento
         ? '<span class="eta-depto">' + UI.esc(e.departamento) + '</span>' : '';
 
+      // Quién movió la etapa y cuándo: queda a la vista, no solo en la bitácora
+      var firma = '';
+      if (e.registrado_por) {
+        var cuando = e.movido_ms
+          ? new Date(e.movido_ms).toLocaleString('es-MX',
+              { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' })
+          : '';
+        firma = '<span class="eta-firma">' + UI.esc(e.registrado_por) +
+                (cuando ? ' · ' + UI.esc(cuando) : '') + '</span>';
+      }
+
       return '<div class="eta-item ' + cls + '">' +
         '<div class="eta-icon ' + cls + '">' + icono + '</div>' +
         '<div class="eta-body"><div class="eta-name ' + cls + '">' + UI.esc(e.nombre) + depto + '</div>' +
-          sub + '</div>' +
+          sub + firma + '</div>' +
         tiempo + '</div>';
     }).join('');
 
@@ -2746,6 +2876,9 @@ var Curso = {
         '<button class="ghost sm" onclick="Curso.noAplica(\'' + eta.id + '\')">No aplica</button>' +
         '<button class="success sm" onclick="Curso.abrirModal(\'' + eta.id + '\')">Finalizar etapa ›</button>';
     }
+
+    var btnFotos = '<button class="ghost sm" onclick="Curso.abrirFotos(\'' + m.id + '\')">📷 Fotos' +
+      (m.fotos ? ' <b>' + m.fotos + '</b>' : '') + '</button>';
 
     var accionesMaster = master
       ? '<span class="spacer"></span>' +
@@ -2782,7 +2915,7 @@ var Curso = {
 
       Curso.prodHTML(m) +
 
-      '<div class="action-bar">' + acciones + accionesMaster + '</div>' +
+      '<div class="action-bar">' + acciones + btnFotos + accionesMaster + '</div>' +
     '</div>';
   },
 
@@ -2910,6 +3043,7 @@ var Curso = {
       fotosPrevias = Number(m.fotos || 0);
     });
     STATE.modalUltima = esUltima;
+    Fotos.usar('fotos-tiras', 'fotos-estado', true);
     Fotos.limpiar();
     Fotos.previas = fotosPrevias;
     $('fotos-req').style.display = esUltima ? '' : 'none';

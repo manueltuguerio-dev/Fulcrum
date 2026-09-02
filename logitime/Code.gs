@@ -1813,9 +1813,11 @@ function getTurnoActual() {
     var dentro = t.fin > t.ini ? (mins >= t.ini && mins < t.fin) : (mins >= t.ini || mins < t.fin);
     if (dentro) turno = t.nombre;
   });
+  // Sin patrones con texto entrecomillado: SimpleDateFormat los rechaza
+  // y una excepción aquí deja el formulario sin fecha ni turno.
   return { turno: turno,
            fecha:       Utilities.formatDate(ahora, tz, 'yyyy-MM-dd'),
-           fecha_larga: Utilities.formatDate(ahora, tz, 'EEEE d \'de\' MMMM \'de\' yyyy'),
+           fecha_larga: Utilities.formatDate(ahora, tz, 'EEEE, dd/MM/yyyy'),
            hora:        Utilities.formatDate(ahora, tz, 'HH:mm'),
            server_now_ms: Date.now() };
 }
@@ -2121,14 +2123,22 @@ function _clienteDe_(idManiobra) {
  * de la celda a datetime para que getValues() siempre devuelva un Date.
  * Ésta era la causa raíz de que el cronómetro no arrancara.
  */
-function _crearEtapa(shEta, idManiobra, folio, numEtapa, nombreEtapa, tiempoEst, departamento) {
+/** Sella la etapa con quién la tocó y cuándo */
+function _sellarEtapa_(shEta, fila, ctx) {
+  try {
+    shEta.getRange(fila, 18).setValue((ctx && (ctx.nombre || ctx.email)) || usuario_());
+    shEta.getRange(fila, 19).setValue(new Date());
+  } catch (e) { /* el sello nunca bloquea la operación */ }
+}
+
+function _crearEtapa(shEta, idManiobra, folio, numEtapa, nombreEtapa, tiempoEst, departamento, ctx) {
   var ahora = new Date();
   var id    = uuid_();
   shEta.appendRow([
     id, idManiobra, folio, numEtapa, nombreEtapa, 'en_curso',
     ahora, hhmm_(ahora), '', '',
     '', tiempoEst || 0, '', 'NO',
-    0, '', '', usuario_(), ahora,
+    0, '', '', (ctx && (ctx.nombre || ctx.email)) || usuario_(), ahora,
     departamento || ''
   ]);
   var fila = shEta.getLastRow();
@@ -2213,7 +2223,7 @@ function iniciarManiobra(data, ctx) {
     ]);
 
     var tiempoEst = primera.tiempo_est || tiempos[primera.etapa] || 0;
-    var idEtapa   = _crearEtapa(shEta, id, folio, 1, primera.etapa, tiempoEst, primera.departamento);
+    var idEtapa   = _crearEtapa(shEta, id, folio, 1, primera.etapa, tiempoEst, primera.departamento, ctx);
 
     // El montacargas queda ocupado mientras la maniobra esté activa
     _setEstadoPorCodigo_(_codigosMontacargas_(monta), 'en_uso');
@@ -2352,7 +2362,7 @@ function iniciarDesdeBorrador(id, ctx) {
     var ahora   = new Date();
     var shEta   = hoja_(HOJA_ETA, COL_ETA);
     var tiempoEst = primera.tiempo_est || tiempos[primera.etapa] || 0;
-    var idEtapa = _crearEtapa(shEta, id, folio, 1, primera.etapa, tiempoEst, primera.departamento);
+    var idEtapa = _crearEtapa(shEta, id, folio, 1, primera.etapa, tiempoEst, primera.departamento, ctx);
 
     row[5]  = primera.etapa;
     row[20] = 'en_curso';
@@ -2731,6 +2741,9 @@ function getManiobrasEnCurso(ctx) {
           pausa_desde_ms:      pausaDesde,
           elapsed_seg:         elapsed,
           departamento:        String(r[C_ETA_DEPTO] || ''),
+          // Rastro de quién movió la etapa y cuándo
+          registrado_por:      String(r[17] || ''),
+          movido_ms:           toMs_(r[18]),
           // Un operador solo ve y opera las etapas de su departamento
           visible:             _puedeVer_(r[C_ETA_DEPTO], ctx),
           sin_inicio:          activa && !inicioMs   // bandera para reparación
@@ -2826,12 +2839,14 @@ function pausarEtapa(idEtapa, ctx) {
       var acum  = acumPrev + (desde ? Math.round((Date.now() - desde) / 1000) : 0);
       shEta.getRange(fila, 15).setValue(acum);
       shEta.getRange(fila,  6).setValue('en_curso');
+      _sellarEtapa_(shEta, fila, ctx);
       props.deleteProperty(propKey);
       if (filaM > 0) shM.getRange(filaM, 21).setValue('en_curso');
       nuevo = 'en_curso';
     } else {
       props.setProperty(propKey, String(Date.now()));
       shEta.getRange(fila, 6).setValue('en_pausa');
+      _sellarEtapa_(shEta, fila, ctx);
       if (filaM > 0) shM.getRange(filaM, 21).setValue('en_pausa');
       nuevo = 'en_pausa';
     }
@@ -2891,6 +2906,8 @@ function finalizarEtapa(idEtapa, extras, ctx) {
     var retraso   = (tiempoEst > 0) ? Math.max(0, tiempoMin - tiempoEst) : 0;
 
     var updRow = rowData.slice();
+    updRow[17] = (ctx && (ctx.nombre || ctx.email)) || usuario_();
+    updRow[18] = new Date();
     updRow[5]  = 'finalizada';
     updRow[8]  = ahora;
     updRow[9]  = horaFin;
@@ -2912,6 +2929,7 @@ function finalizarEtapa(idEtapa, extras, ctx) {
     bitacora_(ctx, 'Finalizó etapa', 'ETAPA', idEtapa, folio,
               String(rowData[4] || '') + ' · ' + tiempoMin + ' min' +
               (Number(extras.demora_min || 0) ? ' · paro ' + extras.demora_min + ' min' : ''));
+    extras._ctx = ctx;                 // para sellar la etapa que sigue
     return _avanzarOManiobra(idManiobra, folio, numEtapa, extras);
   });
 }
@@ -2931,10 +2949,11 @@ function marcarEtapaNoAplica(idEtapa, ctx) {
 
     shEta.getRange(fila,  6).setValue('no_aplica');
     shEta.getRange(fila, 14).setValue('SÍ');
+    _sellarEtapa_(shEta, fila, ctx);
 
     bitacora_(ctx, 'Marcó etapa como no aplica', 'ETAPA', idEtapa, folio,
               String(rowData[4] || ''));
-    return _avanzarOManiobra(idManiobra, folio, numEtapa, {});
+    return _avanzarOManiobra(idManiobra, folio, numEtapa, { _ctx: ctx });
   });
 }
 
@@ -3008,7 +3027,7 @@ function _avanzarOManiobra(idManiobra, folio, numActual, extras) {
     var sig       = secuencia[sigNum - 1];
     var tiempos   = getTimeposEstimados();
     var tiempoEst = sig.tiempo_est || tiempos[sig.etapa] || 0;
-    var idSig     = _crearEtapa(shEta, idManiobra, folio, sigNum, sig.etapa, tiempoEst, sig.departamento);
+    var idSig     = _crearEtapa(shEta, idManiobra, folio, sigNum, sig.etapa, tiempoEst, sig.departamento, extras && extras._ctx);
     shM.getRange(filaM,  6).setValue(sig.etapa);
     shM.getRange(filaM, 21).setValue('en_curso');
     return { ok: true, maniobra_finalizada: false,
