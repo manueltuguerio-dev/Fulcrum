@@ -186,6 +186,18 @@
        EVIDENCIA FOTOGRÁFICA
     ════════════════════════════════════════════ */
     /* Quién registra y cuándo */
+    /* Bandeja de maniobras capturadas sin arrancar */
+    .bandeja         { border:1px solid var(--amber);background:var(--badge-ambar-bg);
+                       border-radius:11px;padding:13px;margin-bottom:14px; }
+    .bandeja-head    { display:flex;align-items:center;gap:11px;margin-bottom:11px; }
+    .bandeja-n       { width:32px;height:32px;border-radius:9px;background:var(--amber);
+                       color:#1a1200;font-weight:800;font-size:15px;flex-shrink:0;
+                       display:flex;align-items:center;justify-content:center; }
+    .bandeja-item    { display:flex;gap:10px;align-items:center;flex-wrap:wrap;
+                       background:var(--card);border:1px solid var(--line);
+                       border-radius:9px;padding:11px 13px;margin-bottom:7px; }
+    .bandeja-item:last-child { margin-bottom:0; }
+
     .registro-bar    { display:flex;gap:10px;flex-wrap:wrap;margin-bottom:14px;
                        background:var(--bg);border:1px solid var(--line);
                        border-left:3px solid var(--brand);border-radius:9px;padding:10px 13px; }
@@ -406,10 +418,15 @@
 
     <div class="card barra-accion">
       <div class="row">
-        <button id="btn-iniciar" onclick="Nueva.iniciar()">▶ Iniciar con cronómetro</button>
-        <button class="ghost" onclick="Nueva.duplicar()">⧉ Duplicar para siguiente</button>
-        <button class="ghost" onclick="Nueva.limpiar()">Limpiar formulario</button>
+        <button id="btn-guardar" class="success" onclick="Nueva.guardar()">💾 Guardar sin iniciar</button>
+        <button id="btn-iniciar" onclick="Nueva.iniciar()">▶ Guardar e iniciar cronómetro</button>
+        <button class="ghost" onclick="Nueva.duplicar()">⧉ Duplicar</button>
+        <button class="ghost" onclick="Nueva.limpiar()">Limpiar</button>
       </div>
+      <p class="muted" style="margin:9px 0 0">
+        <b>Guardar sin iniciar</b> deja la maniobra lista en «Por iniciar»;
+        almacén arranca el cronómetro cuando la unidad llega al andén.
+      </p>
     </div>
 
     <div class="card">
@@ -503,6 +520,10 @@
         </div>
       </div>
       <div id="curso-aviso" class="aviso err" style="display:none"></div>
+
+      <!-- Capturadas por oficina, esperando a que almacén arranque el reloj -->
+      <div id="bandeja-borradores"></div>
+
       <div class="row" style="margin-bottom:12px">
         <input id="curso-buscar" class="dt-search" placeholder="Filtrar por folio, cliente, unidad o etapa…"
                oninput="Curso.render()" style="max-width:340px">
@@ -812,7 +833,12 @@
           </div>
           <span class="muted" style="flex:2;min-width:200px">
             Elige un cliente para darle su propia secuencia sin tocar la genérica.
+            Se copian las etapas actuales como punto de partida.
           </span>
+        </div>
+        <div id="adm-flu-sin-clientes" class="aviso warn" style="display:none">
+          No hay clientes dados de alta. Regístralos en <b>Admin › Catálogos › CLIENTES</b>
+          para poder mapear secuencias por cliente.
         </div>
         <div class="scroll"><table id="adm-tabla-flu"></table></div>
         <div class="row" style="margin-top:12px;gap:8px">
@@ -2464,6 +2490,25 @@ var Nueva = {
     UI.opts('r_etapa', lista, '— Selecciona —');
   },
 
+  /** Deja la maniobra lista para que almacén arranque el reloj después */
+  guardar: function() {
+    var d = Nueva.payload();
+    if (!Nueva.validar(d, 'msg-nueva')) return;
+
+    var btn = $('btn-guardar');
+    btn.disabled = true; btn.textContent = 'Guardando…';
+
+    API.call('guardarBorrador', [d, Auth.ctx()], function(r) {
+      btn.disabled = false; btn.textContent = '💾 Guardar sin iniciar';
+      UI.toast('✓ ' + r.folio + ' guardada · aparece en "Por iniciar"', 'ok');
+      Nueva.limpiar();
+      App.tab('curso');
+    }, function(msg) {
+      btn.disabled = false; btn.textContent = '💾 Guardar sin iniciar';
+      UI.aviso('msg-nueva', msg, 'err');
+    });
+  },
+
   iniciar: function() {
     var d = Nueva.payload();
     if (!Nueva.validar(d, 'msg-nueva')) return;
@@ -2532,7 +2577,52 @@ var Nueva = {
    CURSO — tarjetas con cronómetros en vivo
 ══════════════════════════════════════════════════════════════ */
 var Curso = {
+  /* ── Bandeja de maniobras capturadas sin arrancar ── */
+  cargarBorradores: function() {
+    API.call('getBorradores', [Auth.ctx()], function(res) {
+      var filas = (res && res.filas) || [];
+      var el = $('bandeja-borradores');
+      if (!filas.length) { el.innerHTML = ''; return; }
+
+      el.innerHTML =
+        '<div class="bandeja">' +
+          '<div class="bandeja-head">' +
+            '<span class="bandeja-n">' + filas.length + '</span>' +
+            '<div><b>Por iniciar</b><div class="muted">' +
+              'Capturadas y esperando a que la unidad llegue. Arranca el reloj cuando empiece la maniobra.' +
+            '</div></div>' +
+          '</div>' +
+          filas.map(function(m) {
+            var detalle = [m.tipo_maniobra, m.no_unidad ? 'Unidad ' + m.no_unidad : '',
+                           m.anden, m.equipo].filter(Boolean).map(UI.esc).join(' · ');
+            return '<div class="bandeja-item">' +
+              '<div style="flex:1;min-width:170px">' +
+                '<div class="muted" style="font-size:10.5px">' + UI.esc(m.folio) + ' · ' +
+                  UI.esc(m.flujo) + ' · ' + UI.esc(m.fecha) + '</div>' +
+                '<div style="font-weight:700;font-size:14.5px">' + UI.esc(m.cliente || 'Sin cliente') + '</div>' +
+                (detalle ? '<div class="muted">' + detalle + '</div>' : '') +
+                '<div class="muted" style="font-size:10.5px;margin-top:2px">Capturó ' +
+                  UI.esc(m.registrado_por || '—') + '</div>' +
+              '</div>' +
+              '<button class="success sm" onclick="Curso.arrancar(\'' + m.id + '\')">▶ Iniciar cronómetro</button>' +
+              (Auth.esMaster()
+                ? '<button class="danger sm" onclick="Curso.eliminar(\'' + m.id + '\')">🗑</button>' : '') +
+            '</div>';
+          }).join('') +
+        '</div>';
+    });
+  },
+
+  arrancar: function(id) {
+    if (!confirm('¿Arrancar el cronómetro de esta maniobra ahora?')) return;
+    API.call('iniciarDesdeBorrador', [id, Auth.ctx()], function(r) {
+      UI.toast('✓ ' + r.folio + ' en marcha · Etapa 1: ' + r.etapa.nombre, 'ok');
+      Curso.cargar();
+    });
+  },
+
   cargar: function(manual) {
+    Curso.cargarBorradores();
     API.call('getManiobrasEnCurso', [Auth.ctx()], function(res) {
       STATE.curso = (res && res.maniobras) || [];
       STATE.cursoRecibido = Date.now();
@@ -4150,21 +4240,46 @@ var Admin = {
   nuevoFlujo: function() {
     var f = prompt('Nombre del flujo (ej. ENTRADA, SALIDA, TRANSBORDO):');
     if (!f || !f.trim()) return;
-    Admin.flujoActivo  = f.trim().toUpperCase().replace(/\s+/g, '_');
+    var nombre = f.trim().toUpperCase().replace(/\s+/g, '_');
+
+    Admin.flujoActivo  = nombre;
     Admin.flujoCliente = '';
-    Admin.flujoEtapas  = [];
+    // Si ese flujo ya existe se abre con sus etapas: escribir el mismo nombre
+    // no debe borrar la secuencia que ya estaba configurada
+    var existente = Admin.flujos[nombre];
+    Admin.flujoEtapas = existente
+      ? existente.map(function(e) {
+          return { etapa: e.etapa, departamento: e.departamento, tiempo_est: e.tiempo_est };
+        })
+      : [];
+    if (existente) UI.toast('El flujo ' + nombre + ' ya existía: se abrió con sus ' +
+                            existente.length + ' etapas.', '');
     Admin._abrirEditorFlujo();
     $('adm-flu-etapa').focus();
   },
 
-  /** Copia la secuencia genérica para adaptarla a un cliente */
+  /**
+   * Al elegir cliente se carga su variante; si no tiene, se parte de una
+   * copia de la genérica para adaptarla sin empezar de cero.
+   */
   variantePorCliente: function() {
     var cli = $('adm-flu-cliente').value;
     Admin.flujoCliente = cli;
+
+    var clave = cli ? Admin.flujoActivo + '@@' + cli : Admin.flujoActivo;
+    var propia = Admin.flujos[clave];
+    var origen = propia || Admin.flujos[Admin.flujoActivo] || [];
+
+    Admin.flujoEtapas = origen.map(function(e) {
+      return { etapa: e.etapa, departamento: e.departamento, tiempo_est: e.tiempo_est };
+    });
     Admin._tituloFlujo();
-    UI.toast(cli
-      ? 'Editando la variante de ' + cli + '. Guarda para crearla.'
-      : 'Editando la secuencia genérica del flujo.', '');
+    Admin.renderFlujo();
+
+    if (!cli) UI.toast('Editando la secuencia genérica del flujo.', '');
+    else if (propia) UI.toast('Variante de ' + cli + ' cargada.', 'ok');
+    else UI.toast('Se copió la secuencia genérica para adaptarla a ' + cli +
+                  '. Guarda para crear la variante.', '');
   },
 
   _tituloFlujo: function() {
@@ -4173,12 +4288,34 @@ var Admin = {
   },
 
   _abrirEditorFlujo: function() {
-    UI.opts('adm-flu-cliente', STATE.cat.CLIENTES, '— Genérico (todos) —');
-    $('adm-flu-cliente').value = Admin.flujoCliente;
+    Admin._llenarClientes();
     $('adm-flu-depto').innerHTML = Admin.optsDepto('');
     Admin._tituloFlujo();
     Admin.renderFlujo();
     UI.show('adm-flu-editor');
+  },
+
+  /** Los clientes salen del catálogo vivo, no de una copia que pudo quedar vieja */
+  _llenarClientes: function() {
+    var pintar = function(lista) {
+      var sel = $('adm-flu-cliente');
+      if (!sel) return;
+      sel.innerHTML = '<option value="">— Genérico (todos) —</option>' +
+        (lista || []).map(function(c) {
+          return '<option' + (c === Admin.flujoCliente ? ' selected' : '') + '>' +
+            UI.esc(c) + '</option>';
+        }).join('');
+      sel.value = Admin.flujoCliente || '';
+      var aviso = $('adm-flu-sin-clientes');
+      if (aviso) aviso.style.display = (lista && lista.length) ? 'none' : '';
+    };
+
+    if (STATE.cat.CLIENTES && STATE.cat.CLIENTES.length) { pintar(STATE.cat.CLIENTES); return; }
+    // Si el catálogo aún no llegó, se pide directo al servidor
+    API.call('getCatalogos', [Auth.ctx()], function(c) {
+      STATE.cat = c || {};
+      pintar(STATE.cat.CLIENTES);
+    });
   },
 
   renderFlujo: function() {

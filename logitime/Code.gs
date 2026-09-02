@@ -2141,7 +2141,10 @@ function iniciarManiobra(data, ctx) {
     var flujo   = String(data.flujo || '').toUpperCase();
     // La secuencia del cliente manda sobre la genérica del flujo
     var secuencia = _secuenciaFlujo_(flujo, data.cliente);
-    if (!secuencia.length) return { ok: false, error: 'Flujo sin etapas definidas: ' + flujo };
+    if (!secuencia.length) {
+      return { ok: false, error: 'El flujo "' + flujo + '" no tiene etapas configuradas. ' +
+                                 'Defínelas en Admin › Flujos y etapas antes de iniciar.' };
+    }
 
     // Las fotos son opcionales al arrancar: la evidencia se exige al cerrar
     var fotos = [].concat(data.fotos || []);
@@ -2199,6 +2202,139 @@ function iniciarManiobra(data, ctx) {
       etapa: { id: idEtapa, num: 1, nombre: primera.etapa, total: lista.length,
                tiempo_estimado_min: tiempoEst, departamento: primera.departamento }
     };
+  });
+}
+
+/**
+ * Guarda la maniobra SIN arrancar el cronómetro.
+ * Oficina captura los datos y almacén arranca el reloj cuando la unidad llega.
+ */
+function guardarBorrador(data, ctx) {
+  return seguro_('guardarBorrador', function() {
+    data = data || {};
+    var faltan = _validarObligatorios_(data, ctx);
+    if (faltan.length)
+      return { ok: false, error: 'Faltan campos obligatorios: ' + faltan.join(', '), campos_faltantes: faltan };
+
+    var errTipo = _validarTipoUnico_(data.tipo_maniobra);
+    if (errTipo) return { ok: false, error: errTipo };
+
+    var sh    = hoja_(HOJA, COLUMNAS);
+    var id    = data.id || uuid_();
+    var ahora = new Date();
+    var tz    = Session.getScriptTimeZone();
+    var fecha = data.fecha || Utilities.formatDate(ahora, tz, 'yyyy-MM-dd');
+    var flujo = String(data.flujo || '').toUpperCase();
+    var folio = generarFolio(data.cliente, fecha, data.no_unidad);
+    var monta = listaTexto_(data.montacargas);
+
+    var row = [
+      id, folio, fecha, data.turno, data.flujo, '—',
+      data.cliente, data.no_unidad, data.tipo_equipo,
+      Number(data.cant_equipos || 1), data.material, data.presentacion,
+      data.cant_piezas || '', data.unidad_medida, data.tarimas || '', data.peso_tons || '',
+      data.tipo_montacargas, data.num_montacargas || '',
+      listaTexto_(data.montacarguistas),
+      listaTexto_(data.ayudantes),
+      'borrador', '', '', 0, '', '', '', 0, '', '', '',
+      data.dano_origen ? 'SÍ' : 'NO', data.dano_origen_desc || '',
+      'NO', '', _fmtObs(data), 'POR INICIAR',
+      (ctx && (ctx.nombre || ctx.email)) || usuario_(), ahora,
+      monta,
+      data.tipo_maniobra || '',
+      data.toneladas_netas === '' || data.toneladas_netas === undefined ? '' : Number(data.toneladas_netas),
+      data.atados         === '' || data.atados         === undefined ? '' : Number(data.atados),
+      data.piezas_sueltas === '' || data.piezas_sueltas === undefined ? '' : Number(data.piezas_sueltas),
+      data.aditamento || '',
+      data.hora_posicionamiento || '', data.hora_liberacion || '', '',
+      '', '', '', '',
+      data.prueba_controlada ? 'SÍ' : 'NO', data.etiqueta_prueba || '',
+      '', '', '',
+      '', '',
+      data.anden || '', data.equipo || '', '', 0, ''
+    ];
+
+    var fila = data.id ? buscarFila_(sh, data.id) : -1;
+    if (fila > 0) sh.getRange(fila, 1, 1, COLUMNAS.length).setValues([row]);
+    else          sh.appendRow(row);
+
+    // Las fotos de recepción, si las hubo, se guardan desde ya
+    var fotos = [].concat(data.fotos || []);
+    if (fotos.length) subirEvidencias(id, data.no_unidad, folio, fotos, ctx);
+
+    bitacora_(ctx, fila > 0 ? 'Editó borrador' : 'Guardó borrador', 'MANIOBRA', id, folio,
+              flujo + ' · ' + (data.cliente || '') + ' · unidad ' + (data.no_unidad || ''));
+    return { ok: true, id: id, folio: folio };
+  });
+}
+
+/** Maniobras capturadas que todavía no arrancan el cronómetro */
+function getBorradores(ctx) {
+  return seguro_('getBorradores', function() {
+    var sh = hoja_(HOJA, COLUMNAS);
+    if (sh.getLastRow() < 2) return { ok: true, filas: [], server_now_ms: Date.now() };
+    var filas = [];
+    sh.getRange(2, 1, sh.getLastRow() - 1, COLUMNAS.length).getValues().forEach(function(r) {
+      if (String(r[20] || '') !== 'borrador') return;
+      filas.push({
+        id: String(r[0]), folio: String(r[1] || ''), fecha: fechaISO_(r[2]),
+        turno: String(r[3] || ''), flujo: String(r[4] || ''),
+        cliente: String(r[6] || ''), no_unidad: String(r[7] || ''),
+        tipo_equipo: String(r[8] || ''), material: String(r[10] || ''),
+        montacarguistas: String(r[18] || ''), montacargas: String(r[39] || ''),
+        tipo_maniobra: String(r[C_TIPO_MAN] || ''),
+        toneladas_netas: Number(r[C_TON] || 0), atados: Number(r[C_ATADOS] || 0),
+        anden: String(r[C_ANDEN] || ''), equipo: String(r[C_EQUIPO] || ''),
+        fotos: Number(r[C_FOTOS] || 0),
+        registrado_por: String(r[37] || ''),
+        capturado_ms: toMs_(r[38])
+      });
+    });
+    return { ok: true, filas: filas, server_now_ms: Date.now() };
+  });
+}
+
+/** Arranca el cronómetro de una maniobra ya capturada */
+function iniciarDesdeBorrador(id, ctx) {
+  return seguro_('iniciarDesdeBorrador', function() {
+    var sh   = hoja_(HOJA, COLUMNAS);
+    var fila = buscarFila_(sh, id);
+    if (fila < 0) return { ok: false, error: 'Maniobra no encontrada' };
+
+    var row = sh.getRange(fila, 1, 1, COLUMNAS.length).getValues()[0];
+    if (String(row[20] || '') !== 'borrador') {
+      return { ok: false, error: 'Esta maniobra ya tiene el cronómetro corriendo.' };
+    }
+
+    var flujo   = String(row[4] || '').toUpperCase();
+    var cliente = String(row[6] || '');
+    var folio   = String(row[1] || '');
+    var secuencia = _secuenciaFlujo_(flujo, cliente);
+    if (!secuencia.length) {
+      return { ok: false, error: 'El flujo "' + flujo + '" no tiene etapas configuradas. ' +
+                                 'Defínelas en Admin › Flujos y etapas.' };
+    }
+
+    var primera = secuencia[0];
+    var tiempos = getTimeposEstimados();
+    var ahora   = new Date();
+    var shEta   = hoja_(HOJA_ETA, COL_ETA);
+    var tiempoEst = primera.tiempo_est || tiempos[primera.etapa] || 0;
+    var idEtapa = _crearEtapa(shEta, id, folio, 1, primera.etapa, tiempoEst, primera.departamento);
+
+    row[5]  = primera.etapa;
+    row[20] = 'en_curso';
+    row[21] = ahora;
+    row[36] = 'EN CURSO';
+    sh.getRange(fila, 1, 1, COLUMNAS.length).setValues([row]);
+
+    _setEstadoPorCodigo_(_codigosMontacargas_(row[39]), 'en_uso');
+    bitacora_(ctx, 'Arrancó cronómetro', 'MANIOBRA', id, folio,
+              'Etapa 1: ' + primera.etapa);
+
+    return { ok: true, id: id, folio: folio,
+      etapa: { id: idEtapa, num: 1, nombre: primera.etapa, total: secuencia.length,
+               tiempo_estimado_min: tiempoEst, departamento: primera.departamento } };
   });
 }
 
