@@ -391,6 +391,21 @@ function buscarFila_(sh, id) {
   return -1;
 }
 
+/**
+ * Ajusta una fila al ancho exacto de la hoja.
+ * setValues() exige que cada fila tenga tantas celdas como columnas tiene el
+ * rango: si el esquema crece y la semilla se queda corta, revienta la carga.
+ */
+function ajustarFila_(fila, ancho) {
+  var f = [].concat(fila || []);
+  while (f.length < ancho) f.push('');
+  return f.slice(0, ancho);
+}
+
+function ajustarFilas_(filas, ancho) {
+  return (filas || []).map(function(f) { return ajustarFila_(f, ancho); });
+}
+
 function listaTexto_(v) {
   return [].concat(v || []).map(function(s) { return String(s || '').trim(); })
     .filter(Boolean).join('; ');
@@ -568,7 +583,8 @@ function _sembrarCampos_(sh) {
   }
   var nuevos = CAMPOS_DEFAULT.filter(function(c) { return !existentes[c[0]]; });
   if (nuevos.length) {
-    sh.getRange(sh.getLastRow() + 1, 1, nuevos.length, COL_CAM.length).setValues(nuevos);
+    sh.getRange(sh.getLastRow() + 1, 1, nuevos.length, COL_CAM.length)
+      .setValues(ajustarFilas_(nuevos, COL_CAM.length));
   }
   return nuevos.length;
 }
@@ -609,7 +625,8 @@ function guardarCamposConfig(items) {
               Number(c.orden || (i + 1) * 10),
               listaTexto_(c.departamentos)];
     });
-    sh.getRange(2, 1, filas.length, COL_CAM.length).setValues(filas);
+    sh.getRange(2, 1, filas.length, COL_CAM.length)
+      .setValues(ajustarFilas_(filas, COL_CAM.length));
     return { ok: true, guardados: filas.length };
   });
 }
@@ -618,7 +635,8 @@ function restablecerCamposConfig() {
   return seguro_('restablecerCamposConfig', function() {
     var sh = hoja_(HOJA_CAM, COL_CAM);
     if (sh.getLastRow() > 1) sh.getRange(2, 1, sh.getLastRow() - 1, COL_CAM.length).clearContent();
-    sh.getRange(2, 1, CAMPOS_DEFAULT.length, COL_CAM.length).setValues(CAMPOS_DEFAULT);
+    sh.getRange(2, 1, CAMPOS_DEFAULT.length, COL_CAM.length)
+      .setValues(ajustarFilas_(CAMPOS_DEFAULT, COL_CAM.length));
     return { ok: true };
   });
 }
@@ -663,7 +681,8 @@ function _validarTipoUnico_(tipo) {
 function getSemaforos() {
   var sh = hoja_(HOJA_SEM, COL_SEM);
   if (sh.getLastRow() < 2) {
-    sh.getRange(2, 1, SEMAFOROS_DEFAULT.length, COL_SEM.length).setValues(SEMAFOROS_DEFAULT);
+    sh.getRange(2, 1, SEMAFOROS_DEFAULT.length, COL_SEM.length)
+      .setValues(ajustarFilas_(SEMAFOROS_DEFAULT, COL_SEM.length));
   }
   return sh.getRange(2, 1, Math.max(1, sh.getLastRow() - 1), COL_SEM.length).getValues()
     .filter(function(r) { return String(r[0] || '').trim(); })
@@ -679,7 +698,9 @@ function guardarSemaforos(items) {
     var filas = (items || [])
       .filter(function(i) { return String(i.tipo || '').trim(); })
       .map(function(i) { return [String(i.tipo).trim(), Number(i.verde || 0), Number(i.ambar || 0)]; });
-    if (filas.length) sh.getRange(2, 1, filas.length, COL_SEM.length).setValues(filas);
+    if (filas.length) {
+      sh.getRange(2, 1, filas.length, COL_SEM.length).setValues(ajustarFilas_(filas, COL_SEM.length));
+    }
     return { ok: true, guardados: filas.length };
   });
 }
@@ -1041,10 +1062,10 @@ function getHistorial(filtros) {
 function getEquipos(soloActivos) {
   var sh = hoja_(HOJA_EQU, COL_EQU);
   if (sh.getLastRow() < 2) {
-    sh.getRange(2, 1, 2, COL_EQU.length).setValues([
+    sh.getRange(2, 1, 2, COL_EQU.length).setValues(ajustarFilas_([
       [uuid_(), 'Equipo A', 'Cuadrilla principal', '', true],
       [uuid_(), 'Equipo B', 'Cuadrilla de apoyo',  '', true]
-    ]);
+    ], COL_EQU.length));
   }
   return sh.getRange(2, 1, Math.max(1, sh.getLastRow() - 1), COL_EQU.length).getValues()
     .filter(function(r) { return String(r[1] || '').trim(); })
@@ -1199,7 +1220,8 @@ function guardarAdicionalesManiobra(idManiobra, items, ctx) {
       });
 
     if (limpios.length) {
-      sh.getRange(sh.getLastRow() + 1, 1, limpios.length, COL_ADM.length).setValues(limpios);
+      sh.getRange(sh.getLastRow() + 1, 1, limpios.length, COL_ADM.length)
+        .setValues(ajustarFilas_(limpios, COL_ADM.length));
     }
 
     // Resumen legible en la propia fila de la maniobra
@@ -1229,7 +1251,9 @@ function getDepartamentos(soloActivos) {
   var sh = hoja_(HOJA_DEP, COL_DEP);
   if (sh.getLastRow() < 2) {
     sh.getRange(2, 1, DEPARTAMENTOS_DEFAULT.length, COL_DEP.length).setValues(
-      DEPARTAMENTOS_DEFAULT.map(function(d) { return [uuid_(), d[0], d[1], true]; })
+      ajustarFilas_(DEPARTAMENTOS_DEFAULT.map(function(d) {
+        return [uuid_(), d[0], d[1], true];
+      }), COL_DEP.length)
     );
   }
   return sh.getRange(2, 1, Math.max(1, sh.getLastRow() - 1), COL_DEP.length).getValues()
@@ -1303,7 +1327,9 @@ function _sembrarFlujos_(sh) {
       filas.push([flujo, i + 1, etapa, '', Number(tiempos[etapa] || 0), true, '']);
     });
   });
-  if (filas.length) sh.getRange(2, 1, filas.length, COL_FLU.length).setValues(filas);
+  if (filas.length) {
+    sh.getRange(2, 1, filas.length, COL_FLU.length).setValues(ajustarFilas_(filas, COL_FLU.length));
+  }
   return filas.length;
 }
 
@@ -1366,7 +1392,8 @@ function guardarFlujoEtapas(flujo, items, cliente, ctx) {
 
     var sh = hoja_(HOJA_FLU, COL_FLU);
     _borrarFilasFlujo_(sh, nombre, cli);
-    sh.getRange(sh.getLastRow() + 1, 1, limpios.length, COL_FLU.length).setValues(limpios);
+    sh.getRange(sh.getLastRow() + 1, 1, limpios.length, COL_FLU.length)
+      .setValues(ajustarFilas_(limpios, COL_FLU.length));
 
     // El flujo debe existir también en el catálogo para poder elegirlo
     _asegurarValoresCatalogo_('FLUJOS', [nombre]);
@@ -1606,9 +1633,10 @@ function guardarTiemposEst(items) {
   var sh = hoja_(HOJA_TEMS, COL_TEM);
   if (sh.getLastRow() > 1) sh.getRange(2, 1, sh.getLastRow() - 1, 2).clearContent();
   if (items && items.length) {
-    sh.getRange(2, 1, items.length, 2).setValues(
-      items.map(function(it) { return [String(it.etapa || ''), Number(it.minutos || 0)]; })
-    );
+    sh.getRange(2, 1, items.length, COL_TEM.length).setValues(ajustarFilas_(
+      items.map(function(it) { return [String(it.etapa || ''), Number(it.minutos || 0)]; }),
+      COL_TEM.length
+    ));
   }
   return { ok: true };
 }
@@ -1640,7 +1668,10 @@ function setup() {
 
   // TIEMPOS_EST
   var ts = hoja_(HOJA_TEMS, COL_TEM);
-  if (ts.getLastRow() < 2) ts.getRange(2, 1, DEFAULT_TIEMPOS.length, 2).setValues(DEFAULT_TIEMPOS);
+  if (ts.getLastRow() < 2) {
+    ts.getRange(2, 1, DEFAULT_TIEMPOS.length, COL_TEM.length)
+      .setValues(ajustarFilas_(DEFAULT_TIEMPOS, COL_TEM.length));
+  }
 
   // CONFIG defaults
   var cfgSh = hoja_(HOJA_CFG, COL_CFG);
@@ -1662,7 +1693,8 @@ function setup() {
   // SEMÁFOROS por tipo de maniobra
   var semSh = hoja_(HOJA_SEM, COL_SEM);
   if (semSh.getLastRow() < 2) {
-    semSh.getRange(2, 1, SEMAFOROS_DEFAULT.length, COL_SEM.length).setValues(SEMAFOROS_DEFAULT);
+    semSh.getRange(2, 1, SEMAFOROS_DEFAULT.length, COL_SEM.length)
+      .setValues(ajustarFilas_(SEMAFOROS_DEFAULT, COL_SEM.length));
   }
 
   // Catálogos nuevos sobre hojas ya existentes (no borra valores previos)
