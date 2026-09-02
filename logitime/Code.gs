@@ -35,6 +35,7 @@ var HOJA_HIS  = 'HISTORIAL';
 var HOJA_ADI  = 'ADICIONALES';
 var HOJA_ADM  = 'ADICIONALES_MAN';
 var HOJA_EQU  = 'EQUIPOS';
+var HOJA_CLI  = 'CLIENTES_CFG';
 
 /** Carpeta raíz de evidencias en Drive */
 var DRIVE_RAIZ = 'LogiTime — Evidencias';
@@ -222,6 +223,7 @@ var COL_EMP = ['ID', 'Nombre', 'Posición', 'Montacargas', 'Activo', 'Equipo'];
 var COL_USR = ['ID', 'Email', 'Nombre', 'PIN', 'Rol', 'Activo', 'Timestamp', 'Departamento', 'Equipo'];
 var COL_DEP = ['ID', 'Nombre', 'Descripción', 'Activo'];
 var COL_EQU = ['ID', 'Nombre', 'Descripción', 'Turno', 'Activo'];
+var COL_CLI = ['Cliente', 'Mín. fotos para cerrar', 'Notas'];
 // Cliente vacío = secuencia genérica del flujo; con cliente = secuencia a la medida
 var COL_FLU = ['Flujo', 'Orden', 'Etapa', 'Departamento', 'Tiempo estimado (min)', 'Activo', 'Cliente'];
 var COL_HIS = ['ID', 'Fecha', 'Usuario', 'Rol', 'Acción', 'Entidad', 'ID entidad', 'Folio', 'Detalle'];
@@ -1491,11 +1493,67 @@ function subirEvidencias(idManiobra, unidad, folio, fotos, ctx) {
   });
 }
 
-/** Mínimo de fotos exigido al arrancar el cronómetro */
-function getMinimoFotos() {
+/**
+ * Mínimo de fotos exigido para CERRAR el flujo completo de una maniobra.
+ * Cada cliente puede pedir un número distinto; si no tiene regla propia,
+ * se aplica el mínimo general de CONFIG.
+ */
+function getMinimoFotos(cliente) {
   var cfg = getConfigObj();
-  var n = Number(cfg.MIN_FOTOS_INICIO);
-  return isFinite(n) && n >= 0 ? n : MIN_FOTOS;
+  var general = Number(cfg.MIN_FOTOS_INICIO);
+  general = isFinite(general) && general >= 0 ? general : MIN_FOTOS;
+
+  var c = String(cliente || '').trim().toLowerCase();
+  if (!c) return general;
+
+  var propio = null;
+  getClientesConfig().forEach(function(r) {
+    if (r.cliente.trim().toLowerCase() === c) propio = r.min_fotos;
+  });
+  return (propio === null || propio === '' || !isFinite(propio)) ? general : Number(propio);
+}
+
+/* ════════════════════════════════════════════════════════════
+   REGLAS POR CLIENTE
+   Hoy solo el mínimo de evidencias, pero es el lugar natural
+   para cualquier exigencia que varíe de un cliente a otro.
+════════════════════════════════════════════════════════════ */
+
+function getClientesConfig() {
+  var sh = hoja_(HOJA_CLI, COL_CLI);
+  if (sh.getLastRow() < 2) return [];
+  return sh.getRange(2, 1, sh.getLastRow() - 1, COL_CLI.length).getValues()
+    .filter(function(r) { return String(r[0] || '').trim(); })
+    .map(function(r) {
+      return {
+        cliente:   String(r[0]).trim(),
+        min_fotos: r[1] === '' || r[1] === null || r[1] === undefined ? '' : Number(r[1]),
+        notas:     String(r[2] || '')
+      };
+    });
+}
+
+function guardarClientesConfig(items, ctx) {
+  return seguro_('guardarClientesConfig', function() {
+    var sh = hoja_(HOJA_CLI, COL_CLI);
+    if (sh.getLastRow() > 1) sh.getRange(2, 1, sh.getLastRow() - 1, COL_CLI.length).clearContent();
+
+    var filas = (items || [])
+      .filter(function(i) { return String(i.cliente || '').trim(); })
+      .map(function(i) {
+        return [String(i.cliente).trim(),
+                i.min_fotos === '' || i.min_fotos === null || i.min_fotos === undefined
+                  ? '' : Number(i.min_fotos),
+                String(i.notas || '')];
+      });
+    if (filas.length) {
+      sh.getRange(2, 1, filas.length, COL_CLI.length)
+        .setValues(ajustarFilas_(filas, COL_CLI.length));
+    }
+    bitacora_(ctx, 'Guardó reglas por cliente', 'CLIENTE', '', '',
+              filas.length + ' cliente(s) con regla propia');
+    return { ok: true, guardados: filas.length };
+  });
 }
 
 /* ════════════════════════════════════════════════════════════
@@ -1689,6 +1747,7 @@ function setup() {
   hoja_(HOJA_HIS, COL_HIS);
   hoja_(HOJA_ADI, COL_ADI);
   hoja_(HOJA_ADM, COL_ADM);
+  hoja_(HOJA_CLI, COL_CLI);
 
   // SEMÁFOROS por tipo de maniobra
   var semSh = hoja_(HOJA_SEM, COL_SEM);
@@ -1860,7 +1919,8 @@ function getCatalogos(ctx) {
   out.DEPARTAMENTOS  = getDepartamentos(true).map(function(d) { return d.nombre; });
   out.EQUIPOS        = getEquipos(true).map(function(e) { return e.nombre; });
   out.ADICIONALES    = getAdicionalesCatalogo('');
-  out.MIN_FOTOS      = getMinimoFotos();
+  out.MIN_FOTOS      = getMinimoFotos('');
+  out.CLIENTES_CFG   = getClientesConfig();
   out.CAMPOS         = getCamposConfig(ctx);
   out.SEMAFOROS      = getSemaforos();
   // El catálogo de tipos de maniobra es cerrado: si la hoja no lo trae, se usa el maestro
@@ -2801,6 +2861,8 @@ function getManiobrasEnCurso(ctx) {
         equipo:               String(r[C_EQUIPO] || ''),
         carpeta_evidencias:   String(r[C_CARPETA] || ''),
         fotos:                Number(r[C_FOTOS] || 0),
+        // Cuántas evidencias pide este cliente para poder cerrar el flujo
+        min_fotos:            getMinimoFotos(String(r[6] || '')),
         completado_seg:  completadoSeg,
         etapa_actual:    etapaActual,
         // Puede operar el cronómetro solo si la etapa activa es de su área
@@ -2875,16 +2937,19 @@ function finalizarEtapa(idEtapa, extras, ctx) {
 
     // La evidencia se exige al cerrar la maniobra, no al abrirla:
     // es cuando ya se puede fotografiar el resultado real del trabajo.
-    var esUltima = numEtapa >= _secuenciaFlujo_(_flujoDe_(idManiobra), _clienteDe_(idManiobra)).length;
+    var cliManiobra = _clienteDe_(idManiobra);
+    var esUltima = numEtapa >= _secuenciaFlujo_(_flujoDe_(idManiobra), cliManiobra).length;
     var fotos    = [].concat(extras.fotos || []);
     if (esUltima) {
-      var minFotos = getMinimoFotos();
+      // El mínimo lo define el cliente; se pide una sola vez, al cerrar el flujo
+      var minFotos = getMinimoFotos(cliManiobra);
       var yaTiene  = _fotosDe_(idManiobra);
       if (minFotos > 0 && (yaTiene + fotos.length) < minFotos) {
         return { ok: false, requiere_fotos: true, min_fotos: minFotos,
           fotos_actuales: yaTiene,
           error: 'Antes de cerrar la maniobra agrega la evidencia fotográfica. ' +
-                 'Se piden ' + minFotos + ' y llevas ' + (yaTiene + fotos.length) + '.' };
+                 (cliManiobra ? cliManiobra + ' pide ' : 'Se piden ') + minFotos +
+                 ' y llevas ' + (yaTiene + fotos.length) + '.' };
       }
     }
 
@@ -3737,7 +3802,8 @@ function diagnostico() {
       [HOJA, COLUMNAS], [HOJA_ETA, COL_ETA], [HOJA_CAT, null], [HOJA_TEMS, COL_TEM],
       [HOJA_EMP, COL_EMP], [HOJA_MON, COL_MON], [HOJA_CAM, COL_CAM],
       [HOJA_SEM, COL_SEM], [HOJA_DEP, COL_DEP], [HOJA_FLU, COL_FLU],
-      [HOJA_EQU, COL_EQU], [HOJA_HIS, COL_HIS], [HOJA_ADI, COL_ADI], [HOJA_ADM, COL_ADM],
+      [HOJA_EQU, COL_EQU], [HOJA_CLI, COL_CLI], [HOJA_HIS, COL_HIS],
+      [HOJA_ADI, COL_ADI], [HOJA_ADM, COL_ADM],
       [HOJA_INC, COL_INC], [HOJA_CFG, COL_CFG], [HOJA_USR, COL_USR]
     ];
 

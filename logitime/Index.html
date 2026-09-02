@@ -797,6 +797,7 @@
       <button id="adm-btn-cat"                onclick="Admin.sub('cat')">Catálogos</button>
       <button id="adm-btn-flu"                onclick="Admin.sub('flu')">Flujos y etapas</button>
       <button id="adm-btn-dep"                onclick="Admin.sub('dep')">Departamentos</button>
+      <button id="adm-btn-cli"                onclick="Admin.sub('cli')">Reglas por cliente</button>
       <button id="adm-btn-equ"                onclick="Admin.sub('equ')">Equipos</button>
       <button id="adm-btn-adi"                onclick="Admin.sub('adi')">Adicionales</button>
       <button id="adm-btn-his"                onclick="Admin.sub('his')">Historial</button>
@@ -875,6 +876,23 @@
       <div class="card">
         <h2>Departamentos registrados</h2>
         <div class="scroll"><table id="adm-tabla-dep"></table></div>
+      </div>
+    </div>
+
+    <!-- Reglas por cliente -->
+    <div id="adm-cli" class="hidden">
+      <div class="card">
+        <div class="row" style="justify-content:space-between;margin-bottom:8px">
+          <h2 style="margin:0">Evidencia mínima por cliente</h2>
+          <button class="success" onclick="Admin.guardarCli()">Guardar cambios</button>
+        </div>
+        <p class="muted" style="margin:0 0 14px;font-size:13px">
+          Cuántas fotos exige cada cliente para poder <b>cerrar el flujo completo</b>.
+          Se piden una sola vez, en la última etapa, no en cada una.
+          Déjalo vacío para que use el mínimo general
+          (<b id="cli-general">—</b> fotos, configurable en la hoja CONFIG).
+        </p>
+        <div class="scroll"><table id="adm-tabla-cli"></table></div>
       </div>
     </div>
 
@@ -1404,6 +1422,7 @@ var Fotos = {
   CALIDAD: 0.72,
   // Dónde se está capturando: el modal de cierre o el de evidencias
   destino: { tiras: 'fotos-tiras', estado: 'fotos-estado', exigeMinimo: true },
+  minimo: 0,          // el que pide el cliente de la maniobra que se está cerrando
 
   usar: function(tiras, estado, exigeMinimo) {
     Fotos.destino = { tiras: tiras, estado: estado, exigeMinimo: !!exigeMinimo };
@@ -1473,7 +1492,7 @@ var Fotos = {
         : (Fotos.previas ? Fotos.previas + ' ya en Drive' : 'Sin fotos');
       return;
     }
-    var min = STATE.minFotos;
+    var min = Fotos.minimo;
     var n = Fotos.previas + Fotos.lista.length;
     var faltan = Math.max(0, min - n);
     est.className = 'fotos-estado ' + (faltan ? 'falta' : 'listo');
@@ -1482,7 +1501,7 @@ var Fotos = {
       : '✓ ' + n + ' foto(s) listas';
   },
 
-  completas: function() { return (Fotos.previas + Fotos.lista.length) >= STATE.minFotos; }
+  completas: function() { return (Fotos.previas + Fotos.lista.length) >= Fotos.minimo; }
 };
 
 /* ══════════════════════════════════════════════════════════════
@@ -3035,23 +3054,30 @@ var Curso = {
   abrirModal: function(idEtapa) {
     STATE.modalEtapa = idEtapa;
     var nombre = '', esUltima = false, libPrevia = '', fotosPrevias = 0;
+    var minCliente = STATE.minFotos, cliente = '';
     STATE.curso.forEach(function(m) {
       if (!m.etapa_actual || m.etapa_actual.id !== idEtapa) return;
       nombre = m.etapa_actual.nombre;
       esUltima = m.etapa_actual.num >= (m.etapas || []).length;
       libPrevia = m.hora_liberacion || '';
       fotosPrevias = Number(m.fotos || 0);
+      cliente = m.cliente || '';
+      if (m.min_fotos !== undefined && m.min_fotos !== null) minCliente = Number(m.min_fotos);
     });
     STATE.modalUltima = esUltima;
-    Fotos.usar('fotos-tiras', 'fotos-estado', true);
+    // El mínimo lo pide el cliente y se exige una sola vez: al cerrar el flujo
+    Fotos.usar('fotos-tiras', 'fotos-estado', esUltima);
     Fotos.limpiar();
     Fotos.previas = fotosPrevias;
-    $('fotos-req').style.display = esUltima ? '' : 'none';
+    Fotos.minimo  = esUltima ? minCliente : 0;
+    $('card-fotos').style.display = esUltima ? '' : 'none';
+    $('fotos-req').style.display  = esUltima ? '' : 'none';
     $('fotos-hint').textContent = esUltima
-      ? 'Obligatoria para cerrar: se piden ' + STATE.minFotos + ' fotos del resultado. ' +
-        (fotosPrevias ? 'La maniobra ya tiene ' + fotosPrevias + '.' : '') +
+      ? 'Última etapa: aquí se cierra el flujo. ' +
+        (cliente ? cliente + ' pide ' : 'Se piden ') + minCliente + ' foto(s)' +
+        (fotosPrevias ? ' y la maniobra ya tiene ' + fotosPrevias + '.' : '.') +
         ' Se guardan en Drive, en la carpeta de la unidad.'
-      : 'Opcional en esta etapa. Súbelas si quieres dejar constancia del avance.';
+      : '';
     Fotos.render();
     $('modal-lib-hint').textContent = libPrevia
       ? 'Ya capturada: ' + libPrevia + '. Escribe otra hora para corregirla.'
@@ -3087,9 +3113,9 @@ var Curso = {
     }
     // La evidencia se exige justo al cerrar la maniobra
     if (STATE.modalUltima && !Fotos.completas()) {
-      var faltan = STATE.minFotos - (Fotos.previas + Fotos.lista.length);
+      var faltan = Fotos.minimo - (Fotos.previas + Fotos.lista.length);
       UI.aviso('modal-aviso', 'Faltan ' + faltan + ' foto(s) para cerrar la maniobra. ' +
-        'Se piden ' + STATE.minFotos + ' en total.', 'err');
+        'Este cliente pide ' + Fotos.minimo + ' en total.', 'err');
       $('card-fotos').scrollIntoView({ behavior: 'smooth', block: 'center' });
       return;
     }
@@ -4311,10 +4337,10 @@ var Panel = {
 var Admin = {
   campos: [], catalogos: [], catActivo: null, catItems: [], tiempos: [], semaforos: [],
   flujos: {}, flujoActivo: '', flujoCliente: '', flujoEtapas: [],
-  departamentos: [], equipos: [], adicionales: [], dtHis: null,
+  departamentos: [], equipos: [], adicionales: [], clientesCfg: [], dtHis: null,
 
   sub: function(s) {
-    ['cam','cat','flu','dep','equ','adi','his','sem','usr','tem'].forEach(function(k) {
+    ['cam','cat','flu','dep','cli','equ','adi','his','sem','usr','tem'].forEach(function(k) {
       var el = $('adm-' + k), b = $('adm-btn-' + k);
       if (el) el.classList.toggle('hidden', k !== s);
       if (b)  b.classList.toggle('active', k === s);
@@ -4323,6 +4349,7 @@ var Admin = {
     if (s === 'cat') Admin.cargarCat();
     if (s === 'flu') Admin.cargarFlujos();
     if (s === 'dep') Admin.cargarDeps();
+    if (s === 'cli') Admin.cargarCli();
     if (s === 'equ') Admin.cargarEqu();
     if (s === 'adi') Admin.cargarAdi();
     if (s === 'his') Admin.cargarHis();
@@ -4523,6 +4550,53 @@ var Admin = {
   cerrarFlujo: function() {
     Admin.flujoActivo = ''; Admin.flujoCliente = ''; Admin.flujoEtapas = [];
     UI.hide('adm-flu-editor');
+  },
+
+  /* ── Evidencia mínima por cliente ── */
+  cargarCli: function() {
+    $('cli-general').textContent = STATE.minFotos;
+    API.call('getClientesConfig', [], function(reglas) {
+      var porNombre = {};
+      (reglas || []).forEach(function(r) { porNombre[r.cliente] = r; });
+
+      // Se listan todos los clientes del catálogo, tengan regla o no
+      Admin.clientesCfg = (STATE.cat.CLIENTES || []).map(function(c) {
+        var r = porNombre[c] || {};
+        return { cliente: c, min_fotos: r.min_fotos === undefined ? '' : r.min_fotos,
+                 notas: r.notas || '' };
+      });
+      // Reglas de clientes que ya no están en el catálogo: no se pierden
+      (reglas || []).forEach(function(r) {
+        if ((STATE.cat.CLIENTES || []).indexOf(r.cliente) === -1) Admin.clientesCfg.push(r);
+      });
+      Admin.renderCli();
+    });
+  },
+
+  renderCli: function() {
+    $('adm-tabla-cli').innerHTML =
+      '<tr><th>Cliente</th><th>Mín. fotos para cerrar</th><th>Notas</th></tr>' +
+      (Admin.clientesCfg.length
+        ? Admin.clientesCfg.map(function(c, i) {
+            return '<tr>' +
+              '<td><b>' + UI.esc(c.cliente) + '</b></td>' +
+              '<td><input type="number" min="0" style="width:110px" value="' +
+                (c.min_fotos === '' ? '' : c.min_fotos) + '" placeholder="general" ' +
+                'oninput="Admin.clientesCfg[' + i + '].min_fotos=this.value"></td>' +
+              '<td><input value="' + UI.esc(c.notas || '') + '" style="min-width:200px" ' +
+                'placeholder="Ej. exige foto de sellos" ' +
+                'oninput="Admin.clientesCfg[' + i + '].notas=this.value"></td>' +
+            '</tr>';
+          }).join('')
+        : '<tr><td colspan="3" class="dt-empty">Sin clientes en el catálogo. ' +
+          'Regístralos en Admin › Catálogos › CLIENTES.</td></tr>');
+  },
+
+  guardarCli: function() {
+    API.call('guardarClientesConfig', [Admin.clientesCfg, Auth.ctx()], function(r) {
+      UI.toast('✓ Reglas guardadas para ' + r.guardados + ' cliente(s)', 'ok');
+      App.cargarCatalogos();
+    });
   },
 
   /* ── Equipos / cuadrillas ── */
