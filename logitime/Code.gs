@@ -1781,7 +1781,10 @@ function getTurnoActual() {
     var dentro = t.fin > t.ini ? (mins >= t.ini && mins < t.fin) : (mins >= t.ini || mins < t.fin);
     if (dentro) turno = t.nombre;
   });
-  return { turno: turno, fecha: Utilities.formatDate(ahora, tz, 'yyyy-MM-dd'),
+  return { turno: turno,
+           fecha:       Utilities.formatDate(ahora, tz, 'yyyy-MM-dd'),
+           fecha_larga: Utilities.formatDate(ahora, tz, 'EEEE d \'de\' MMMM \'de\' yyyy'),
+           hora:        Utilities.formatDate(ahora, tz, 'HH:mm'),
            server_now_ms: Date.now() };
 }
 
@@ -2140,14 +2143,8 @@ function iniciarManiobra(data, ctx) {
     var secuencia = _secuenciaFlujo_(flujo, data.cliente);
     if (!secuencia.length) return { ok: false, error: 'Flujo sin etapas definidas: ' + flujo };
 
-    // El cronómetro no arranca sin evidencia fotográfica
-    var minFotos = getMinimoFotos();
-    var fotos    = [].concat(data.fotos || []);
-    if (minFotos > 0 && fotos.length < minFotos) {
-      return { ok: false, requiere_fotos: true, min_fotos: minFotos,
-        error: 'Agrega al menos ' + minFotos + ' fotos de la unidad antes de iniciar. ' +
-               'Llevas ' + fotos.length + '.' };
-    }
+    // Las fotos son opcionales al arrancar: la evidencia se exige al cerrar
+    var fotos = [].concat(data.fotos || []);
 
     var lista   = secuencia.map(function(s) { return s.etapa; });
     var primera = secuencia[0];
@@ -2239,7 +2236,8 @@ function registrarManiobra(data, ctx) {
       total, demora, data.causa_demora || '', efectivo, minPieza,
       data.dano_origen ? 'SÍ' : 'NO', data.dano_origen_desc || '',
       data.dano_maniobra ? 'SÍ' : 'NO', data.dano_maniobra_desc || '',
-      _fmtObs(data), semaforo_(total, cfg), usuario_(), new Date(),
+      _fmtObs(data), semaforo_(total, cfg),
+      (ctx && (ctx.nombre || ctx.email)) || usuario_(), new Date(),
       listaTexto_(data.montacargas),
       data.tipo_maniobra || '',
       data.toneladas_netas === '' || data.toneladas_netas === undefined ? '' : Number(data.toneladas_netas),
@@ -2692,6 +2690,21 @@ function finalizarEtapa(idEtapa, extras, ctx) {
     var tiempoEst  = Number(rowData[11] || 0);
     var acum       = Number(rowData[14] || 0);
 
+    // La evidencia se exige al cerrar la maniobra, no al abrirla:
+    // es cuando ya se puede fotografiar el resultado real del trabajo.
+    var esUltima = numEtapa >= _secuenciaFlujo_(_flujoDe_(idManiobra), _clienteDe_(idManiobra)).length;
+    var fotos    = [].concat(extras.fotos || []);
+    if (esUltima) {
+      var minFotos = getMinimoFotos();
+      var yaTiene  = _fotosDe_(idManiobra);
+      if (minFotos > 0 && (yaTiene + fotos.length) < minFotos) {
+        return { ok: false, requiere_fotos: true, min_fotos: minFotos,
+          fotos_actuales: yaTiene,
+          error: 'Antes de cerrar la maniobra agrega la evidencia fotográfica. ' +
+                 'Se piden ' + minFotos + ' y llevas ' + (yaTiene + fotos.length) + '.' };
+      }
+    }
+
     var props   = PropertiesService.getScriptProperties();
     var propKey = 'pe_' + idEtapa;
     var desde   = Number(props.getProperty(propKey) || 0);
@@ -2719,6 +2732,14 @@ function finalizarEtapa(idEtapa, extras, ctx) {
     if (extras.causa_demora)  updRow[15] = extras.causa_demora;
     if (extras.observaciones) updRow[16] = extras.observaciones;
     shEta.getRange(fila, 1, 1, COL_ETA.length).setValues([updRow]);
+
+    // Las fotos del cierre se guardan antes de consolidar la maniobra
+    if (fotos.length) {
+      var sh   = hoja_(HOJA, COLUMNAS);
+      var filM = buscarFila_(sh, idManiobra);
+      var unidad = filM > 0 ? String(sh.getRange(filM, 8).getValue() || '') : '';
+      subirEvidencias(idManiobra, unidad, folio, fotos, ctx);
+    }
 
     bitacora_(ctx, 'Finalizó etapa', 'ETAPA', idEtapa, folio,
               String(rowData[4] || '') + ' · ' + tiempoMin + ' min' +
@@ -2754,6 +2775,13 @@ function _flujoDe_(idManiobra) {
   var sh   = hoja_(HOJA, COLUMNAS);
   var fila = buscarFila_(sh, idManiobra);
   return fila > 0 ? String(sh.getRange(fila, 5).getValue() || '') : '';
+}
+
+/** Cuántas fotos lleva ya la maniobra */
+function _fotosDe_(idManiobra) {
+  var sh   = hoja_(HOJA, COLUMNAS);
+  var fila = buscarFila_(sh, idManiobra);
+  return fila > 0 ? Number(sh.getRange(fila, C_FOTOS + 1).getValue() || 0) : 0;
 }
 
 /** Hora de liberación ya capturada, si la hay */

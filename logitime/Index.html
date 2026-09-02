@@ -185,6 +185,15 @@
     /* ════════════════════════════════════════════
        EVIDENCIA FOTOGRÁFICA
     ════════════════════════════════════════════ */
+    /* Quién registra y cuándo */
+    .registro-bar    { display:flex;gap:10px;flex-wrap:wrap;margin-bottom:14px;
+                       background:var(--bg);border:1px solid var(--line);
+                       border-left:3px solid var(--brand);border-radius:9px;padding:10px 13px; }
+    .reg-item        { flex:1;min-width:120px; }
+    .reg-k           { font-size:9.5px;text-transform:uppercase;letter-spacing:.06em;color:var(--muted); }
+    .reg-v           { font-size:13.5px;font-weight:600;margin-top:2px; }
+    .reg-v.mono      { font-variant-numeric:tabular-nums;color:var(--brand); }
+
     .fotos-acciones  { display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin-bottom:12px; }
     .foto-btn        { display:inline-flex;align-items:center;gap:7px;cursor:pointer;
                        background:var(--brand);color:#fff;border-radius:9px;padding:11px 16px;
@@ -366,6 +375,22 @@
         <b>5 registros</b>: uno de descarga y cuatro de carga. Usa
         <i>Duplicar para siguiente</i> al terminar para no recapturar la unidad.
       </div>
+      <!-- Quién registra y cuándo: queda guardado con la maniobra -->
+      <div class="registro-bar">
+        <div class="reg-item">
+          <div class="reg-k">Registra</div>
+          <div class="reg-v" id="reg-usuario">—</div>
+        </div>
+        <div class="reg-item">
+          <div class="reg-k">Fecha de captura</div>
+          <div class="reg-v" id="reg-fecha">—</div>
+        </div>
+        <div class="reg-item">
+          <div class="reg-k">Hora</div>
+          <div class="reg-v mono" id="reg-hora">--:--:--</div>
+        </div>
+      </div>
+
       <div id="aviso-otro" class="aviso warn" style="display:none"></div>
       <div id="form-esenciales" class="grid"></div>
 
@@ -377,29 +402,6 @@
       </div>
 
       <div id="msg-nueva" class="aviso err" style="display:none;margin-top:14px"></div>
-    </div>
-
-    <!-- Evidencia fotográfica: sin ella el cronómetro no arranca -->
-    <div class="card" id="card-fotos">
-      <div class="row" style="justify-content:space-between;margin-bottom:10px">
-        <h2 style="margin:0">Evidencia de la unidad <span class="req-star">*</span></h2>
-        <span id="fotos-estado" class="fotos-estado falta">0 fotos</span>
-      </div>
-      <p class="muted" style="margin:0 0 12px">
-        Se guardan en Drive, en una carpeta por unidad. Toma placas, sellos,
-        estado de la carga y daños visibles.
-      </p>
-      <div class="fotos-acciones">
-        <label class="foto-btn">📷 Tomar foto
-          <input type="file" accept="image/*" capture="environment" multiple
-                 onchange="Fotos.agregar(this)" hidden>
-        </label>
-        <label class="foto-btn ghost">🖼 Galería
-          <input type="file" accept="image/*" multiple onchange="Fotos.agregar(this)" hidden>
-        </label>
-        <button class="ghost sm" type="button" onclick="Fotos.limpiar()">Quitar todas</button>
-      </div>
-      <div id="fotos-tiras" class="fotos-tiras"></div>
     </div>
 
     <div class="card barra-accion">
@@ -1101,6 +1103,25 @@
         <textarea id="modal-obs" style="min-height:56px" placeholder="Notas específicas…"></textarea>
       </div>
     </div>
+    <div id="card-fotos" style="margin-top:16px">
+      <div class="row" style="justify-content:space-between;margin-bottom:9px">
+        <h2 style="margin:0">Evidencia fotográfica <span class="req-star" id="fotos-req" style="display:none">*</span></h2>
+        <span id="fotos-estado" class="fotos-estado falta">0 fotos</span>
+      </div>
+      <p class="muted" id="fotos-hint" style="margin:0 0 10px"></p>
+      <div class="fotos-acciones">
+        <label class="foto-btn">📷 Tomar foto
+          <input type="file" accept="image/*" capture="environment" multiple
+                 onchange="Fotos.agregar(this)" hidden>
+        </label>
+        <label class="foto-btn ghost">🖼 Galería
+          <input type="file" accept="image/*" multiple onchange="Fotos.agregar(this)" hidden>
+        </label>
+        <button class="ghost sm" type="button" onclick="Fotos.limpiar()">Quitar todas</button>
+      </div>
+      <div id="fotos-tiras" class="fotos-tiras"></div>
+    </div>
+
     <div id="modal-aviso" class="aviso err" style="display:none;margin-top:12px"></div>
     <div class="row" style="margin-top:16px;justify-content:flex-end;gap:8px">
       <button class="ghost" onclick="Curso.cerrarModal()">Cancelar</button>
@@ -1194,6 +1215,7 @@ var STATE = {
   cursoSig:    '',          // firma estructural para evitar redibujar
   cursoRecibido: 0,         // Date.now() al recibir los datos
   minFotos:    5,
+  relojId:     null,
   autoSync:    false,
   autoSyncId:  null,
   tickId:      null,
@@ -1282,6 +1304,16 @@ var UI = {
     return h > 0 ? h + 'h ' + (mm ? mm + 'min' : '') : mm + ' min';
   },
 
+  /**
+   * Fecha de HOY en hora local, como "yyyy-MM-dd".
+   * toISOString() da la fecha en UTC: en México, después de las 18:00
+   * ya devuelve el día siguiente y el formulario proponía mañana.
+   */
+  hoyLocal: function() {
+    var d = new Date();
+    return d.getFullYear() + '-' + UI.p2(d.getMonth() + 1) + '-' + UI.p2(d.getDate());
+  },
+
   initTheme: function() {
     var saved = localStorage.getItem('lt_theme');
     UI.applyTheme(saved || (window.matchMedia('(prefers-color-scheme: light)').matches ? 'light' : 'dark'));
@@ -1306,6 +1338,7 @@ var $ = UI.$;
 ══════════════════════════════════════════════════════════════ */
 var Fotos = {
   lista: [],          // [{ nombre, tipo, datos, preview }]
+  previas: 0,         // las que la maniobra ya tiene guardadas en Drive
   MAX_LADO: 1400,
   CALIDAD: 0.72,
 
@@ -1350,13 +1383,13 @@ var Fotos = {
   },
 
   quitar: function(i) { Fotos.lista.splice(i, 1); Fotos.render(); },
-  limpiar: function() { Fotos.lista = []; Fotos.render(); },
+  limpiar: function() { Fotos.lista = []; Fotos.previas = 0; Fotos.render(); },
 
   render: function() {
     var cont = $('fotos-tiras');
     if (!cont) return;
     var min = STATE.minFotos;
-    var n = Fotos.lista.length;
+    var n = Fotos.previas + Fotos.lista.length;
 
     cont.innerHTML = Fotos.lista.map(function(f, i) {
       return '<div class="foto-mini" style="background-image:url(' + f.preview + ')">' +
@@ -1372,7 +1405,7 @@ var Fotos = {
       : '✓ ' + n + ' foto(s) listas';
   },
 
-  completas: function() { return Fotos.lista.length >= STATE.minFotos; }
+  completas: function() { return (Fotos.previas + Fotos.lista.length) >= STATE.minFotos; }
 };
 
 /* ══════════════════════════════════════════════════════════════
@@ -1942,7 +1975,7 @@ var DT = {
       }).join('\n');
 
     DT._csv = csv;
-    var nombre = t.nombre + '_' + new Date().toISOString().slice(0, 10) + '.csv';
+    var nombre = t.nombre + '_' + UI.hoyLocal() + '.csv';
     try {
       var blob = new Blob(['﻿' + csv], { type: 'text/csv;charset=utf-8;' });
       var a = document.createElement('a');
@@ -2134,7 +2167,8 @@ var App = {
 
       API.call('getTurnoActual', [], function(r) {
         // La fecha se propone con la de hoy, pero queda editable
-        if ($('fecha')) $('fecha').value = r.fecha || new Date().toISOString().slice(0, 10);
+        if ($('fecha')) $('fecha').value = r.fecha || UI.hoyLocal();
+        Nueva.pintarRegistro(r);
         // El turno puede ser radio o select según cómo esté configurado el campo
         if (!r.turno) return;
         var rd = document.querySelector('input[name="rd-turno"][value="' + r.turno + '"]');
@@ -2142,7 +2176,7 @@ var App = {
         var sel = $('turno');
         if (sel && sel.tagName === 'SELECT') sel.value = r.turno;
       });
-      if ($('i_fecha')) $('i_fecha').value = new Date().toISOString().slice(0, 10);
+      if ($('i_fecha')) $('i_fecha').value = UI.hoyLocal();
     });
   },
 
@@ -2216,6 +2250,32 @@ var Nueva = {
     return def.map(function(d, i) {
       return { campo: d[0], etiqueta: d[1], seccion: d[2], obligatorio: d[3], visible: true, orden: (i + 1) * 10 };
     });
+  },
+
+  /** Muestra quién captura y en qué fecha; el reloj corre en vivo */
+  pintarRegistro: function(r) {
+    var u = STATE.usr || {};
+    var nombre = u.nombre || u.email || '—';
+    $('reg-usuario').textContent = nombre + (u.rol ? ' · ' + u.rol : '') +
+      (u.departamento ? ' · ' + u.departamento : '');
+
+    var larga = (r && r.fecha_larga) || '';
+    if (!larga) {
+      try {
+        larga = new Date().toLocaleDateString('es-MX',
+          { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' });
+      } catch (e) { larga = UI.hoyLocal(); }
+    }
+    $('reg-fecha').textContent = larga.charAt(0).toUpperCase() + larga.slice(1);
+
+    if (STATE.relojId) clearInterval(STATE.relojId);
+    var tic = function() {
+      var d = new Date();
+      $('reg-hora').textContent = UI.p2(d.getHours()) + ':' + UI.p2(d.getMinutes()) +
+        ':' + UI.p2(d.getSeconds());
+    };
+    tic();
+    STATE.relojId = setInterval(tic, 1000);
   },
 
   construirFormulario: function() {
@@ -2350,7 +2410,7 @@ var Nueva = {
     STATE.campos.forEach(function(c) { if (c.visible) d[c.campo] = Nueva.valor(c.campo); });
     // Valores por defecto de campos ocultos
     if (d.cant_equipos === undefined || d.cant_equipos === '') d.cant_equipos = 1;
-    if (!d.fecha) d.fecha = new Date().toISOString().slice(0, 10);
+    if (!d.fecha) d.fecha = UI.hoyLocal();
 
     var extra = {};
     document.querySelectorAll('#grid-campos-extra select[id^="ce-"]').forEach(function(s) {
@@ -2408,20 +2468,9 @@ var Nueva = {
     var d = Nueva.payload();
     if (!Nueva.validar(d, 'msg-nueva')) return;
 
-    if (!Fotos.completas()) {
-      var faltan = STATE.minFotos - Fotos.lista.length;
-      UI.aviso('msg-nueva', 'Faltan ' + faltan + ' foto(s) de evidencia. ' +
-        'Se piden ' + STATE.minFotos + ' para poder arrancar el cronómetro.', 'err');
-      $('card-fotos').scrollIntoView({ behavior: 'smooth', block: 'center' });
-      return;
-    }
-    d.fotos = Fotos.lista.map(function(f) {
-      return { nombre: f.nombre, tipo: f.tipo, datos: f.datos };
-    });
-
     var btn = $('btn-iniciar');
     btn.disabled = true;
-    btn.textContent = 'Subiendo ' + d.fotos.length + ' fotos…';
+    btn.textContent = 'Iniciando…';
 
     API.call('iniciarManiobra', [d, Auth.ctx()], function(r) {
       btn.disabled = false; btn.textContent = '▶ Iniciar con cronómetro';
@@ -2467,7 +2516,7 @@ var Nueva = {
       if (!el) return;
       if (meta.tipo === 'check') el.checked = false;
       else if (c.campo === 'cant_equipos') el.value = '1';
-      else if (c.campo === 'fecha') el.value = new Date().toISOString().slice(0, 10);
+      else if (c.campo === 'fecha') el.value = UI.hoyLocal();
       else if (c.campo !== 'flujo') el.value = '';
     });
     Nueva.onTipoManiobra();
@@ -2475,7 +2524,6 @@ var Nueva = {
       if ($(k)) $(k).value = '';
     });
     document.querySelectorAll('.campo-invalido').forEach(function(e) { e.classList.remove('campo-invalido'); });
-    Fotos.limpiar();
     UI.aviso('msg-nueva', ''); UI.aviso('msg-manual', '');
   }
 };
@@ -2763,14 +2811,24 @@ var Curso = {
 
   abrirModal: function(idEtapa) {
     STATE.modalEtapa = idEtapa;
-    var nombre = '', esUltima = false, libPrevia = '';
+    var nombre = '', esUltima = false, libPrevia = '', fotosPrevias = 0;
     STATE.curso.forEach(function(m) {
       if (!m.etapa_actual || m.etapa_actual.id !== idEtapa) return;
       nombre = m.etapa_actual.nombre;
       esUltima = m.etapa_actual.num >= (m.etapas || []).length;
       libPrevia = m.hora_liberacion || '';
+      fotosPrevias = Number(m.fotos || 0);
     });
     STATE.modalUltima = esUltima;
+    Fotos.limpiar();
+    Fotos.previas = fotosPrevias;
+    $('fotos-req').style.display = esUltima ? '' : 'none';
+    $('fotos-hint').textContent = esUltima
+      ? 'Obligatoria para cerrar: se piden ' + STATE.minFotos + ' fotos del resultado. ' +
+        (fotosPrevias ? 'La maniobra ya tiene ' + fotosPrevias + '.' : '') +
+        ' Se guardan en Drive, en la carpeta de la unidad.'
+      : 'Opcional en esta etapa. Súbelas si quieres dejar constancia del avance.';
+    Fotos.render();
     $('modal-lib-hint').textContent = libPrevia
       ? 'Ya capturada: ' + libPrevia + '. Escribe otra hora para corregirla.'
       : (esUltima ? 'Al cerrar esta etapa se cierra la maniobra.' : '');
@@ -2803,17 +2861,30 @@ var Curso = {
       $('wrap-modal-causa').classList.add('campo-invalido');
       return;
     }
+    // La evidencia se exige justo al cerrar la maniobra
+    if (STATE.modalUltima && !Fotos.completas()) {
+      var faltan = STATE.minFotos - (Fotos.previas + Fotos.lista.length);
+      UI.aviso('modal-aviso', 'Faltan ' + faltan + ' foto(s) para cerrar la maniobra. ' +
+        'Se piden ' + STATE.minFotos + ' en total.', 'err');
+      $('card-fotos').scrollIntoView({ behavior: 'smooth', block: 'center' });
+      return;
+    }
+
     var liberacion = $('modal-liberacion').value;
     var id = STATE.modalEtapa;
     var extras = {
       demora_min:         paro,
       causa_demora:       causa,
       hora_liberacion:    liberacion,
+      fotos:              Fotos.lista.map(function(f) {
+                            return { nombre: f.nombre, tipo: f.tipo, datos: f.datos };
+                          }),
       observaciones:      $('modal-obs').value,
       dano_maniobra:      !!$('modal-dano').value,
       dano_maniobra_desc: $('modal-dano-desc').value
     };
     Curso.cerrarModal();
+    if (extras.fotos.length) UI.toast('Subiendo ' + extras.fotos.length + ' foto(s)…', '');
     API.call('finalizarEtapa', [id, extras, Auth.ctx()], function(r) {
       if (r.maniobra_finalizada) {
         var extra = r.min_por_atado ? ' · ' + r.min_por_atado + ' min/atado' : '';
