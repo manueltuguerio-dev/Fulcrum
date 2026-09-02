@@ -21,7 +21,7 @@ const db=p=>p.evaluate(()=>JSON.parse(localStorage.getItem('fulcrum_erp_v6')));
   chk(await p.$('[data-view="catalogos"]')!=null,'el módulo Catálogos está en el menú');
   await p.click('[data-view="catalogos"]');await p.waitForTimeout(250);
   const pestanas=await p.$$eval('[data-action="cat-tab"]',n=>n.map(e=>e.textContent.trim()));
-  chk(pestanas.length===7,'siete catálogos: '+pestanas.join(' | '));
+  chk(pestanas.length===8,'ocho catálogos: '+pestanas.join(' | '));
   const uni=(await db(p)).catalogos.unidades;
   chk(uni.length===14&&uni.find(u=>u.clave==='KG').decimales===3,'unidades sembradas con decimales: KG='+uni.find(u=>u.clave==='KG').decimales);
   // agregar una unidad

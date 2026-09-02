@@ -14,7 +14,15 @@
   const escAttr=s=>String(s==null?"":s).replace(/&/g,"&amp;").replace(/"/g,"&quot;").replace(/</g,"&lt;");
 
   const fmtMoney=new Intl.NumberFormat("es-MX",{style:"currency",currency:"MXN",minimumFractionDigits:2});
-  const money=n=>fmtMoney.format(n||0);
+  // Cada documento puede llevar su moneda: money(importe, documento) la respeta.
+  const fmtCache={MXN:fmtMoney};
+  function fmtDe(cur){const k=(cur||"MXN").toUpperCase();
+    if(!fmtCache[k]){try{fmtCache[k]=new Intl.NumberFormat("es-MX",{style:"currency",currency:k,minimumFractionDigits:2});}
+      catch(e){fmtCache[k]=fmtMoney;}}
+    return fmtCache[k];}
+  const monedaDe=o=>{if(!o)return "MXN";if(typeof o==="string")return o.toUpperCase()||"MXN";
+    return String(o.moneda||"MXN").toUpperCase();};
+  const money=(n,doc)=>fmtDe(monedaDe(doc)).format(n||0);
   const money0=n=>fmtMoney.format(Math.round(n||0)).replace(/\.00$/,"");
   // Redondeo a centavos: evita saldos con 4 decimales que impedian aplicar el pago.
   const r2=n=>Math.round(((+n||0)+Number.EPSILON)*100)/100;
@@ -204,6 +212,9 @@
       campos:[{k:"nombre",label:"Nombre",ph:"MANTENIMIENTO",req:true},{k:"nota",label:"Descripción",ph:"Centro de costo"}]},
     {k:"impuestos",label:"Impuestos y retenciones",sing:"impuesto",cols:["concepto","tasa"],
       campos:[{k:"concepto",label:"Concepto",ph:"Retención ISR",req:true},{k:"tasa",label:"Tasa %",tipo:"num",v:0}]},
+    {k:"monedas",label:"Monedas",sing:"moneda",cols:["clave","nombre","tc"],
+      campos:[{k:"clave",label:"Código",ph:"USD",req:true},{k:"nombre",label:"Nombre",ph:"Dólar estadounidense"},
+        {k:"tc",label:"Tipo de cambio a MXN",tipo:"num",v:1,ayuda:"Se propone al elegir esta moneda en un documento."}]},
     {k:"metodosPago",label:"Métodos de pago",sing:"método de pago",cols:["nombre"],
       campos:[{k:"nombre",label:"Nombre",ph:"Transferencia",req:true}]},
     {k:"motivosRechazo",label:"Motivos de rechazo",sing:"motivo",cols:["nombre"],
@@ -232,6 +243,8 @@
     if(!c.unidades.length)c.unidades=UNIDADES_DEF.map(u=>({id:uid(),clave:u[0],nombre:u[1],decimales:u[2]}));
     if(!c.impuestos.length)c.impuestos=[{id:uid(),concepto:"Retención ISR",tasa:1.25},{id:uid(),concepto:"Retención IVA",tasa:10.6667}];
     if(!c.metodosPago.length)c.metodosPago=["Transferencia","Cheque","Efectivo","Tarjeta"].map(n=>({id:uid(),nombre:n}));
+    if(!c.monedas.length)c.monedas=[{id:uid(),clave:"MXN",nombre:"Peso mexicano",tc:1},
+      {id:uid(),clave:"USD",nombre:"Dólar estadounidense",tc:17}];
     if(!c.motivosRechazo.length)c.motivosRechazo=["Precio fuera de mercado","Tiempo de entrega","Se eligió a otro proveedor",
       "Proyecto cancelado","Sin presupuesto"].map(n=>({id:uid(),nombre:n}));
     if(!c.plantillas.length)c.plantillas=[Object.assign({id:uid()},PLANTILLA_DEF)];
@@ -246,6 +259,26 @@
     const d=u&&u.decimales!=null?+u.decimales:0;return isFinite(d)?Math.max(0,Math.min(6,d)):0;};
   const metodosPago=()=>{const m=cat("metodosPago").map(x=>x.nombre).filter(Boolean);
     return m.length?m:["Transferencia","Cheque","Efectivo","Tarjeta"];};
+  /* ---------- monedas y tipo de cambio ---------- */
+  const monedasCat=()=>{const m=cat("monedas").filter(x=>x.clave);
+    return m.length?m:[{clave:"MXN",nombre:"Peso mexicano",tc:1},{clave:"USD",nombre:"Dólar estadounidense",tc:17}];};
+  const tcCatalogo=cl=>{const m=monedasCat().find(x=>String(x.clave).toUpperCase()===String(cl||"").toUpperCase());
+    return m&&+m.tc>0?+m.tc:1;};
+  // Tipo de cambio del documento: 1 si está en pesos.
+  const tcDe=o=>{const cl=monedaDe(o);if(cl==="MXN")return 1;
+    const v=o&&typeof o==="object"?+o.tc:0;return v>0?v:tcCatalogo(cl);};
+  // Equivalente en pesos, para los acumulados que mezclan documentos.
+  const mxn=(n,o)=>r2((+n||0)*tcDe(o));
+  const monedaPill=o=>monedaDe(o)==="MXN"?"":` <span class="pill p-mut" title="Tipo de cambio ${tcDe(o)}">${monedaDe(o)}</span>`;
+  const campoMoneda=(rec,pre)=>{const cl=monedaDe(pre||rec||{}),tc=(pre&&pre.tc)||(rec&&rec.tc)||tcCatalogo(cl);
+    return `<div class="grid2">
+      <div class="field"><label for="f-mon">Moneda</label><select id="f-mon">${monedasCat().map(m=>
+        `<option value="${escAttr(m.clave)}" ${String(m.clave).toUpperCase()===cl?"selected":""}>${escAttr(m.clave)}${m.nombre?" · "+escAttr(m.nombre):""}</option>`).join("")}</select></div>
+      <div class="field" id="wrap-tc" style="${cl==="MXN"?"display:none":""}"><label for="f-tc">Tipo de cambio a MXN</label>
+        <input type="number" id="f-tc" min="0" step="any" value="${cl==="MXN"?1:tc}"></div></div>`;};
+  const leeMoneda=()=>{const s=$("#f-mon");if(!s)return {moneda:"MXN",tc:1};
+    const cl=String(s.value||"MXN").toUpperCase();
+    return {moneda:cl,tc:cl==="MXN"?1:(+($("#f-tc")||{value:0}).value||tcCatalogo(cl))};};
   // Correos de un cliente: contactos marcados como destino + el campo libre de correos.
   function contactosDe(cli){
     if(!cli)return [];
@@ -351,19 +384,20 @@
 
   /* ---------- derivados globales ---------- */
   function totals(){
-    const facturado=state.facturas.reduce((a,f)=>a+facTotal(f),0);
-    const cobrado=state.pagos.reduce((a,p)=>a+p.monto,0);
-    const porCobrar=state.facturas.reduce((a,f)=>a+facSaldo(f),0);
-    const vencido=state.facturas.filter(f=>facSaldo(f)>CENTAVO&&todayStr()>f.vencimiento).reduce((a,f)=>a+facSaldo(f),0);
-    const porPagar=state.ordenes.filter(o=>o.estatus!=="pagada").reduce((a,o)=>a+ocTotal(o),0);
+    // Los acumulados se llevan a pesos con el tipo de cambio de cada documento.
+    const facturado=state.facturas.reduce((a,f)=>a+mxn(facTotal(f),f),0);
+    const cobrado=state.pagos.reduce((a,p)=>a+mxn(p.monto,p),0);
+    const porCobrar=state.facturas.reduce((a,f)=>a+mxn(facSaldo(f),f),0);
+    const vencido=state.facturas.filter(f=>facSaldo(f)>CENTAVO&&todayStr()>f.vencimiento).reduce((a,f)=>a+mxn(facSaldo(f),f),0);
+    const porPagar=state.ordenes.filter(o=>o.estatus!=="pagada").reduce((a,o)=>a+mxn(ocTotal(o),o),0);
     const cotAb=state.cotizaciones.filter(c=>c.estatus==="borrador"||c.estatus==="enviada");
-    const cotMonto=cotAb.reduce((a,c)=>a+cotSubtotal(c)*(1+ivaR(c)),0);
+    const cotMonto=cotAb.reduce((a,c)=>a+mxn(cotSubtotal(c)*(1+ivaR(c)),c),0);
     return{facturado,cobrado,porCobrar,vencido,porPagar,cotAbiertas:cotAb.length,cotMonto};
   }
   function projections(){
     const m={};const add=(k,f,v)=>{(m[k]=m[k]||{cobrar:0,pagar:0})[f]+=v;};
-    state.facturas.forEach(f=>{const s=facSaldo(f);if(s>CENTAVO)add(monthKey(f.vencimiento),"cobrar",s);});
-    state.ordenes.forEach(o=>{if(o.estatus!=="pagada")add(monthKey(o.fechaPago||o.fecha),"pagar",ocTotal(o));});
+    state.facturas.forEach(f=>{const s=facSaldo(f);if(s>CENTAVO)add(monthKey(f.vencimiento),"cobrar",mxn(s,f));});
+    state.ordenes.forEach(o=>{if(o.estatus!=="pagada")add(monthKey(o.fechaPago||o.fecha),"pagar",mxn(ocTotal(o),o));});
     return Object.keys(m).sort().map(k=>({k,cobrar:m[k].cobrar,pagar:m[k].pagar,neto:m[k].cobrar-m[k].pagar}));
   }
   function allMonths(){const set=new Set();
@@ -377,9 +411,9 @@
     const ventas=(p.ventaIds||[]).map(id=>state.ventas.find(v=>v.id===id)).filter(Boolean);
     const ordenes=(p.ordenIds||[]).map(id=>state.ordenes.find(o=>o.id===id)).filter(Boolean);
     const cots=(p.cotIds||[]).map(id=>state.cotizaciones.find(c=>c.id===id)).filter(Boolean);
-    const ventaFac=facturas.reduce((a,f)=>a+facSubtotal(f),0);
-    const ventaOV=ventas.reduce((a,v)=>a+ovSubtotal(v),0);
-    const venta=ventaFac>0?ventaFac:(ventaOV>0?ventaOV:cots.reduce((a,c)=>a+cotSubtotal(c),0));
+    const ventaFac=facturas.reduce((a,f)=>a+mxn(facSubtotal(f),f),0);
+    const ventaOV=ventas.reduce((a,v)=>a+mxn(ovSubtotal(v),v),0);
+    const venta=ventaFac>0?ventaFac:(ventaOV>0?ventaOV:cots.reduce((a,c)=>a+mxn(cotSubtotal(c),c),0));
     const costoOrd=ordenes.reduce((a,o)=>a+ocSubtotal(o),0);
     const costo=costoOrd>0?costoOrd:(facturas.reduce((a,f)=>a+facCosto(f),0)||ventas.reduce((a,v)=>a+ovCosto(v),0)||cots.reduce((a,c)=>a+cotCosto(c),0));
     const costosXml=state.proveedores.filter(x=>x.proyectoId===p.id);
@@ -465,8 +499,8 @@
   function vDashboard(){
     const t=totals(),proj=projections();
     const cobranza=(t.cobrado+t.porCobrar)>0?Math.round(t.cobrado/(t.cobrado+t.porCobrar)*100):0;
-    const venta=state.facturas.reduce((a,f)=>a+facSubtotal(f),0);
-    const costo=state.facturas.reduce((a,f)=>a+facCosto(f),0);
+    const venta=state.facturas.reduce((a,f)=>a+mxn(facSubtotal(f),f),0);
+    const costo=state.facturas.reduce((a,f)=>a+mxn(facCosto(f),f),0);
     const util=venta-costo,mgp=venta>0?util/venta*100:0;
     return `<div class="head"><div><h2>Tablero</h2><p>Resumen operativo · ${fmtDate(todayStr())}</p></div></div>
     <div class="kpis">
@@ -549,7 +583,7 @@
     const base=state.cotizaciones.filter(c=>ui.cotFilter==="all"||c.estatus===ui.cotFilter);
     const list=listaDe(base,"cot",{total:c=>cotTotal(c),margen:c=>cotMargenPct(c),lineas:c=>(c.lineas||[]).length});
     const sel=(ui.cotSel||[]).filter(id=>state.cotizaciones.some(c=>c.id===id));
-    const selTot=state.cotizaciones.filter(c=>sel.indexOf(c.id)>=0).reduce((a,c)=>a+cotTotal(c),0);
+    const selTot=state.cotizaciones.filter(c=>sel.indexOf(c.id)>=0).reduce((a,c)=>a+mxn(cotTotal(c),c),0);
     const ESTATUS=["borrador","enviada","aceptada","rechazada"];
     const barraSel=`<div class="selbar">
       <span>${sel.length?sel.length+" cotización(es) seleccionada(s) · "+money(selTot):"Marca cotizaciones para enviarlas o cambiarles el estatus en bloque"}</span>
@@ -573,7 +607,7 @@
       <td>${(c.origenProveedorIds||[]).length?(c.origenProveedorIds.map(pid=>{const p=state.proveedores.find(x=>x.id===pid);
         return p?`<span class="pill p-mut" style="margin:1px 2px" title="${escAttr(p.proveedor)}">${p.folio||"s/folio"}</span>`:"";}).join("")):'<span style="color:var(--text-faint)">—</span>'}</td>
       <td class="r num">${(c.lineas||[]).length}</td><td class="r num" style="color:var(--good);font-weight:600">${cotMargenPct(c).toFixed(1)}%</td>
-      <td class="r num strong" title="${(c.retenciones||[]).length?"Neto de retenciones":""}">${money(cotTotal(c))}${(c.retenciones||[]).length?' <span style="color:var(--text-faint);font-weight:400">ret</span>':""}</td><td><span class="pill ${cotCls[c.estatus]}" ${c.motivoRechazo?`title="${escAttr(c.motivoRechazo+(c.comentarioRechazo?" · "+c.comentarioRechazo:""))}"`:""}>${c.estatus}</span>
+      <td class="r num strong" title="${(c.retenciones||[]).length?"Neto de retenciones":""}">${money(cotTotal(c),c)}${monedaPill(c)}${(c.retenciones||[]).length?' <span style="color:var(--text-faint);font-weight:400">ret</span>':""}</td><td><span class="pill ${cotCls[c.estatus]}" ${c.motivoRechazo?`title="${escAttr(c.motivoRechazo+(c.comentarioRechazo?" · "+c.comentarioRechazo:""))}"`:""}>${c.estatus}</span>
         ${c.estatus==="rechazada"&&c.motivoRechazo?`<div style="color:var(--text-faint);font-size:10.5px;margin-top:2px">${escAttr(c.motivoRechazo)}</div>`:""}
         ${c.enviadaEl?`<div style="color:var(--text-faint);font-size:10.5px;margin-top:2px">enviada ${fmtDate(c.enviadaEl)}</div>`:""}</td>
       <td><div class="rowact">
@@ -602,7 +636,7 @@
       const oc=o.ocDoc;
       return `<tr><td class="mono">${o.folio}</td><td>${o.cliente}</td><td class="mono">${o.ocCliente||"—"}
         ${oc?`<div><span class="pill ${oc.valida?"p-good":"p-bad"}" title="${escAttr((oc.archivo||"")+" · PDF "+money(oc.total||0))}">${oc.valida?"OC validada":"OC con diferencias"}</span></div>`:""}</td>
-      <td class="mono">${c?c.folio:"—"}</td><td>${fmtDate(o.fecha)}</td><td class="r num strong">${money(ovTotal(o))}</td>
+      <td class="mono">${c?c.folio:"—"}</td><td>${fmtDate(o.fecha)}</td><td class="r num strong">${money(ovTotal(o),o)}${monedaPill(o)}</td>
       <td><span class="pill ${o.estatus==="facturada"?"p-good":"p-warn"}">${o.estatus}${fac?" · "+fac.folio:""}</span></td>
       <td><div class="rowact">
         <button class="act" data-action="print" data-type="ov" data-id="${o.id}">PDF</button>
@@ -666,7 +700,7 @@
     <thead><tr>${th("fac","folio","Folio")}${th("fac","cliente","Cliente")}${th("fac","fecha","Emisión")}${th("fac","vencimiento","Vence")}${th("fac","total","Total","r")}${th("fac","saldo","Saldo","r")}${th("fac","flujo","Estatus")}<th></th></tr></thead>
     <tbody>${list.length?list.map(f=>{const e=facEstatus(f),fl=flujoMeta(f.flujo),saldo=facSaldo(f);
       return `<tr><td class="mono">${f.folio}</td><td>${f.cliente}</td><td>${fmtDate(f.fecha)}</td><td>${fmtDate(f.vencimiento)}</td>
-      <td class="r num">${money(facTotal(f))}</td><td class="r num strong" style="color:${saldo>CENTAVO&&todayStr()>f.vencimiento?"var(--bad)":"inherit"}">${money(saldo)}</td>
+      <td class="r num">${money(facTotal(f),f)}${monedaPill(f)}</td><td class="r num strong" style="color:${saldo>CENTAVO&&todayStr()>f.vencimiento?"var(--bad)":"inherit"}">${money(saldo,f)}</td>
       <td><span class="pill ${fl.cls}" title="Cobro: ${e.k}">${fl.label}</span></td>
       <td><div class="rowact">
         <button class="act" data-action="print" data-type="fac" data-id="${f.id}">PDF</button>
@@ -685,7 +719,7 @@
     <thead><tr>${th("pag","folio","Folio")}${th("pag","facturaFolio","Factura")}${th("pag","cliente","Cliente")}${th("pag","fecha","Fecha")}${th("pag","metodo","Método")}${th("pag","monto","Monto","r")}<th></th></tr></thead>
     <tbody>${listaPagos.length?listaPagos.map(p=>`<tr><td class="mono">${p.folio}</td>
       <td class="mono">${p.facturaFolio}${p.aplicaciones&&p.aplicaciones.length>1?`<div style="color:var(--text-faint);font-size:10px">${p.aplicaciones.map(x=>x.facturaFolio+" "+money(x.monto)).join(" · ")}</div>`:""}</td><td>${p.cliente}</td>
-      <td>${fmtDate(p.fecha)}</td><td>${p.metodo}</td><td class="r num strong">${money(p.monto)}</td>
+      <td>${fmtDate(p.fecha)}</td><td>${p.metodo}</td><td class="r num strong">${money(p.monto,p)}${monedaPill(p)}</td>
       <td><div class="rowact"><button class="act" data-action="edit" data-type="pago" data-id="${p.id}">Editar</button>
         <button class="act warnact" data-action="del-pago" data-id="${p.id}">Eliminar</button></div></td></tr>`).join(""):emptyRow(7,"Aún no hay pagos registrados")}</tbody></table>
     <div class="panel-head" style="border-top:1px solid var(--border);border-bottom:0"><span class="hint">Total cobrado</span><span class="num strong">${money(state.pagos.reduce((a,p)=>a+p.monto,0))}</span></div></div>`;
@@ -1116,7 +1150,7 @@
     // Los formularios de catálogo y rechazo no viven en una colección de COLL.
     const coll=COLL[type],editing=opts.id||null;
     const rec=(editing&&coll&&Array.isArray(state[coll]))?state[coll].find(x=>x.id===editing):null;
-    let title,body,onsubmit,lineType=null,formLines=null,retEd=null,formRets=null,conEd=null,ocLeida=null;const t=todayStr();
+    let title,body,onsubmit,lineType=null,formLines=null,retEd=null,formRets=null,conEd=null,ocLeida=null,recalcDoc=null;const t=todayStr();
 
     if(type==="cotizacion"){lineType="cotizacion";title=editing?"Editar cotización":"Nueva cotización";
       body=`${campoFolio(rec?rec.folio:nextFolio("COT",state.cotizaciones))}
@@ -1127,6 +1161,7 @@
         <div class="grid3"><div class="field"><label for="f-fecha">Fecha</label><input type="date" id="f-fecha" value="${rec?rec.fecha:t}"></div>
           <div class="field"><label for="f-vig">Vigencia (días)</label><input type="number" id="f-vig" value="${rec?rec.vigencia:15}" min="1"></div>
           <div class="field"><label for="f-iva">IVA (%)</label><input type="number" id="f-iva" min="0" max="100" step="0.5" value="${rec&&rec.ivaPct!=null?rec.ivaPct:ivaDefPct()}"></div></div>
+        ${campoMoneda(rec,null)}
         <div class="field"><label for="f-ent">Tiempo de entrega</label>
           <input id="f-ent" list="ent-list" value="${escAttr(rec&&rec.entrega?rec.entrega:"")}" placeholder="Ej. 10 días hábiles">
           <datalist id="ent-list">${["Inmediata","3 días hábiles","5 días hábiles","10 días hábiles","15 días hábiles","20 días hábiles","4 a 6 semanas","Por confirmar"].map(x=>`<option value="${x}"></option>`).join("")}</datalist></div>
@@ -1138,8 +1173,9 @@
         const folio=$("#f-folio").value.trim();
         if(!folio){toast("Escribe el folio.");return false;}
         if(folioRepetido(state.cotizaciones,folio,editing)){toast("Ya existe la cotización "+folio);return false;}
+        const mon=leeMoneda();
         const data={folio,cliente:$("#f-cli").value.trim(),fecha:$("#f-fecha").value,vigencia:+$("#f-vig").value,
-          entrega:$("#f-ent")?$("#f-ent").value.trim():"",ivaPct:+$("#f-iva").value||0,
+          entrega:$("#f-ent")?$("#f-ent").value.trim():"",moneda:mon.moneda,tc:mon.tc,ivaPct:+$("#f-iva").value||0,
           retenciones:retEd?retEd.read().filter(r=>r.concepto):[],lineas};
         if(editing)Object.assign(rec,data);else state.cotizaciones.push(Object.assign({id:uid(),estatus:"borrador",facturada:false},data));};
     }
@@ -1168,6 +1204,7 @@
         <div class="field"><label for="f-venc">Vence</label><input type="date" id="f-venc" value="${rec?rec.vencimiento:addDays(t,30)}"></div>
         <div class="field"><label for="f-flujo">Estatus</label><select id="f-flujo">${FLUJO.map(x=>`<option value="${x.v}" ${(rec?rec.flujo:"solicitada")===x.v?"selected":""}>${x.label}</option>`).join("")}</select></div></div>
         <div class="field" style="max-width:160px"><label for="f-iva">IVA (%)</label><input type="number" id="f-iva" min="0" max="100" step="0.5" value="${rec&&rec.ivaPct!=null?rec.ivaPct:ivaDefPct()}"></div>
+        ${campoMoneda(rec,null)}
         <div class="field"><label>Conceptos</label><div id="lineas"></div></div>
         <div class="field"><label>Retenciones e impuestos <span style="color:var(--text-faint);font-weight:400">· % sobre subtotal · se cargan del cliente</span></label><div id="rets"></div></div>
         <div class="calc" id="calc"></div>`;
@@ -1177,8 +1214,10 @@
         if(!folio){toast("Escribe el folio.");return false;}
         if(folioRepetido(state.facturas,folio,editing)){toast("Ya existe la factura "+folio);return false;}
         const cid=$("#f-cliid").value||null;
+        const monF=leeMoneda();
         const data={folio,cliente:$("#f-cli").value.trim(),clienteId:cid,fecha:$("#f-fecha").value,vencimiento:$("#f-venc").value,
-          flujo:$("#f-flujo").value,ivaPct:+$("#f-iva").value||0,retenciones:retEd?retEd.read().filter(r=>r.concepto):[],lineas};
+          flujo:$("#f-flujo").value,moneda:monF.moneda,tc:monF.tc,ivaPct:+$("#f-iva").value||0,
+          retenciones:retEd?retEd.read().filter(r=>r.concepto):[],lineas};
         if(editing)Object.assign(rec,data);else state.facturas.push(Object.assign({id:uid()},data));};
     }
     else if(type==="pago"){
@@ -1189,8 +1228,8 @@
       const preId=opts.preFacId||null;
       title=editing?"Editar pago":"Registrar pago";
       const rowFor=f=>{const ap=editAps.find(x=>x.facturaId===f.id),checked=!!ap||f.id===preId,amt=ap?ap.monto:facSaldo(f);
-        return `<label class="payrow" data-ordrow data-o-folio="${escAttr(f.folio||"")}" data-o-nombre="${escAttr(f.cliente||"")}" data-o-fecha="${f.vencimiento||f.fecha||""}" data-o-importe="${facSaldo(f)}"><input type="checkbox" class="pf" value="${f.id}" ${checked?"checked":""}>
-          <span class="pf-info"><span class="mono">${f.folio}</span> · ${f.cliente} <span class="pf-saldo">saldo ${money(facSaldo(f))}</span></span>
+        return `<label class="payrow" data-ordrow data-moneda="${monedaDe(f)}" data-o-folio="${escAttr(f.folio||"")}" data-o-nombre="${escAttr(f.cliente||"")}" data-o-fecha="${f.vencimiento||f.fecha||""}" data-o-importe="${facSaldo(f)}"><input type="checkbox" class="pf" value="${f.id}" ${checked?"checked":""}>
+          <span class="pf-info"><span class="mono">${f.folio}</span> · ${f.cliente} <span class="pf-saldo">saldo ${money(facSaldo(f),f)}</span>${monedaPill(f)}</span>
           <input type="number" class="pa" data-fid="${f.id}" min="0" step="any" value="${checked?r2(amt):""}" placeholder="0.00"></label>`;};
       body=`<div class="grid2"><div class="field"><label for="f-fecha">Fecha</label><input type="date" id="f-fecha" value="${rec?rec.fecha:t}"></div>
         <div class="field"><label for="f-met">Método</label><select id="f-met">${metodosPago().map(m=>`<option ${rec&&rec.metodo===m?"selected":""}>${m}</option>`).join("")}</select></div></div>
@@ -1203,8 +1242,12 @@
           let m=r2(+el.value||0);if(m>tope&&m-tope<=0.02)m=tope;   // absorbe diferencias de centavos
           return {facturaId:fid,facturaFolio:f.folio,monto:m};}).filter(x=>x.monto>0);
         if(!aps.length){toast("Marca al menos una factura y captura su monto.");return false;}
-        const total=r2(aps.reduce((a,x)=>a+x.monto,0)),cls=[...new Set(aps.map(x=>state.facturas.find(f=>f.id===x.facturaId).cliente))];
+        const facs=aps.map(x=>state.facturas.find(f=>f.id===x.facturaId));
+        const mons=[...new Set(facs.map(f=>monedaDe(f)))];
+        if(mons.length>1){toast("No se pueden mezclar monedas en un mismo pago ("+mons.join(", ")+").");return false;}
+        const total=r2(aps.reduce((a,x)=>a+x.monto,0)),cls=[...new Set(facs.map(f=>f.cliente))];
         const data={fecha:$("#f-fecha").value,metodo:$("#f-met").value,aplicaciones:aps,monto:total,
+          moneda:mons[0],tc:tcDe(facs[0]),
           cliente:cls.length===1?cls[0]:"Varios",facturaFolio:aps.length===1?aps[0].facturaFolio:aps.length+" facturas",facturaId:aps.length===1?aps[0].facturaId:null};
         if(editing)Object.assign(rec,data);else state.pagos.push(Object.assign({id:uid(),folio:nextFolio("PAG",state.pagos)},data));
         aps.forEach(x=>{const f=state.facturas.find(y=>y.id===x.facturaId);if(f&&facSaldo(f)<=CENTAVO)f.flujo="pagada";});};
@@ -1259,7 +1302,7 @@
     }
     else if(type==="venta"){lineType="venta";title=editing?"Editar orden de venta":"Nueva orden de venta";
       const src=editing?rec:(opts.fromCot?(function(){const c=state.cotizaciones.find(x=>x.id===opts.fromCot);
-        return c?{cliente:c.cliente,ocCliente:"",fecha:t,cotizacionId:c.id,ivaPct:c.ivaPct,
+        return c?{cliente:c.cliente,ocCliente:"",fecha:t,cotizacionId:c.id,ivaPct:c.ivaPct,moneda:c.moneda,tc:c.tc,
           retenciones:(c.retenciones||[]).map(r=>({concepto:r.concepto,tasa:r.tasa})),
           lineas:(c.lineas||[]).map(l=>({desc:l.desc,unidad:l.unidad,analitica:l.analitica,cantidad:l.cantidad,costo:l.costo,precio:lineaPrecio(l)}))}:null;})():null);
       const pre=src||{};formLines=pre.lineas||null;formRets=pre.retenciones||null;
@@ -1269,6 +1312,7 @@
         <div class="grid2"><div class="field"><label for="f-occ">OC del cliente</label><input id="f-occ" value="${escAttr(pre.ocCliente||"")}" placeholder="Folio de su orden de compra"></div>
         <div class="field"><label for="f-fecha">Fecha</label><input type="date" id="f-fecha" value="${pre.fecha||t}"></div></div>
         <div class="field" style="max-width:160px"><label for="f-iva">IVA (%)</label><input type="number" id="f-iva" min="0" max="100" step="0.5" value="${(pre.ivaPct!=null)?pre.ivaPct:ivaDefPct()}"></div>
+        ${campoMoneda(rec,pre)}
         <div class="field"><label for="f-cot">Cotización de origen</label><select id="f-cot">${optList(state.cotizaciones,x=>x.folio+" · "+x.cliente,pre.cotizacionId||null)}</select></div>
         <div class="field"><label>Orden de compra del cliente (PDF) <span style="color:var(--text-faint);font-weight:400">· valida subtotal y total y toma el número de OC</span></label>
           <label class="drop drop-sm" id="ocdrop">
@@ -1284,8 +1328,9 @@
         const folio=$("#f-folio").value.trim();
         if(!folio){toast("Escribe el folio.");return false;}
         if(folioRepetido(state.ventas,folio,editing)){toast("Ya existe la orden de venta "+folio);return false;}
+        const monV=leeMoneda();
         const data={folio,cliente:$("#f-cli").value.trim(),ocCliente:$("#f-occ").value.trim(),fecha:$("#f-fecha").value,
-          cotizacionId:$("#f-cot").value||null,ivaPct:+$("#f-iva").value||0,
+          cotizacionId:$("#f-cot").value||null,moneda:monV.moneda,tc:monV.tc,ivaPct:+$("#f-iva").value||0,
           retenciones:retEd?retEd.read().filter(r=>r.concepto):[],lineas};
         if(ocLeida)data.ocDoc=ocLeida;else if(rec&&rec.ocDoc)data.ocDoc=rec.ocDoc;
         if(editing)Object.assign(rec,data);else{const nv=Object.assign({id:uid(),estatus:"abierta",facturaId:null},data);
@@ -1386,7 +1431,8 @@
           }else lineas.push({desc:"Suministro seg\u00fan factura "+(p.folio||p.proveedor),unidad:"LOT",analitica:"",cantidad:1,costo:subP,margen:mg});
         });
         const nueva={id:uid(),folio:nextFolio("COT",state.cotizaciones),cliente:cli.nombre,fecha:$("#f-fecha").value,
-          vigencia:+$("#f-vig").value||15,entrega:"",estatus:"borrador",facturada:false,ivaPct:(cli.ivaPct!=null?cli.ivaPct:ivaDefPct()),
+          vigencia:+$("#f-vig").value||15,entrega:"",estatus:"borrador",facturada:false,moneda:"MXN",tc:1,
+          ivaPct:(cli.ivaPct!=null?cli.ivaPct:ivaDefPct()),
           retenciones:(cli.retenciones||[]).map(r=>({concepto:r.concepto,tasa:r.tasa})),
           origenProveedorIds:facs.map(p=>p.id),lineas};
         state.cotizaciones.push(nueva);
@@ -1472,7 +1518,9 @@
     // pago consolidado: total en vivo + habilitar montos
     const pl=$("#paylist");
     if(type==="pago"&&pl){const totEl=$("#paytot");
-      const calc=()=>{let s=0;pl.querySelectorAll(".pf").forEach(cb=>{const el=pl.querySelector('.pa[data-fid="'+cb.value+'"]');el.disabled=!cb.checked;if(cb.checked)s+=+el.value||0;});totEl.textContent=money(r2(s));};
+      const calc=()=>{let s=0,mons=[];pl.querySelectorAll(".pf").forEach(cb=>{const el=pl.querySelector('.pa[data-fid="'+cb.value+'"]');el.disabled=!cb.checked;
+        if(cb.checked){s+=+el.value||0;const m=cb.closest(".payrow").dataset.moneda||"MXN";if(mons.indexOf(m)<0)mons.push(m);}});
+        totEl.textContent=money(r2(s),mons.length===1?mons[0]:"MXN")+(mons.length>1?" · monedas mezcladas":"");};
       pl.addEventListener("change",e=>{if(e.target.classList.contains("pf")){const cb=e.target,el=pl.querySelector('.pa[data-fid="'+cb.value+'"]');if(cb.checked&&!(+el.value)){const f=state.facturas.find(x=>x.id===cb.value);el.value=r2(facSaldo(f));}}calc();});
       pl.addEventListener("input",calc);calc();}
     // editor de líneas
@@ -1482,6 +1530,8 @@
       const ivaInput=$("#f-iva");
       const tasaForm=()=>ivaInput?((+ivaInput.value||0)/100):(ivaDefPct()/100);
       const doCalc=()=>{const lines=lineEd?lineEd.read():[],s=r2(sumLineas(lineType,lines)),pct=+(tasaForm()*100).toFixed(4),iva=r2(s*tasaForm());
+        const mDoc=$("#f-mon")?{moneda:$("#f-mon").value}:null;
+        const money=(n)=>fmtDe(monedaDe(mDoc)).format(n||0);
         const rets=retEd?retEd.read():[],retTot=r2(rets.reduce((a,r)=>a+s*(+r.tasa||0)/100,0));
         const retRows=rets.filter(r=>r.tasa).map(r=>`<div><span>${escAttr(r.concepto||"Retención")} (${(+r.tasa)}%)</span><span class="num">−${money(r2(s*(+r.tasa||0)/100))}</span></div>`).join("");
         const porAna={};lines.forEach(l=>{const k=(l.analitica||"").trim()||"Sin analítica";
@@ -1494,6 +1544,7 @@
           calc.innerHTML=`<div><span>Costo total</span><span class="num">${money(cost)}</span></div><div><span>Margen promedio</span><span class="num" style="color:var(--good)">${mg.toFixed(1)}%</span></div><div><span>Subtotal (venta)</span><span class="num">${money(s)}</span></div><div><span>IVA ${pct}%</span><span class="num">${money(iva)}</span></div>${retRows}${total}${anaRows}`;
         }else{calc.innerHTML=`<div><span>Subtotal</span><span class="num">${money(s)}</span></div><div><span>IVA ${pct}%</span><span class="num">${money(iva)}</span></div>${retRows}${total}${anaRows}`;}};
       lineEd=makeLineEditor(lineType,$("#lineas"),rec?rec.lineas:formLines,doCalc,catalog);
+      recalcDoc=doCalc;
       if(ivaInput)ivaInput.addEventListener("input",doCalc);
       // Cotizaciones y facturas comparten el editor de retenciones y heredan los impuestos del cliente.
       const usaRets=isCot||lineType==="factura"||lineType==="venta";
@@ -1515,6 +1566,19 @@
     if($("#rets")&&!retEd){retEd=makeRetEditor($("#rets"),formRets||(rec?rec.retenciones:null),function(){});}
     if($("#cons"))conEd=makeConEditor($("#cons"),rec?rec.contactos:null);
 
+    // Moneda del documento: muestra el tipo de cambio y actualiza el cálculo.
+    const monSel=$("#f-mon");
+    if(monSel){
+      const wrap=$("#wrap-tc"),tcInp=$("#f-tc");
+      // Al cambiar de moneda se propone el tipo de cambio del catálogo; queda editable.
+      const pinta=cambio=>{const cl=String(monSel.value||"MXN").toUpperCase();
+        if(wrap)wrap.style.display=cl==="MXN"?"none":"";
+        if(tcInp&&cl==="MXN"){tcInp.value=1;return;}
+        if(tcInp&&(cambio||!(+tcInp.value>0)||+tcInp.value===1))tcInp.value=tcCatalogo(cl);};
+      monSel.addEventListener("change",()=>{pinta(true);if(typeof recalcDoc==="function")recalcDoc();});
+      if(tcInp)tcInp.addEventListener("input",()=>{if(typeof recalcDoc==="function")recalcDoc();});
+      pinta();
+    }
     // Lector del PDF de la orden de compra del cliente (solo en la orden de venta).
     const ocInput=$("#ocpdf");
     if(ocInput){
@@ -2068,7 +2132,7 @@
     const cons=contactosDe(cli);
     return {cot:c,cli:cli||null,cons,vars:{
       cliente:c.cliente||"",contacto:(cons[0]&&cons[0].nombre)||c.cliente||"",
-      folio:c.folio||"",total:money(cotTotal(c)),vigencia:(+c.vigencia||0)+" días",
+      folio:c.folio||"",total:money(cotTotal(c),c),moneda:monedaDe(c),vigencia:(+c.vigencia||0)+" días",
       entrega:c.entrega||"por confirmar",fecha:fmtDate(c.fecha),empresa:EMISOR.nombre}};
   }
   const aplicaVars=(txt,v)=>String(txt==null?"":txt).replace(/\{\{\s*(\w+)\s*\}\}/g,(m,k)=>v[k]!=null?v[k]:m);
@@ -2224,7 +2288,7 @@
     totals.push({label:"TOTAL",value:money(cotTotal(c)),bold:true,rule:true});
     return ({kind:"Cotización",folio:c.folio,partyLabel:"CLIENTE",party:c.cliente,rfc:cli?cli.rfc:"",
       metaLeft:["Válido hasta: "+fmtDate(addDays(c.fecha,+c.vigencia||0))].concat(c.entrega?["Tiempo de entrega: "+c.entrega]:[]),
-      metaRight:["Emitido el: "+fmtDate(c.fecha),"Folio: "+c.folio],
+      metaRight:["Emitido el: "+fmtDate(c.fecha),"Folio: "+c.folio,"Moneda: "+monedaDe(c)+(monedaDe(c)!=="MXN"?" · T.C. "+tcDe(c):"")],
       columns:["CANT.","UNI.","DESCRIPCIÓN","PRECIO UNIT","PRECIO TOTAL"],rows,totals,
       contact:[EMISOR.email,EMISOR.contacto].concat(c.entrega?["Tiempo de entrega: "+c.entrega]:[])
         .concat(["Esta cotización tiene una validez de: "+(+c.vigencia||0)+" Días.","Esta cotización se emite el: "+fmtDate(c.fecha),"¡Gracias por su preferencia!"]),
@@ -2235,7 +2299,7 @@
     totals.push({label:"TOTAL",value:money(facTotal(f)),bold:true,rule:true});
     if(pagado>0)totals.push({label:"PAGADO",value:money(pagado)});if(saldo>CENTAVO)totals.push({label:"SALDO",value:money(saldo),bold:true});
     return ({kind:"Factura",folio:f.folio,partyLabel:"CLIENTE",party:f.cliente,metaLeft:["Estatus: "+fl.label],
-      metaRight:["Emisión: "+fmtDate(f.fecha),"Vence: "+fmtDate(f.vencimiento),"Folio: "+f.folio],
+      metaRight:["Emisión: "+fmtDate(f.fecha),"Vence: "+fmtDate(f.vencimiento),"Folio: "+f.folio,"Moneda: "+monedaDe(f)+(monedaDe(f)!=="MXN"?" · T.C. "+tcDe(f):"")],
       columns:["CANT.","UNI.","DESCRIPCIÓN","PRECIO UNIT","PRECIO TOTAL"],rows:(f.lineas||[]).map(l=>line5(l,"precio")),totals,
       contact:[EMISOR.email,EMISOR.contacto,"¡Gracias por su preferencia!"],filename:f.folio+".pdf"});}
   function specOrden(o){const sub=ocSubtotal(o),iva=sub*ivaR(o);
@@ -2249,7 +2313,8 @@
     (v.retenciones||[]).filter(r=>r.tasa).forEach(r=>totals.push({label:(r.concepto||"Retención").toUpperCase()+" "+(+r.tasa)+"%",value:money(r2(sub*(+r.tasa)/100))}));
     totals.push({label:"TOTAL",value:money(ovTotal(v)),bold:true,rule:true});
     return ({kind:"Orden de venta",folio:v.folio,partyLabel:"CLIENTE",party:v.cliente,
-      metaLeft:["OC del cliente: "+(v.ocCliente||"—"),"Cotización: "+(c?c.folio:"—")],metaRight:["Fecha: "+fmtDate(v.fecha),"Folio: "+v.folio],
+      metaLeft:["OC del cliente: "+(v.ocCliente||"—"),"Cotización: "+(c?c.folio:"—")],
+      metaRight:["Fecha: "+fmtDate(v.fecha),"Folio: "+v.folio,"Moneda: "+monedaDe(v)+(monedaDe(v)!=="MXN"?" · T.C. "+tcDe(v):"")],
       columns:["CANT.","UNI.","DESCRIPCIÓN","PRECIO UNIT","PRECIO TOTAL"],rows:(v.lineas||[]).map(l=>line5(l,"precio")),totals,
       contact:[EMISOR.email,EMISOR.contacto,"¡Gracias por su preferencia!"],filename:v.folio+".pdf"});}
   function openReport(kind){
@@ -2396,7 +2461,8 @@
     else if(a==="prov-cotizar"){openForm("cotizarProv");}
     else if(a==="ov-factura"){const v=state.ventas.find(x=>x.id===id);
       const lineas=(v.lineas||[]).map(l=>({desc:l.desc,cantidad:l.cantidad,costo:l.costo,precio:l.precio}));
-      const f={id:uid(),folio:nextFolio("FAC",state.facturas),cliente:v.cliente,fecha:todayStr(),vencimiento:addDays(todayStr(),30),flujo:"creada",lineas,ventaId:v.id};
+      const f={id:uid(),folio:nextFolio("FAC",state.facturas),cliente:v.cliente,fecha:todayStr(),vencimiento:addDays(todayStr(),30),
+        flujo:"creada",moneda:v.moneda,tc:v.tc,ivaPct:v.ivaPct,retenciones:(v.retenciones||[]).map(r=>({concepto:r.concepto,tasa:r.tasa})),lineas,ventaId:v.id};
       state.facturas.push(f);v.facturaId=f.id;v.estatus="facturada";persist();current="facturas";render();}
     else if(a==="oc-recibir"){state.ordenes.find(x=>x.id===id).estatus="recibida";persist();render();}
     else if(a==="oc-pagar"){state.ordenes.find(x=>x.id===id).estatus="pagada";persist();render();}

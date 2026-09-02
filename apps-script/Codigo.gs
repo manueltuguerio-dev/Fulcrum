@@ -13,7 +13,7 @@ var CHUNK = 40000;              // caracteres por celda (el límite real es 50 0
 var CARPETA_DRIVE = 'Fulcrum ERP';
 var REMITENTE = 'ADMINISTRACION@COMERCIALIZADORAFULCRUM.COM.MX';
 var NOMBRE_REMITENTE = 'Comercializadora Fulcrum';
-var VERSION = 'v20-2026-08-31';   // debe coincidir con el que muestra la app
+var VERSION = 'v21-2026-08-31';   // debe coincidir con el que muestra la app
 
 var COLECCIONES = ['integrantes', 'clientes', 'cotizaciones', 'ventas', 'ordenes', 'facturas',
                    'pagos', 'proveedores', 'gastos', 'proyectos'];
@@ -228,6 +228,47 @@ function espejo_(state) {
     sh.getRange(1, 1, 1, columnas.length).setFontWeight('bold');
     sh.setFrozenRows(1);
   });
+
+  // Dos hojas mas, desglosadas, para consultar sin abrir JSON:
+  // los contactos de cada cliente y cada aplicacion de pago a su factura.
+  escribirTabla_(ss, 'Contactos',
+    ['Cliente', 'RFC', 'Contacto', 'Puesto', 'Correo'],
+    (state.clientes || []).reduce(function (acc, cl) {
+      (cl.contactos || []).forEach(function (c) {
+        acc.push([cl.nombre || '', cl.rfc || '', c.nombre || '', c.puesto || '', c.email || '']);
+      });
+      return acc;
+    }, []));
+
+  var facturasPorId = {};
+  (state.facturas || []).forEach(function (f) { facturasPorId[f.id] = f; });
+  escribirTabla_(ss, 'AplicacionesPago',
+    ['Pago', 'Fecha', 'Metodo', 'Cliente', 'Factura', 'Monto', 'Moneda'],
+    (state.pagos || []).reduce(function (acc, p) {
+      var aps = (p.aplicaciones && p.aplicaciones.length)
+        ? p.aplicaciones
+        : (p.facturaId ? [{ facturaId: p.facturaId, facturaFolio: p.facturaFolio, monto: p.monto }] : []);
+      aps.forEach(function (a) {
+        var f = facturasPorId[a.facturaId];
+        acc.push([p.folio || '', p.fecha || '', p.metodo || '', p.cliente || '',
+                  a.facturaFolio || (f ? f.folio : ''), a.monto, p.moneda || (f && f.moneda) || 'MXN']);
+      });
+      return acc;
+    }, []));
+}
+
+/** Vuelca una tabla sencilla en una hoja del libro. */
+function escribirTabla_(ss, titulo, encabezados, filas) {
+  var sh = hoja_(ss, titulo);
+  sh.clear();
+  var datos = [encabezados].concat(filas);
+  var rango = sh.getRange(1, 1, datos.length, encabezados.length);
+  rango.setNumberFormat('@');
+  rango.setValues(datos.map(function (r) {
+    return r.map(function (v) { return v === null || v === undefined ? '' : String(v); });
+  }));
+  sh.getRange(1, 1, 1, encabezados.length).setFontWeight('bold');
+  sh.setFrozenRows(1);
 }
 
 /* ------------------------------------------------------------------ */

@@ -24,6 +24,8 @@ No forman parte de la aplicación: son los scripts con los que se aplicaron y se
 | `patch_oc_pdf.py` | Lector del PDF de la orden de compra del cliente en la orden de venta |
 | `t_oc.js` | Prueba en navegador: lectura del folio, validación de subtotal y total y aviso de diferencias |
 | `oc_cliente_ok.pdf` / `oc_cliente_dif.pdf` | Órdenes de compra de prueba (una cuadra, la otra no) |
+| `patch_moneda.py` | Moneda MXN/USD con tipo de cambio y acumulados en pesos |
+| `t_moneda.js` | Prueba en navegador: moneda por documento, herencia, pagos sin mezclar monedas y persistencia tras recargar |
 | `t_gas.js` | Simula el entorno de Apps Script (`Index.html` + `getRecursos`) y repite las pruebas sobre el bundle |
 
 Los parches ya están aplicados; volver a ejecutarlos falla a propósito (verifican que el texto

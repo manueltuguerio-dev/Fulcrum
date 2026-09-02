@@ -48,7 +48,9 @@ datos. Así el código nunca pasa por el analizador de HTML, que era lo que impe
 - Todo el estado se guarda en la hoja oculta `_DB` en formato JSON (fuente de verdad),
   y los cierres de mes en `_SNAPS`.
 - Además, cada vez que guardas se regeneran hojas **legibles**: `Clientes`, `Cotizaciones`,
-  `Ventas`, `Ordenes`, `Facturas`, `Pagos`, `Proveedores`, `Gastos`, `Proyectos`.
+  `Ventas`, `Ordenes`, `Facturas`, `Pagos`, `Proveedores`, `Gastos`, `Proyectos`, y dos hojas
+  desglosadas: **`Contactos`** (los contactos de cada cliente, con su correo) y
+  **`AplicacionesPago`** (cada pago con la factura a la que se aplicó, su importe y su moneda).
   Sirven para consultar y hacer tablas dinámicas.
   ⚠️ Son un **espejo de solo lectura**: si editas ahí, la app las sobrescribe. Captura siempre
   desde la aplicación.
@@ -144,6 +146,22 @@ La comparación se hace contra el total de la orden de venta **ya neto de retenc
 Funciona con PDF de texto; si el PDF es una imagen escaneada no hay texto que leer y el número de
 OC se captura a mano. La lectura usa **pdf.js**, que se descarga de un CDN: si tu red lo bloquea,
 la app avisa y el campo se llena manualmente.
+
+## Moneda (MXN / USD)
+
+**Cotizaciones, órdenes de venta y facturas** llevan campo de **Moneda** y, cuando no es MXN, un
+**tipo de cambio a pesos** que se propone desde el catálogo y se puede ajustar por documento.
+
+- La moneda **se hereda** por todo el flujo: cotización → orden de venta → factura, y el pago toma
+  la de su factura.
+- Los importes se muestran e imprimen **en la moneda del documento** (listas, formulario, PDF y el
+  correo); la lista marca con una etiqueta las que no son MXN, y el PDF incluye
+  *Moneda: USD · T.C. 18.5*.
+- Todo lo que **suma varios documentos** —tablero, proyecciones, contabilidad y proyectos— se
+  convierte a **pesos** con el tipo de cambio de cada documento.
+- Un mismo pago **no puede mezclar monedas**: si marcas facturas en MXN y USD, la app lo avisa y
+  no deja guardar.
+- Las monedas y su tipo de cambio se administran en **Catálogos → Monedas**.
 
 ## Cotizar desde un XML de proveedor
 
