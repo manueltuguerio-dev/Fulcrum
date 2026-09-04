@@ -960,6 +960,27 @@
         <h2>Equipos registrados</h2>
         <div class="scroll"><table id="adm-tabla-equ"></table></div>
       </div>
+
+      <div id="adm-equ-plantilla" class="card hidden">
+        <div class="row" style="justify-content:space-between;margin-bottom:8px">
+          <h2 id="equ-plan-titulo" style="margin:0">Plantilla del equipo</h2>
+          <div class="row" style="gap:8px">
+            <button class="ghost sm" onclick="Admin.cerrarPlantilla()">Cerrar ✕</button>
+            <button class="success" onclick="Admin.guardarPlantilla()">Guardar plantilla</button>
+          </div>
+        </div>
+        <p class="muted" style="margin:0 0 14px;font-size:13px">
+          Marca quién integra este equipo. Al elegirlo en una maniobra, su gente
+          y sus montacargas quedan seleccionados solos.
+          <b>Quien tenga «montacarguista» en su posición entra como operador; el resto, como ayudante.</b>
+        </p>
+
+        <label>Personal</label>
+        <div id="equ-plan-emp" style="margin-bottom:14px"></div>
+
+        <label>Montacargas</label>
+        <div id="equ-plan-mon"></div>
+      </div>
     </div>
 
     <!-- Catálogo de servicios adicionales -->
@@ -4629,6 +4650,7 @@ var Admin = {
   campos: [], catalogos: [], catActivo: null, catItems: [], tiempos: [], semaforos: [],
   flujos: {}, flujoActivo: '', flujoCliente: '', flujoEtapas: [],
   departamentos: [], equipos: [], adicionales: [], clientesCfg: [], dtHis: null,
+  equipoPlantilla: '', _mapaEmpleados: {},
 
   sub: function(s) {
     ['cam','cat','flu','dep','cli','equ','adi','his','sem','usr','tem'].forEach(function(k) {
@@ -4913,11 +4935,65 @@ var Admin = {
                   (e.activo ? 'Activo' : 'Inactivo') + '</span></td>' +
                 '<td style="white-space:nowrap">' +
                   '<button class="ghost xs" onclick="Admin.editarEqu(\'' + e.id + '\')">Editar</button> ' +
+                  '<button class="xs" onclick="Admin.abrirPlantilla(\'' + UI.esc(e.nombre) + '\')">Plantilla</button> ' +
                   '<button class="danger xs" onclick="Admin.eliminarEqu(\'' + e.id + '\')">Eliminar</button>' +
                 '</td></tr>';
             }).join('')
           : '<tr><td colspan="5" class="dt-empty">Sin equipos</td></tr>');
     });
+  },
+
+  /* ── Plantilla: quién integra cada equipo ── */
+  abrirPlantilla: function(nombre) {
+    Admin.equipoPlantilla = nombre;
+    $('equ-plan-titulo').textContent = 'Plantilla de ' + nombre;
+    $('equ-plan-emp').innerHTML = '<p class="muted">Cargando…</p>';
+    $('equ-plan-mon').innerHTML = '';
+    UI.show('adm-equ-plantilla');
+
+    API.call('getPlantillaEquipo', [nombre], function(p) {
+      // Se listan todos los empleados y montacargas; marcados los del equipo
+      API.call('getEmpleados', [], function(emps) {
+        var activos = (emps || []).filter(function(e) { return e.activo; });
+        var conPos  = activos.map(function(e) {
+          return e.nombre + (e.posicion ? '  —  ' + e.posicion : '');
+        });
+        Admin._mapaEmpleados = {};
+        activos.forEach(function(e, i) { Admin._mapaEmpleados[conPos[i]] = e.nombre; });
+
+        $('equ-plan-emp').innerHTML = Chips.html('chips-plan-emp', conPos, []);
+        // Los chips guardan "Nombre — Posición"; se marcan por el nombre
+        var marcar = conPos.filter(function(etq) {
+          return p.empleados.indexOf(Admin._mapaEmpleados[etq]) >= 0;
+        });
+        Chips.set('chips-plan-emp', marcar);
+      });
+
+      $('equ-plan-mon').innerHTML = Chips.html('chips-plan-mon', STATE.cat.MONTACARGAS || [], []);
+      Chips.set('chips-plan-mon', p.montacargas);
+    });
+  },
+
+  cerrarPlantilla: function() {
+    Admin.equipoPlantilla = '';
+    UI.hide('adm-equ-plantilla');
+  },
+
+  guardarPlantilla: function() {
+    if (!Admin.equipoPlantilla) return;
+    // De vuelta al nombre limpio, sin la posición que se muestra en el chip
+    var nombres = Chips.val('chips-plan-emp').map(function(etq) {
+      return Admin._mapaEmpleados[etq] || etq;
+    });
+    API.call('asignarPlantillaEquipo',
+      [Admin.equipoPlantilla, nombres, Chips.val('chips-plan-mon'), Auth.ctx()],
+      function(r) {
+        UI.toast('✓ ' + Admin.equipoPlantilla + ': ' + r.empleados + ' persona(s) y ' +
+                 r.montacargas + ' montacargas', 'ok');
+        Admin.cerrarPlantilla();
+        Admin.cargarEqu();
+        App.cargarCatalogos();
+      });
   },
 
   editarEqu: function(id) {

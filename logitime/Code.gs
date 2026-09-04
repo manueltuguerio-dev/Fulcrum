@@ -1104,6 +1104,77 @@ function guardarEquipo(data, ctx) {
   });
 }
 
+/**
+ * Define quiénes integran un equipo, de una sola pasada.
+ * A los seleccionados se les pone el equipo; a los que salieron y lo tenían,
+ * se les quita. Así la plantilla se arma desde el equipo, no empleado a empleado.
+ */
+function asignarPlantillaEquipo(equipo, empleados, montacargas, ctx) {
+  return seguro_('asignarPlantillaEquipo', function() {
+    var eq = String(equipo || '').trim();
+    if (!eq) return { ok: false, error: 'Falta el equipo' };
+
+    var setEmp = {};
+    [].concat(empleados || []).forEach(function(n) { setEmp[String(n).trim()] = true; });
+    var setMon = {};
+    [].concat(montacargas || []).forEach(function(c) {
+      setMon[String(c).split('·')[0].trim()] = true;
+    });
+
+    var nEmp = 0, nMon = 0;
+
+    // ── Empleados ──
+    var shE = hoja_(HOJA_EMP, COL_EMP);
+    if (shE.getLastRow() >= 2) {
+      var rango = shE.getRange(2, 1, shE.getLastRow() - 1, COL_EMP.length);
+      var vals  = rango.getValues();
+      vals.forEach(function(r) {
+        if (!String(r[0] || '').trim()) return;
+        var nombre = String(r[1] || '').trim();
+        var actual = String(r[5] || '').trim();
+        if (setEmp[nombre]) { if (actual !== eq) { r[5] = eq; nEmp++; } }
+        else if (actual === eq) { r[5] = ''; nEmp++; }
+      });
+      rango.setValues(vals);
+    }
+
+    // ── Montacargas ──
+    var shM = hoja_(HOJA_MON, COL_MON);
+    if (shM.getLastRow() >= 2) {
+      var rangoM = shM.getRange(2, 1, shM.getLastRow() - 1, COL_MON.length);
+      var valsM  = rangoM.getValues();
+      valsM.forEach(function(r) {
+        if (!String(r[0] || '').trim()) return;
+        var codigo = String(r[1] || '').trim();
+        var actual = String(r[11] || '').trim();
+        if (setMon[codigo]) { if (actual !== eq) { r[11] = eq; nMon++; } }
+        else if (actual === eq) { r[11] = ''; nMon++; }
+      });
+      rangoM.setValues(valsM);
+    }
+
+    bitacora_(ctx, 'Definió plantilla de equipo', 'EQUIPO', '', '',
+              eq + ' → ' + Object.keys(setEmp).length + ' persona(s), ' +
+              Object.keys(setMon).length + ' montacargas');
+    return { ok: true, empleados: Object.keys(setEmp).length,
+             montacargas: Object.keys(setMon).length, cambios: nEmp + nMon };
+  });
+}
+
+/** Quiénes integran hoy un equipo */
+function getPlantillaEquipo(equipo) {
+  return seguro_('getPlantillaEquipo', function() {
+    var eq = String(equipo || '').trim();
+    var empleados = getEmpleados()
+      .filter(function(e) { return e.activo && String(e.equipo || '').trim() === eq; })
+      .map(function(e) { return e.nombre; });
+    var montacargas = getMontacargas(true)
+      .filter(function(m) { return String(m.equipo || '').trim() === eq; })
+      .map(function(m) { return m.codigo + (m.tipo ? ' · ' + m.tipo : ''); });
+    return { ok: true, empleados: empleados, montacargas: montacargas };
+  });
+}
+
 function eliminarEquipo(id, ctx) {
   return seguro_('eliminarEquipo', function() {
     var sh   = hoja_(HOJA_EQU, COL_EQU);
