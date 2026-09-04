@@ -222,6 +222,34 @@
     .foto-x          { position:absolute;top:3px;right:3px;width:24px;height:24px;min-height:0;
                        padding:0;border-radius:50%;background:rgba(0,0,0,.62);color:#fff;
                        font-size:12px;line-height:1;display:flex;align-items:center;justify-content:center; }
+    /* Expediente de la maniobra */
+    .folio-link      { font-weight:600;text-decoration:none;border-bottom:1px dotted currentColor; }
+    .det-grupo       { margin-bottom:18px; }
+    .det-grupo h2    { margin:0 0 9px; }
+    .det-grid        { display:grid;gap:9px;grid-template-columns:repeat(auto-fill,minmax(150px,1fr)); }
+    .det-item        { background:var(--bg);border:1px solid var(--line);border-radius:8px;padding:8px 10px; }
+    .det-k           { font-size:9.5px;text-transform:uppercase;letter-spacing:.05em;color:var(--muted); }
+    .det-v           { font-size:13.5px;font-weight:600;margin-top:2px;overflow-wrap:anywhere; }
+    .det-coment      { background:var(--bg);border:1px solid var(--line);border-radius:8px;
+                       padding:11px 13px;font-family:inherit;font-size:13px;white-space:pre-wrap;
+                       margin:0;overflow-wrap:anywhere; }
+
+    /* Línea de tiempo del historial */
+    .linea-tiempo    { position:relative;padding-left:22px; }
+    .linea-tiempo::before { content:"";position:absolute;left:5px;top:6px;bottom:6px;
+                       width:2px;background:var(--line);border-radius:2px; }
+    .lt-item         { position:relative;margin-bottom:14px; }
+    .lt-item:last-child { margin-bottom:0; }
+    .lt-punto        { position:absolute;left:-22px;top:4px;width:12px;height:12px;
+                       border-radius:50%;background:var(--brand);
+                       border:2px solid var(--card);box-shadow:0 0 0 2px var(--line); }
+    .lt-accion       { font-size:13.5px;font-weight:700; }
+    .lt-ent          { font-size:9.5px;font-weight:600;text-transform:uppercase;letter-spacing:.05em;
+                       color:var(--muted);background:var(--bg);border:1px solid var(--line);
+                       border-radius:999px;padding:1px 7px;margin-left:7px; }
+    .lt-detalle      { font-size:12.5px;color:var(--txt);margin-top:2px;overflow-wrap:anywhere; }
+    .lt-quien        { font-size:11px;color:var(--muted);margin-top:3px; }
+
     .adi-row         { display:flex;gap:6px;align-items:center;margin-bottom:7px;flex-wrap:wrap; }
     .adi-total       { text-align:right;font-size:13px;margin-top:8px;color:var(--muted); }
     .adi-total b     { color:var(--green);font-size:15px; }
@@ -1209,6 +1237,32 @@
   </div>
 </div>
 
+<!-- MODAL: expediente de la maniobra -->
+<div id="modal-det" class="modal-overlay hidden">
+  <div class="modal-box ancho">
+    <div class="row" style="justify-content:space-between;align-items:flex-start;margin-bottom:4px">
+      <div>
+        <h2 id="det-titulo" style="margin:0;font-size:17px;font-weight:700;text-transform:none;letter-spacing:0;color:var(--txt)">Maniobra</h2>
+        <div class="muted" id="det-sub"></div>
+      </div>
+      <button class="ghost sm" onclick="Detalle.cerrar()">Cerrar ✕</button>
+    </div>
+
+    <div class="pnl-tabs" style="margin:14px 0 12px">
+      <button class="active" data-dtab="datos"  onclick="Detalle.sub('datos')">Datos</button>
+      <button data-dtab="etapas" onclick="Detalle.sub('etapas')">Etapas</button>
+      <button data-dtab="hist"   onclick="Detalle.sub('hist')">Historial de acciones</button>
+      <button data-dtab="extra"  onclick="Detalle.sub('extra')">Adicionales y evidencias</button>
+    </div>
+
+    <div id="det-cargando" class="muted" style="padding:20px 0">Cargando expediente…</div>
+    <div id="det-datos"></div>
+    <div id="det-etapas" class="hidden"></div>
+    <div id="det-hist"   class="hidden"></div>
+    <div id="det-extra"  class="hidden"></div>
+  </div>
+</div>
+
 <!-- MODAL: evidencias durante la maniobra -->
 <div id="modal-evid" class="modal-overlay hidden">
   <div class="modal-box">
@@ -2179,7 +2233,15 @@ var Auth = {
   /** Contexto que el servidor usa para decidir qué ve y qué opera este usuario */
   ctx: function() {
     if (!STATE.usr) return null;
-    return { rol: STATE.usr.rol, departamento: STATE.usr.departamento || '' };
+    // El nombre y el correo son lo que firma la bitácora: sin ellos el
+    // servidor cae a Session.getActiveUser(), que aquí viene vacío y
+    // terminaba registrando todo como "anónimo".
+    return {
+      nombre:       STATE.usr.nombre || '',
+      email:        STATE.usr.email || '',
+      rol:          STATE.usr.rol || '',
+      departamento: STATE.usr.departamento || ''
+    };
   }
 };
 
@@ -3289,7 +3351,7 @@ var Lista = {
         vacio: 'Aún no hay maniobras registradas.',
         // Lo que se muestra en cada tarjeta cuando se ve desde el teléfono
         movil: ['fecha', 'tipo_maniobra', 'cliente', 'no_unidad', 'estado',
-                'tiempo_total_min', 'min_por_tonelada', 'revision'],
+                'tiempo_total_min', 'min_por_tonelada', 'revision', '_ver'],
         filtros: [
           { key: 'fecha',             label: 'Fecha', tipo: 'fecha' },
           { key: 'tipo_maniobra',     label: 'Tipo de maniobra' },
@@ -3302,7 +3364,15 @@ var Lista = {
           { key: 'semaforo',          label: 'Semáforo' }
         ],
         cols: [
-          { key: 'folio',               label: 'Folio' },
+          { key: 'folio',               label: 'Folio',
+            render: function(r) {
+              return '<a href="#" class="folio-link" onclick="Detalle.abrir(\'' + r.id +
+                '\');return false;" title="Ver expediente completo">' + UI.esc(r.folio) + '</a>';
+            } },
+          { key: '_ver', label: '', tipo: 'acciones',
+            render: function(r) {
+              return '<button class="ghost xs" onclick="Detalle.abrir(\'' + r.id + '\')">Ver detalle</button>';
+            } },
           { key: 'fecha',               label: 'Fecha' },
           { key: 'turno',               label: 'Turno' },
           { key: 'tipo_maniobra',       label: 'Tipo de maniobra' },
@@ -3570,6 +3640,165 @@ var Incidencias = {
       UI.toast('✓ Incidencia registrada', 'ok');
       Incidencias.cargar();
     });
+  }
+};
+
+/* ══════════════════════════════════════════════════════════════
+   DETALLE — expediente completo de una maniobra
+   Todo lo que pasó con ella y quién lo hizo, en un solo lugar.
+══════════════════════════════════════════════════════════════ */
+var Detalle = {
+  data: null,
+
+  abrir: function(id) {
+    Detalle.data = null;
+    $('det-titulo').textContent = 'Maniobra';
+    $('det-sub').textContent = '';
+    $('det-cargando').style.display = '';
+    ['datos', 'etapas', 'hist', 'extra'].forEach(function(k) { $('det-' + k).innerHTML = ''; });
+    Detalle.sub('datos');
+    UI.show('modal-det');
+
+    API.call('getDetalleManiobra', [id], function(d) {
+      Detalle.data = d;
+      $('det-cargando').style.display = 'none';
+      $('det-titulo').textContent = d.folio || 'Maniobra';
+      $('det-sub').textContent = [d.cliente, d.no_unidad ? 'unidad ' + d.no_unidad : '', d.estado]
+        .filter(Boolean).join(' · ');
+      Detalle.pintarDatos(d);
+      Detalle.pintarEtapas(d);
+      Detalle.pintarHistorial(d);
+      Detalle.pintarExtra(d);
+    }, function(msg) {
+      $('det-cargando').style.display = 'none';
+      $('det-datos').innerHTML = '<div class="aviso err">' + UI.esc(msg) + '</div>';
+    });
+  },
+
+  cerrar: function() { UI.hide('modal-det'); Detalle.data = null; },
+
+  sub: function(k) {
+    ['datos', 'etapas', 'hist', 'extra'].forEach(function(x) {
+      var el = $('det-' + x);
+      if (el) el.classList.toggle('hidden', x !== k);
+    });
+    document.querySelectorAll('.pnl-tabs button[data-dtab]').forEach(function(b) {
+      b.classList.toggle('active', b.dataset.dtab === k);
+    });
+  },
+
+  pintarDatos: function(d) {
+    if (!d.datos.length) {
+      $('det-datos').innerHTML = '<p class="muted">Sin datos capturados.</p>';
+      return;
+    }
+    // Se agrupan como vienen del servidor, conservando el orden
+    var grupos = [], indice = {};
+    d.datos.forEach(function(x) {
+      if (!indice[x.grupo]) { indice[x.grupo] = []; grupos.push(x.grupo); }
+      indice[x.grupo].push(x);
+    });
+    $('det-datos').innerHTML = grupos.map(function(g) {
+      return '<div class="det-grupo"><h2>' + UI.esc(g) + '</h2><div class="det-grid">' +
+        indice[g].map(function(x) {
+          return '<div class="det-item"><div class="det-k">' + UI.esc(x.etiqueta) + '</div>' +
+            '<div class="det-v">' + UI.esc(x.valor) + '</div></div>';
+        }).join('') + '</div></div>';
+    }).join('');
+  },
+
+  pintarEtapas: function(d) {
+    if (!d.etapas.length) {
+      $('det-etapas').innerHTML = '<p class="muted">Esta maniobra todavía no tiene etapas.</p>';
+      return;
+    }
+    $('det-etapas').innerHTML = '<div class="scroll"><table class="cli-tabla">' +
+      '<tr><th>#</th><th>Etapa</th><th>Depto.</th><th>Estado</th><th>Inicio</th><th>Fin</th>' +
+      '<th class="num">Real</th><th class="num">Estimado</th><th class="num">Retraso</th>' +
+      '<th>Quién la movió</th></tr>' +
+      d.etapas.map(function(e) {
+        var tarde = e.retraso_min > 0;
+        return '<tr>' +
+          '<td><b>' + e.num + '</b></td>' +
+          '<td>' + UI.esc(e.nombre) + '</td>' +
+          '<td>' + UI.esc(e.departamento || '—') + '</td>' +
+          '<td>' + DT.badgeEstado(e.estado) + '</td>' +
+          '<td>' + UI.esc(e.hora_inicio || '—') + '</td>' +
+          '<td>' + UI.esc(e.hora_fin || '—') + '</td>' +
+          '<td class="num">' + UI.fmtMin(e.tiempo_min) + '</td>' +
+          '<td class="num">' + UI.fmtMin(e.tiempo_est_min) + '</td>' +
+          '<td class="num"' + (tarde ? ' style="color:var(--red);font-weight:700"' : '') + '>' +
+            (tarde ? '+' + UI.fmtMin(e.retraso_min) : '—') + '</td>' +
+          '<td>' + UI.esc(e.registrado_por || '—') +
+            (e.movido ? '<div class="muted" style="font-size:10.5px">' + UI.esc(e.movido) + '</div>' : '') +
+          '</td></tr>' +
+          (e.observaciones || e.causa
+            ? '<tr><td></td><td colspan="9" class="muted" style="white-space:normal">' +
+              (e.causa ? '<b>Causa del paro:</b> ' + UI.esc(e.causa) + '. ' : '') +
+              UI.esc(e.observaciones || '') + '</td></tr>'
+            : '');
+      }).join('') + '</table></div>';
+  },
+
+  pintarHistorial: function(d) {
+    if (!d.historial.length) {
+      $('det-hist').innerHTML = '<p class="muted">Sin movimientos registrados para esta maniobra.</p>';
+      return;
+    }
+    $('det-hist').innerHTML = '<div class="linea-tiempo">' +
+      d.historial.map(function(h) {
+        return '<div class="lt-item">' +
+          '<div class="lt-punto"></div>' +
+          '<div class="lt-cuerpo">' +
+            '<div class="lt-accion">' + UI.esc(h.accion) +
+              '<span class="lt-ent">' + UI.esc(h.entidad) + '</span></div>' +
+            (h.detalle ? '<div class="lt-detalle">' + UI.esc(h.detalle) + '</div>' : '') +
+            '<div class="lt-quien">' + UI.esc(h.usuario || '—') +
+              (h.rol ? ' · ' + UI.esc(h.rol) : '') + ' · ' + UI.esc(h.fecha) + '</div>' +
+          '</div></div>';
+      }).join('') + '</div>';
+  },
+
+  pintarExtra: function(d) {
+    var html = '';
+
+    if (d.adicionales.length) {
+      var total = d.adicionales.reduce(function(s, a) { return s + Number(a.importe || 0); }, 0);
+      html += '<div class="det-grupo"><h2>Servicios adicionales</h2>' +
+        '<div class="scroll"><table class="cli-tabla">' +
+        '<tr><th>Concepto</th><th class="num">Cantidad</th><th>Unidad</th>' +
+        '<th class="num">Precio</th><th class="num">Importe</th><th>Capturó</th></tr>' +
+        d.adicionales.map(function(a) {
+          return '<tr><td>' + UI.esc(a.concepto) + '</td>' +
+            '<td class="num">' + a.cantidad + '</td>' +
+            '<td>' + UI.esc(a.unidad || '—') + '</td>' +
+            '<td class="num">$' + Number(a.precio || 0).toFixed(2) + '</td>' +
+            '<td class="num">$' + Number(a.importe || 0).toFixed(2) + '</td>' +
+            '<td>' + UI.esc(a.registrado_por || '—') + '</td></tr>';
+        }).join('') +
+        '<tr><td colspan="4" style="text-align:right"><b>Total</b></td>' +
+        '<td class="num"><b>$' + total.toFixed(2) + '</b></td><td></td></tr>' +
+        '</table></div></div>';
+    } else {
+      html += '<div class="det-grupo"><h2>Servicios adicionales</h2>' +
+        '<p class="muted">Ninguno capturado.</p></div>';
+    }
+
+    html += '<div class="det-grupo"><h2>Evidencias</h2>' +
+      (d.fotos
+        ? '<p><b>' + d.fotos + '</b> foto(s) guardadas' +
+          (d.carpeta_evidencias
+            ? ' · <a href="' + UI.esc(d.carpeta_evidencias) + '" target="_blank" rel="noopener">' +
+              'Abrir carpeta en Drive ↗</a>' : '') + '</p>'
+        : '<p class="muted">Sin evidencias fotográficas.</p>') +
+      '</div>';
+
+    if (d.comentario_supervisor) {
+      html += '<div class="det-grupo"><h2>Comentarios de supervisión</h2>' +
+        '<pre class="det-coment">' + UI.esc(d.comentario_supervisor) + '</pre></div>';
+    }
+
+    $('det-extra').innerHTML = html;
   }
 };
 

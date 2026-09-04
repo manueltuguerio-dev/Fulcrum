@@ -3662,6 +3662,152 @@ function indicadoresAvanzados(dias, opts) {
 }
 
 /** Filas marcadas REVISIÓN pendientes de que un supervisor las valide */
+/**
+ * Expediente completo de una maniobra: sus datos, sus etapas con quién las
+ * movió, todo lo que pasó según la bitácora, y sus servicios adicionales.
+ */
+function getDetalleManiobra(id) {
+  return seguro_('getDetalleManiobra', function() {
+    var sh   = hoja_(HOJA, COLUMNAS);
+    var fila = buscarFila_(sh, id);
+    if (fila < 0) return { ok: false, error: 'Maniobra no encontrada' };
+
+    var r  = sh.getRange(fila, 1, 1, COLUMNAS.length).getValues()[0];
+    var tz = Session.getScriptTimeZone();
+
+    // Se devuelve etiqueta + valor para poder pintarlo sin conocer el esquema
+    var datos = [];
+    function dato(etiqueta, valor, grupo) {
+      if (valor === '' || valor === null || valor === undefined) return;
+      datos.push({ etiqueta: etiqueta, valor: String(valor), grupo: grupo });
+    }
+
+    dato('Folio',              r[1],  'Identificación');
+    dato('Fecha',              fechaISO_(r[2]), 'Identificación');
+    dato('Turno',              r[3],  'Identificación');
+    dato('Flujo',              r[4],  'Identificación');
+    dato('Tipo de maniobra',   r[C_TIPO_MAN], 'Identificación');
+    dato('Estado',             r[20], 'Identificación');
+    dato('Etapa actual',       r[5],  'Identificación');
+
+    dato('Cliente',            r[6],  'Operación');
+    dato('No. de unidad',      r[7],  'Operación');
+    dato('Tipo de equipo',     r[8],  'Operación');
+    dato('Andén',              r[C_ANDEN],  'Operación');
+    dato('Equipo / cuadrilla', r[C_EQUIPO], 'Operación');
+    dato('Aditamento',         r[C_ADIT],   'Operación');
+    dato('Montacarguistas',    r[18], 'Operación');
+    dato('Ayudantes',          r[19], 'Operación');
+    dato('Montacargas',        r[39], 'Operación');
+
+    dato('Toneladas netas',    r[C_TON],    'Carga');
+    dato('Atados',             r[C_ATADOS], 'Carga');
+    dato('Piezas sueltas',     r[C_PZAS],   'Carga');
+    dato('Tarimas',            r[14], 'Carga');
+    dato('Material',           r[10], 'Carga');
+    dato('Presentación',       r[11], 'Carga');
+
+    dato('Hora de posicionamiento', horaTexto_(r[C_H_POS]), 'Tiempos');
+    dato('Hora de inicio',     horaTexto_(r[24]), 'Tiempos');
+    dato('Hora de fin',        horaTexto_(r[25]), 'Tiempos');
+    dato('Hora de liberación', horaTexto_(r[C_H_LIB]), 'Tiempos');
+    dato('Tiempo total (min)', r[26], 'Tiempos');
+    dato('Paro (min)',         r[27], 'Tiempos');
+    dato('Causa del paro',     r[28], 'Tiempos');
+    dato('Tiempo efectivo (min)', r[29], 'Tiempos');
+    dato('Ocupación del spot (min)', r[C_OCUPACION], 'Tiempos');
+
+    dato('Min por tonelada',   r[C_MIN_TON],       'Costeo');
+    dato('Min por atado',      r[C_MIN_ATADO],     'Costeo');
+    dato('Min por pieza',      r[C_MIN_PIEZA],     'Costeo');
+    dato('Min por tarima',     r[C_MIN_TARIMA],    'Costeo');
+    dato('Min de montacargas', r[C_MIN_MONTA],     'Costeo');
+    dato('Min-mont por ton',   r[C_MIN_MONTA_TON], 'Costeo');
+    dato('Semáforo',           r[36], 'Costeo');
+
+    dato('Daño de origen',     r[31], 'Calidad');
+    dato('Desc. daño origen',  r[32], 'Calidad');
+    dato('Daño en maniobra',   r[33], 'Calidad');
+    dato('Desc. daño maniobra',r[34], 'Calidad');
+    dato('Observaciones',      r[35], 'Calidad');
+    dato('Revisión',           r[C_REVISION],   'Calidad');
+    dato('Motivo de revisión', r[C_MOTIVO_REV], 'Calidad');
+    dato('Validado por',       r[C_VALIDADO],   'Calidad');
+    dato('Prueba controlada',  r[C_PRUEBA],     'Calidad');
+    dato('Etiqueta de prueba', r[C_ETIQ_PRUEBA],'Calidad');
+
+    dato('Registrado por',     r[37], 'Registro');
+    dato('Capturado',          fechaHora_(r[38]), 'Registro');
+    dato('Iniciado',           fechaHora_(r[21]), 'Registro');
+    dato('Finalizado',         fechaHora_(r[22]), 'Registro');
+    dato('Fotos',              r[C_FOTOS], 'Registro');
+
+    // ── Etapas, con quién las movió ──
+    var folio  = String(r[1] || '');
+    var etapas = [];
+    var shEta  = hoja_(HOJA_ETA, COL_ETA);
+    if (shEta.getLastRow() >= 2) {
+      shEta.getRange(2, 1, shEta.getLastRow() - 1, COL_ETA.length).getValues().forEach(function(e) {
+        if (String(e[1]) !== String(id)) return;
+        etapas.push({
+          num:            Number(e[3] || 0),
+          nombre:         String(e[4] || ''),
+          estado:         String(e[5] || ''),
+          hora_inicio:    horaTexto_(e[7]),
+          hora_fin:       horaTexto_(e[9]),
+          tiempo_min:     Number(e[10] || 0),
+          tiempo_est_min: Number(e[11] || 0),
+          retraso_min:    Number(e[12] || 0),
+          pausa_seg:      Number(e[14] || 0),
+          causa:          String(e[15] || ''),
+          observaciones:  String(e[16] || ''),
+          departamento:   String(e[C_ETA_DEPTO] || ''),
+          registrado_por: String(e[17] || ''),
+          movido:         fechaHora_(e[18])
+        });
+      });
+      etapas.sort(function(a, b) { return a.num - b.num; });
+    }
+
+    // ── Bitácora: por id de la maniobra o por su folio, que cubre las etapas ──
+    var historial = [];
+    var shHis = hoja_(HOJA_HIS, COL_HIS);
+    if (shHis.getLastRow() >= 2) {
+      shHis.getRange(2, 1, shHis.getLastRow() - 1, COL_HIS.length).getValues().forEach(function(h) {
+        var coincide = String(h[6]) === String(id) || (folio && String(h[7]) === folio);
+        if (!coincide) return;
+        var ms = toMs_(h[1]);
+        historial.push({
+          fecha:   ms ? Utilities.formatDate(new Date(ms), tz, 'dd/MM/yyyy HH:mm:ss') : '',
+          orden:   ms || 0,
+          usuario: String(h[2] || ''),
+          rol:     String(h[3] || ''),
+          accion:  String(h[4] || ''),
+          entidad: String(h[5] || ''),
+          detalle: String(h[8] || '')
+        });
+      });
+      historial.sort(function(a, b) { return b.orden - a.orden; });
+    }
+
+    var adi = getAdicionalesManiobra(id);
+
+    return {
+      ok: true,
+      id: String(id), folio: folio,
+      cliente: String(r[6] || ''), no_unidad: String(r[7] || ''),
+      estado: String(r[20] || ''),
+      carpeta_evidencias: String(r[C_CARPETA] || ''),
+      fotos: Number(r[C_FOTOS] || 0),
+      comentario_supervisor: String(r[C_COMENT_SUP] || ''),
+      datos: datos,
+      etapas: etapas,
+      historial: historial,
+      adicionales: (adi && adi.filas) || []
+    };
+  });
+}
+
 function getRegistrosEnRevision() {
   return seguro_('getRegistrosEnRevision', function() {
     var sh = hoja_(HOJA, COLUMNAS);
