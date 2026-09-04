@@ -2864,6 +2864,10 @@ function getManiobrasEnCurso(ctx) {
         // Cuántas evidencias pide este cliente para poder cerrar el flujo
         min_fotos:            getMinimoFotos(String(r[6] || '')),
         completado_seg:  completadoSeg,
+        // Etapas que tiene el flujo completo, no solo las ya creadas: las
+        // etapas nacen una a una, así que contar las existentes haría creer
+        // que la primera siempre es la última.
+        total_etapas:    _secuenciaFlujo_(String(r[4] || ''), String(r[6] || '')).length,
         etapa_actual:    etapaActual,
         // Puede operar el cronómetro solo si la etapa activa es de su área
         puede_operar:    !etapaActual || etapaActual.visible !== false,

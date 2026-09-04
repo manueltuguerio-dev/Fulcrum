@@ -2929,7 +2929,8 @@ var Curso = {
         '<div class="man-total-val" data-total="' + m.id + '">' + UI.fmt(Curso.totalSeg(m)) + '</div>' +
       '</div>' +
       (eta ? '<div style="font-size:11px;color:var(--muted);text-align:right">Etapa ' + eta.num +
-             ' de ' + (m.etapas || []).length + '<br>' + UI.esc(eta.nombre) + '</div>' : '') +
+             ' de ' + (m.total_etapas || (m.etapas || []).length) +
+             '<br>' + UI.esc(eta.nombre) + '</div>' : '') +
       '</div>' +
 
       Curso.prodHTML(m) +
@@ -3058,7 +3059,9 @@ var Curso = {
     STATE.curso.forEach(function(m) {
       if (!m.etapa_actual || m.etapa_actual.id !== idEtapa) return;
       nombre = m.etapa_actual.nombre;
-      esUltima = m.etapa_actual.num >= (m.etapas || []).length;
+      // Las etapas se crean sobre la marcha: hay que comparar contra el
+      // total del flujo, no contra las que ya existen
+      esUltima = m.etapa_actual.num >= (m.total_etapas || (m.etapas || []).length);
       libPrevia = m.hora_liberacion || '';
       fotosPrevias = Number(m.fotos || 0);
       cliente = m.cliente || '';
