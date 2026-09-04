@@ -838,6 +838,11 @@
             Se copian las etapas actuales como punto de partida.
           </span>
         </div>
+        <div class="aviso" style="margin-bottom:10px">
+          <b>Fotos que exige</b>: número de evidencias necesarias para cerrar esa etapa.
+          Déjalo en <b>0</b> si esa etapa no pide fotos. Así decides tú en qué punto
+          del flujo se documenta, y puede ser distinto para cada cliente.
+        </div>
         <div id="adm-flu-sin-clientes" class="aviso warn" style="display:none">
           No hay clientes dados de alta. Regístralos en <b>Admin › Catálogos › CLIENTES</b>
           para poder mapear secuencias por cliente.
@@ -847,6 +852,8 @@
           <input id="adm-flu-etapa" placeholder="Nombre de la etapa…" style="flex:2;min-width:150px">
           <select id="adm-flu-depto" style="flex:1;min-width:130px"></select>
           <input id="adm-flu-min" type="number" min="0" placeholder="Min" style="flex:0 0 90px">
+          <input id="adm-flu-fotos" type="number" min="0" placeholder="Fotos" style="flex:0 0 90px"
+                 title="Cuántas fotos exige esta etapa para poder cerrarse. 0 = ninguna.">
           <button onclick="Admin.agregarEtapaFlujo()">Agregar etapa</button>
         </div>
         <div class="row" style="margin-top:14px;justify-content:flex-end">
@@ -1295,6 +1302,7 @@ var STATE = {
   minFotos:    5,
   relojId:     null,
   evidId:      '',
+  modalExigeFotos: 0,
   autoSync:    false,
   autoSyncId:  null,
   tickId:      null,
@@ -3055,7 +3063,7 @@ var Curso = {
   abrirModal: function(idEtapa) {
     STATE.modalEtapa = idEtapa;
     var nombre = '', esUltima = false, libPrevia = '', fotosPrevias = 0;
-    var minCliente = STATE.minFotos, cliente = '';
+    var exigeFotos = 0, cliente = '';
     STATE.curso.forEach(function(m) {
       if (!m.etapa_actual || m.etapa_actual.id !== idEtapa) return;
       nombre = m.etapa_actual.nombre;
@@ -3065,19 +3073,20 @@ var Curso = {
       libPrevia = m.hora_liberacion || '';
       fotosPrevias = Number(m.fotos || 0);
       cliente = m.cliente || '';
-      if (m.min_fotos !== undefined && m.min_fotos !== null) minCliente = Number(m.min_fotos);
+      // Cada etapa define si exige evidencia; 0 significa que no pide
+      exigeFotos = Number(m.etapa_actual.fotos_req || 0);
     });
     STATE.modalUltima = esUltima;
-    // El mínimo lo pide el cliente y se exige una sola vez: al cerrar el flujo
-    Fotos.usar('fotos-tiras', 'fotos-estado', esUltima);
+    STATE.modalExigeFotos = exigeFotos;
+    // El bloque solo aparece si esta etapa en concreto pide evidencia
+    Fotos.usar('fotos-tiras', 'fotos-estado', exigeFotos > 0);
     Fotos.limpiar();
     Fotos.previas = fotosPrevias;
-    Fotos.minimo  = esUltima ? minCliente : 0;
-    $('card-fotos').style.display = esUltima ? '' : 'none';
-    $('fotos-req').style.display  = esUltima ? '' : 'none';
-    $('fotos-hint').textContent = esUltima
-      ? 'Última etapa: aquí se cierra el flujo. ' +
-        (cliente ? cliente + ' pide ' : 'Se piden ') + minCliente + ' foto(s)' +
+    Fotos.minimo  = exigeFotos;
+    $('card-fotos').style.display = exigeFotos > 0 ? '' : 'none';
+    $('fotos-req').style.display  = exigeFotos > 0 ? '' : 'none';
+    $('fotos-hint').textContent = exigeFotos > 0
+      ? 'Esta etapa pide ' + exigeFotos + ' foto(s)' +
         (fotosPrevias ? ' y la maniobra ya tiene ' + fotosPrevias + '.' : '.') +
         ' Se guardan en Drive, en la carpeta de la unidad.'
       : '';
@@ -3115,10 +3124,10 @@ var Curso = {
       return;
     }
     // La evidencia se exige justo al cerrar la maniobra
-    if (STATE.modalUltima && !Fotos.completas()) {
+    if (STATE.modalExigeFotos > 0 && !Fotos.completas()) {
       var faltan = Fotos.minimo - (Fotos.previas + Fotos.lista.length);
-      UI.aviso('modal-aviso', 'Faltan ' + faltan + ' foto(s) para cerrar la maniobra. ' +
-        'Este cliente pide ' + Fotos.minimo + ' en total.', 'err');
+      UI.aviso('modal-aviso', 'Faltan ' + faltan + ' foto(s) para cerrar esta etapa. ' +
+        'Pide ' + Fotos.minimo + ' en total.', 'err');
       $('card-fotos').scrollIntoView({ behavior: 'smooth', block: 'center' });
       return;
     }
@@ -4396,7 +4405,8 @@ var Admin = {
     Admin.flujoActivo  = p[0];
     Admin.flujoCliente = p[1] || '';
     Admin.flujoEtapas = (Admin.flujos[clave] || []).map(function(e) {
-      return { etapa: e.etapa, departamento: e.departamento, tiempo_est: e.tiempo_est };
+      return { etapa: e.etapa, departamento: e.departamento, tiempo_est: e.tiempo_est,
+               fotos_req: e.fotos_req || 0 };
     });
     Admin._abrirEditorFlujo();
   },
@@ -4413,7 +4423,8 @@ var Admin = {
     var existente = Admin.flujos[nombre];
     Admin.flujoEtapas = existente
       ? existente.map(function(e) {
-          return { etapa: e.etapa, departamento: e.departamento, tiempo_est: e.tiempo_est };
+          return { etapa: e.etapa, departamento: e.departamento, tiempo_est: e.tiempo_est,
+               fotos_req: e.fotos_req || 0 };
         })
       : [];
     if (existente) UI.toast('El flujo ' + nombre + ' ya existía: se abrió con sus ' +
@@ -4435,7 +4446,8 @@ var Admin = {
     var origen = propia || Admin.flujos[Admin.flujoActivo] || [];
 
     Admin.flujoEtapas = origen.map(function(e) {
-      return { etapa: e.etapa, departamento: e.departamento, tiempo_est: e.tiempo_est };
+      return { etapa: e.etapa, departamento: e.departamento, tiempo_est: e.tiempo_est,
+               fotos_req: e.fotos_req || 0 };
     });
     Admin._tituloFlujo();
     Admin.renderFlujo();
@@ -4484,7 +4496,8 @@ var Admin = {
 
   renderFlujo: function() {
     $('adm-tabla-flu').innerHTML =
-      '<tr><th>#</th><th>Etapa</th><th>Departamento responsable</th><th>Min. estimados</th><th>Orden</th><th></th></tr>' +
+      '<tr><th>#</th><th>Etapa</th><th>Departamento responsable</th><th>Min. estimados</th>' +
+      '<th>Fotos que exige</th><th>Orden</th><th></th></tr>' +
       (Admin.flujoEtapas.length
         ? Admin.flujoEtapas.map(function(e, i) {
             return '<tr>' +
@@ -4495,6 +4508,9 @@ var Admin = {
                 Admin.optsDepto(e.departamento) + '</select></td>' +
               '<td><input type="number" min="0" value="' + (e.tiempo_est || 0) + '" style="width:90px" ' +
                 'oninput="Admin.flujoEtapas[' + i + '].tiempo_est=Number(this.value)"></td>' +
+              '<td><input type="number" min="0" value="' + (e.fotos_req || 0) + '" style="width:90px" ' +
+                'title="0 = no pide fotos en esta etapa" ' +
+                'oninput="Admin.flujoEtapas[' + i + '].fotos_req=Number(this.value)"></td>' +
               '<td style="white-space:nowrap">' +
                 '<button class="ghost xs" ' + (i === 0 ? 'disabled' : '') +
                   ' onclick="Admin.moverEtapa(' + i + ',-1)">↑</button> ' +
@@ -4503,7 +4519,7 @@ var Admin = {
               '<td><button class="danger xs" onclick="Admin.flujoEtapas.splice(' + i + ',1);Admin.renderFlujo()">✕</button></td>' +
             '</tr>';
           }).join('')
-        : '<tr><td colspan="6" class="dt-empty">Sin etapas. Agrega la primera abajo.</td></tr>');
+        : '<tr><td colspan="7" class="dt-empty">Sin etapas. Agrega la primera abajo.</td></tr>');
   },
 
   moverEtapa: function(i, d) {
@@ -4521,10 +4537,11 @@ var Admin = {
     Admin.flujoEtapas.push({
       etapa: e,
       departamento: $('adm-flu-depto').value,
-      tiempo_est: Number($('adm-flu-min').value || 0)
+      tiempo_est: Number($('adm-flu-min').value || 0),
+      fotos_req: Number($('adm-flu-fotos').value || 0)
     });
     Admin.renderFlujo();
-    $('adm-flu-etapa').value = ''; $('adm-flu-min').value = '';
+    $('adm-flu-etapa').value = ''; $('adm-flu-min').value = ''; $('adm-flu-fotos').value = '';
     $('adm-flu-etapa').focus();
   },
 

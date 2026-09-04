@@ -215,9 +215,9 @@ var COL_ETA = [
   'Inicio_dt', 'Hora_inicio', 'Fin_dt', 'Hora_fin',
   'Tiempo_min', 'Tiempo_estimado_min', 'Retraso_min', 'No_aplica',
   'Pausa_acum_seg', 'Causa_demora', 'Observaciones', 'Registrado_por', 'Timestamp',
-  'Departamento'
+  'Departamento', 'Fotos_requeridas'
 ];
-var C_ETA_DEPTO = 19;
+var C_ETA_DEPTO = 19, C_ETA_FOTOS = 20;
 
 var COL_EMP = ['ID', 'Nombre', 'Posición', 'Montacargas', 'Activo', 'Equipo'];
 var COL_USR = ['ID', 'Email', 'Nombre', 'PIN', 'Rol', 'Activo', 'Timestamp', 'Departamento', 'Equipo'];
@@ -225,7 +225,8 @@ var COL_DEP = ['ID', 'Nombre', 'Descripción', 'Activo'];
 var COL_EQU = ['ID', 'Nombre', 'Descripción', 'Turno', 'Activo'];
 var COL_CLI = ['Cliente', 'Mín. fotos para cerrar', 'Notas'];
 // Cliente vacío = secuencia genérica del flujo; con cliente = secuencia a la medida
-var COL_FLU = ['Flujo', 'Orden', 'Etapa', 'Departamento', 'Tiempo estimado (min)', 'Activo', 'Cliente'];
+var COL_FLU = ['Flujo', 'Orden', 'Etapa', 'Departamento', 'Tiempo estimado (min)', 'Activo',
+               'Cliente', 'Fotos requeridas'];
 var COL_HIS = ['ID', 'Fecha', 'Usuario', 'Rol', 'Acción', 'Entidad', 'ID entidad', 'Folio', 'Detalle'];
 var COL_ADI = ['ID', 'Cliente', 'Concepto', 'Unidad', 'Precio', 'Activo'];
 var COL_ADM = ['ID', 'ID_maniobra', 'Folio', 'Cliente', 'Concepto', 'Cantidad', 'Unidad',
@@ -1326,7 +1327,7 @@ function _sembrarFlujos_(sh) {
   var filas = [];
   Object.keys(ETAPAS_FLUJO).forEach(function(flujo) {
     ETAPAS_FLUJO[flujo].forEach(function(etapa, i) {
-      filas.push([flujo, i + 1, etapa, '', Number(tiempos[etapa] || 0), true, '']);
+      filas.push([flujo, i + 1, etapa, '', Number(tiempos[etapa] || 0), true, '', 0]);
     });
   });
   if (filas.length) {
@@ -1363,6 +1364,7 @@ function getFlujosEtapas() {
       etapa:        etapa,
       departamento: String(r[3] || ''),
       tiempo_est:   Number(r[4] || 0),
+      fotos_req:    Number(r[7] || 0),
       flujo:        flujo,
       cliente:      String(r[6] || '')
     });
@@ -1388,7 +1390,7 @@ function guardarFlujoEtapas(flujo, items, cliente, ctx) {
       .map(function(i, idx) {
         return [nombre, idx + 1, String(i.etapa).trim(),
                 String(i.departamento || ''), Number(i.tiempo_est || 0),
-                i.activo !== false, cli];
+                i.activo !== false, cli, Number(i.fotos_req || 0)];
       });
     if (!limpios.length) return { ok: false, error: 'El flujo necesita al menos una etapa' };
 
@@ -2162,7 +2164,7 @@ function _secuenciaFlujo_(flujo, cliente) {
   if (generica && generica.length) return generica;
 
   return (ETAPAS_FLUJO[f] || []).map(function(e, i) {
-    return { orden: i + 1, etapa: e, departamento: '', tiempo_est: 0 };
+    return { orden: i + 1, etapa: e, departamento: '', tiempo_est: 0, fotos_req: 0 };
   });
 }
 
@@ -2191,7 +2193,7 @@ function _sellarEtapa_(shEta, fila, ctx) {
   } catch (e) { /* el sello nunca bloquea la operación */ }
 }
 
-function _crearEtapa(shEta, idManiobra, folio, numEtapa, nombreEtapa, tiempoEst, departamento, ctx) {
+function _crearEtapa(shEta, idManiobra, folio, numEtapa, nombreEtapa, tiempoEst, departamento, ctx, fotosReq) {
   var ahora = new Date();
   var id    = uuid_();
   shEta.appendRow([
@@ -2199,7 +2201,7 @@ function _crearEtapa(shEta, idManiobra, folio, numEtapa, nombreEtapa, tiempoEst,
     ahora, hhmm_(ahora), '', '',
     '', tiempoEst || 0, '', 'NO',
     0, '', '', (ctx && (ctx.nombre || ctx.email)) || usuario_(), ahora,
-    departamento || ''
+    departamento || '', Number(fotosReq || 0)
   ]);
   var fila = shEta.getLastRow();
   shEta.getRange(fila, 7).setNumberFormat('yyyy-mm-dd hh:mm:ss').setValue(ahora);
@@ -2283,7 +2285,7 @@ function iniciarManiobra(data, ctx) {
     ]);
 
     var tiempoEst = primera.tiempo_est || tiempos[primera.etapa] || 0;
-    var idEtapa   = _crearEtapa(shEta, id, folio, 1, primera.etapa, tiempoEst, primera.departamento, ctx);
+    var idEtapa   = _crearEtapa(shEta, id, folio, 1, primera.etapa, tiempoEst, primera.departamento, ctx, primera.fotos_req);
 
     // El montacargas queda ocupado mientras la maniobra esté activa
     _setEstadoPorCodigo_(_codigosMontacargas_(monta), 'en_uso');
@@ -2422,7 +2424,7 @@ function iniciarDesdeBorrador(id, ctx) {
     var ahora   = new Date();
     var shEta   = hoja_(HOJA_ETA, COL_ETA);
     var tiempoEst = primera.tiempo_est || tiempos[primera.etapa] || 0;
-    var idEtapa = _crearEtapa(shEta, id, folio, 1, primera.etapa, tiempoEst, primera.departamento, ctx);
+    var idEtapa = _crearEtapa(shEta, id, folio, 1, primera.etapa, tiempoEst, primera.departamento, ctx, primera.fotos_req);
 
     row[5]  = primera.etapa;
     row[20] = 'en_curso';
@@ -2801,6 +2803,7 @@ function getManiobrasEnCurso(ctx) {
           pausa_desde_ms:      pausaDesde,
           elapsed_seg:         elapsed,
           departamento:        String(r[C_ETA_DEPTO] || ''),
+          fotos_req:           Number(r[C_ETA_FOTOS] || 0),
           // Rastro de quién movió la etapa y cuándo
           registrado_por:      String(r[17] || ''),
           movido_ms:           toMs_(r[18]),
@@ -2941,19 +2944,18 @@ function finalizarEtapa(idEtapa, extras, ctx) {
 
     // La evidencia se exige al cerrar la maniobra, no al abrirla:
     // es cuando ya se puede fotografiar el resultado real del trabajo.
-    var cliManiobra = _clienteDe_(idManiobra);
-    var esUltima = numEtapa >= _secuenciaFlujo_(_flujoDe_(idManiobra), cliManiobra).length;
-    var fotos    = [].concat(extras.fotos || []);
-    if (esUltima) {
-      // El mínimo lo define el cliente; se pide una sola vez, al cerrar el flujo
-      var minFotos = getMinimoFotos(cliManiobra);
-      var yaTiene  = _fotosDe_(idManiobra);
-      if (minFotos > 0 && (yaTiene + fotos.length) < minFotos) {
-        return { ok: false, requiere_fotos: true, min_fotos: minFotos,
+    var fotos = [].concat(extras.fotos || []);
+
+    // Cada etapa decide si exige evidencia y cuánta. Se configura por flujo
+    // y por cliente en Admin › Flujos y etapas.
+    var fotosReq = Number(rowData[C_ETA_FOTOS] || 0);
+    if (fotosReq > 0) {
+      var yaTiene = _fotosDe_(idManiobra);
+      if ((yaTiene + fotos.length) < fotosReq) {
+        return { ok: false, requiere_fotos: true, min_fotos: fotosReq,
           fotos_actuales: yaTiene,
-          error: 'Antes de cerrar la maniobra agrega la evidencia fotográfica. ' +
-                 (cliManiobra ? cliManiobra + ' pide ' : 'Se piden ') + minFotos +
-                 ' y llevas ' + (yaTiene + fotos.length) + '.' };
+          error: 'La etapa "' + String(rowData[4] || '') + '" pide ' + fotosReq +
+                 ' foto(s) para poder cerrarse. Llevas ' + (yaTiene + fotos.length) + '.' };
       }
     }
 
@@ -3096,7 +3098,7 @@ function _avanzarOManiobra(idManiobra, folio, numActual, extras) {
     var sig       = secuencia[sigNum - 1];
     var tiempos   = getTimeposEstimados();
     var tiempoEst = sig.tiempo_est || tiempos[sig.etapa] || 0;
-    var idSig     = _crearEtapa(shEta, idManiobra, folio, sigNum, sig.etapa, tiempoEst, sig.departamento, extras && extras._ctx);
+    var idSig     = _crearEtapa(shEta, idManiobra, folio, sigNum, sig.etapa, tiempoEst, sig.departamento, extras && extras._ctx, sig.fotos_req);
     shM.getRange(filaM,  6).setValue(sig.etapa);
     shM.getRange(filaM, 21).setValue('en_curso');
     return { ok: true, maniobra_finalizada: false,
