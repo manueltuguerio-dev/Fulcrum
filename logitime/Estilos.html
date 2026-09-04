@@ -1,0 +1,329 @@
+<style>
+/* ── Variables de tema ───────────────────────────────────────── */
+:root {
+  --bg:    #0b1526;
+  --card:  #122036;
+  --line:  #1e2f4a;
+  --txt:   #e8eef7;
+  --muted: #93a4bd;
+  --brand: #2f6df6;
+  --amber: #f5a524;
+  --green: #1fa971;
+  --red:   #e5484d;
+  --shadow: 0 2px 10px rgba(0,0,0,.4);
+
+  --badge-verde-bg: rgba(31,169,113,.18); --badge-verde-txt: #4ade9b;
+  --badge-ambar-bg: rgba(245,165,36,.18); --badge-ambar-txt: #f5a524;
+  --badge-rojo-bg:  rgba(229,72,77,.18);  --badge-rojo-txt:  #ff7b7f;
+  --badge-curso-bg: rgba(47,109,246,.15); --badge-curso-txt: #7aabff;
+  --badge-pausa-bg: rgba(245,165,36,.15); --badge-pausa-txt: #f5a524;
+
+  --step-done-bg:   rgba(31,169,113,.15); --step-done-txt:   #27c982; --step-done-brd: rgba(31,169,113,.3);
+  --step-skip-bg:   rgba(100,100,100,.1);
+  --input-bg: #0d1a2d;
+  --row-hover: rgba(47,109,246,.07);
+  --row-sel:   rgba(47,109,246,.14);
+}
+
+:root[data-theme="light"] {
+  --bg:    #f0f4fb;
+  --card:  #ffffff;
+  --line:  #dce5f0;
+  --txt:   #1a2332;
+  --muted: #5a7090;
+  --brand: #1d5ce8;
+  --amber: #b86800;
+  --green: #14855a;
+  --red:   #c82020;
+  --shadow: 0 2px 8px rgba(0,0,0,.1);
+
+  --badge-verde-bg: rgba(20,133,90,.1);  --badge-verde-txt: #0d6b48;
+  --badge-ambar-bg: rgba(184,104,0,.1);  --badge-ambar-txt: #8b5000;
+  --badge-rojo-bg:  rgba(200,32,32,.1);  --badge-rojo-txt:  #960000;
+  --badge-curso-bg: rgba(29,92,232,.1);  --badge-curso-txt: #1340a0;
+  --badge-pausa-bg: rgba(184,104,0,.1);  --badge-pausa-txt: #8b5000;
+
+  --step-done-bg:  rgba(20,133,90,.1);  --step-done-txt:  #0d6b48; --step-done-brd: rgba(20,133,90,.25);
+  --step-skip-bg:  rgba(100,100,100,.08);
+  --input-bg: #f8fafb;
+  --row-hover: rgba(29,92,232,.05);
+  --row-sel:   rgba(29,92,232,.11);
+}
+
+/* ── Reset base ──────────────────────────────────────────────── */
+*, *::before, *::after { box-sizing: border-box; }
+body {
+  margin: 0;
+  background: var(--bg);
+  color: var(--txt);
+  font-family: system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
+  font-size: 14px;
+  transition: background .2s, color .2s;
+}
+
+/* ── Estructura ──────────────────────────────────────────────── */
+.wrap    { max-width: 1240px; margin: 0 auto; padding: 20px; }
+header   { display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap; margin-bottom: 18px; }
+h1       { font-size: 20px; margin: 0; }
+h2       { font-size: 12px; margin: 0 0 10px; color: var(--muted); text-transform: uppercase; letter-spacing: .08em; }
+.card    { background: var(--card); border: 1px solid var(--line); border-radius: 12px; padding: 16px; margin-bottom: 16px; box-shadow: var(--shadow); }
+.grid    { display: grid; gap: 12px; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); }
+.row     { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; }
+.scroll  { overflow-x: auto; }
+.hidden  { display: none !important; }
+a        { color: var(--brand); }
+.spacer  { flex: 1; }
+
+/* ── Formularios ─────────────────────────────────────────────── */
+label  { display: block; font-size: 12px; color: var(--muted); margin-bottom: 4px; }
+input, select, textarea {
+  width: 100%; padding: 9px 10px; border-radius: 8px;
+  border: 1px solid var(--line); background: var(--input-bg);
+  color: var(--txt); font-size: 14px; transition: border .15s;
+}
+input:focus, select:focus, textarea:focus { outline: none; border-color: var(--brand); }
+select[multiple] { height: 110px; }
+textarea         { min-height: 70px; resize: vertical; }
+input[type=checkbox] { width: auto; }
+.req-star { color: var(--red); font-weight: 700; }
+.campo-invalido input, .campo-invalido select, .campo-invalido textarea { border-color: var(--red); }
+
+/* ── Botones ─────────────────────────────────────────────────── */
+button {
+  border: 0; border-radius: 8px; padding: 10px 14px;
+  font-size: 14px; font-weight: 600; cursor: pointer;
+  background: var(--brand); color: #fff;
+  transition: opacity .15s, transform .1s;
+}
+button:hover:not(:disabled) { opacity: .88; }
+button:active:not(:disabled) { transform: scale(.97); }
+button.ghost   { background: transparent; border: 1px solid var(--line); color: var(--txt); }
+button.warn    { background: var(--amber); color: #fff; }
+button.danger  { background: var(--red); color: #fff; }
+button.success { background: var(--green); color: #fff; }
+button.sm      { padding: 6px 10px; font-size: 12px; }
+button.xs      { padding: 3px 8px; font-size: 11px; }
+button:disabled{ opacity: .42; cursor: not-allowed; }
+
+/* ── Tabs ────────────────────────────────────────────────────── */
+.tabs         { display: flex; gap: 6px; margin-bottom: 14px; flex-wrap: wrap; }
+.tabs button  { background: transparent; border: 1px solid var(--line); color: var(--muted); }
+.tabs button.active { background: var(--brand); color: #fff; border-color: var(--brand); }
+
+/* ── Tabla ───────────────────────────────────────────────────── */
+table  { width: 100%; border-collapse: collapse; font-size: 13px; }
+th, td { text-align: left; padding: 8px; border-bottom: 1px solid var(--line); white-space: nowrap; }
+th     { color: var(--muted); font-weight: 600; font-size: 11px; text-transform: uppercase; letter-spacing: .04em; }
+tr:last-child td { border-bottom: none; }
+
+/* ── Tabla dinámica (DataTable) ──────────────────────────────── */
+.dt-toolbar    { display: flex; gap: 8px; flex-wrap: wrap; align-items: flex-end; margin-bottom: 12px; }
+.dt-toolbar > div { display: flex; flex-direction: column; gap: 4px; min-width: 130px; }
+.dt-search     { min-width: 200px; flex: 1; }
+.dt-chips      { display: flex; gap: 6px; flex-wrap: wrap; margin-bottom: 10px; }
+.dt-chip       { display: inline-flex; align-items: center; gap: 6px; font-size: 11px; font-weight: 600;
+                 background: var(--row-sel); color: var(--brand); border-radius: 999px; padding: 3px 6px 3px 10px; }
+.dt-chip button{ background: none; border: 0; color: inherit; padding: 0 4px; font-size: 13px; line-height: 1; cursor: pointer; }
+.dt-wrap       { overflow-x: auto; border: 1px solid var(--line); border-radius: 10px; }
+.dt-table      { width: 100%; border-collapse: collapse; font-size: 13px; }
+.dt-table th   { position: sticky; top: 0; z-index: 2; background: var(--card);
+                 border-bottom: 1px solid var(--line); cursor: pointer; user-select: none; }
+.dt-table th.nosort { cursor: default; }
+.dt-table th .sort-ind { opacity: .45; font-size: 9px; margin-left: 3px; }
+.dt-table th.sorted    { color: var(--brand); }
+.dt-table th.sorted .sort-ind { opacity: 1; }
+.dt-table tbody tr             { transition: background .1s; }
+.dt-table tbody tr:hover       { background: var(--row-hover); }
+.dt-table tbody tr.sel         { background: var(--row-sel); }
+.dt-table tbody tr.sel:hover   { background: var(--row-sel); }
+.dt-table td.num, .dt-table th.num { text-align: right; font-variant-numeric: tabular-nums; }
+.dt-check      { width: 34px; text-align: center; padding-left: 10px; padding-right: 4px; }
+.dt-check input{ cursor: pointer; }
+.dt-empty      { text-align: center; color: var(--muted); padding: 28px 16px; font-size: 13px; }
+.dt-foot       { display: flex; gap: 10px; align-items: center; flex-wrap: wrap;
+                 margin-top: 10px; font-size: 12px; color: var(--muted); }
+.dt-selbar     { display: flex; gap: 8px; align-items: center; flex-wrap: wrap;
+                 background: var(--row-sel); border: 1px solid var(--brand); border-radius: 10px;
+                 padding: 9px 12px; margin-bottom: 10px; }
+.dt-selbar b   { color: var(--brand); }
+.dt-wrap.scroll-y { max-height: 62vh; overflow-y: auto; }
+
+/* ── Badges ──────────────────────────────────────────────────── */
+.badge         { display: inline-block; padding: 2px 9px; border-radius: 999px; font-size: 11px; font-weight: 700; }
+.VERDE         { background: var(--badge-verde-bg); color: var(--badge-verde-txt); }
+.AMBAR, .ÁMBAR { background: var(--badge-ambar-bg); color: var(--badge-ambar-txt); }
+.ROJO          { background: var(--badge-rojo-bg);  color: var(--badge-rojo-txt);  }
+.EN_CURSO      { background: var(--badge-curso-bg); color: var(--badge-curso-txt); }
+.EN_PAUSA      { background: var(--badge-pausa-bg); color: var(--badge-pausa-txt); }
+.FINALIZADA    { background: var(--step-done-bg);   color: var(--step-done-txt);   }
+.NEUTRO        { background: var(--step-skip-bg);   color: var(--muted);           }
+
+/* ── KPI / cronómetro ────────────────────────────────────────── */
+.kpi           { font-size: 28px; font-weight: 700; margin-top: 6px; }
+.crono         { font-variant-numeric: tabular-nums; font-size: 30px; font-weight: 700; color: var(--amber); line-height: 1; }
+.crono-est     { font-size: 12px; margin-top: 4px; color: var(--muted); }
+.crono-est.retraso { color: var(--red); font-weight: 700; }
+.muted         { color: var(--muted); font-size: 12px; }
+.mono          { font-variant-numeric: tabular-nums; }
+
+/* ── Progreso de etapas ──────────────────────────────────────── */
+.progress-steps { display: flex; gap: 4px; flex-wrap: wrap; align-items: center; }
+.step           { padding: 3px 10px; border-radius: 999px; font-size: 11px; font-weight: 600; border: 1px solid transparent; }
+.step.done      { background: var(--step-done-bg); color: var(--step-done-txt); border-color: var(--step-done-brd); }
+.step.active    { background: var(--brand); color: #fff; }
+.step.skip      { background: var(--step-skip-bg); color: var(--muted); text-decoration: line-through; }
+.step.pending   { background: transparent; color: var(--muted); border-color: var(--line); }
+.step-arrow     { color: var(--muted); font-size: 10px; }
+
+/* ── Modal ───────────────────────────────────────────────────── */
+.modal-overlay {
+  position: fixed; inset: 0; background: rgba(0,0,0,.6);
+  display: flex; align-items: center; justify-content: center; z-index: 100;
+}
+.modal-box {
+  background: var(--card); border: 1px solid var(--line); border-radius: 14px;
+  padding: 22px; max-width: 560px; width: 92%; max-height: 90vh;
+  overflow-y: auto; box-shadow: var(--shadow);
+}
+.modal-box.ancho { max-width: 860px; }
+
+/* ── Toast ───────────────────────────────────────────────────── */
+.toast {
+  position: fixed; bottom: 24px; left: 50%; transform: translateX(-50%);
+  background: var(--card); border: 1px solid var(--line); border-radius: 10px;
+  padding: 11px 20px; box-shadow: var(--shadow); font-size: 14px; z-index: 200;
+  opacity: 0; transition: opacity .25s; pointer-events: none; max-width: 90vw;
+  text-align: center;
+}
+.toast.show  { opacity: 1; }
+.toast.ok    { border-color: var(--green); color: var(--green); }
+.toast.err   { border-color: var(--red);   color: var(--red);   }
+
+/* ── Avisos ──────────────────────────────────────────────────── */
+.aviso        { border-radius: 10px; padding: 11px 14px; font-size: 13px; margin-bottom: 12px;
+                border: 1px solid var(--line); background: var(--input-bg); }
+.aviso.err    { border-color: var(--red);   color: var(--red);   background: var(--badge-rojo-bg); }
+.aviso.warn   { border-color: var(--amber); color: var(--badge-ambar-txt); background: var(--badge-ambar-bg); }
+.aviso.ok     { border-color: var(--green); color: var(--badge-verde-txt); background: var(--badge-verde-bg); }
+
+/* ── Tema toggle ─────────────────────────────────────────────── */
+#theme-btn { font-size: 18px; padding: 6px 10px; line-height: 1; }
+
+/* ── Indicador de estado en vivo ─────────────────────────────── */
+.live-dot   { width: 7px; height: 7px; border-radius: 50%; background: var(--green);
+              animation: livePulse 1.6s ease-in-out infinite; flex-shrink: 0; display: inline-block; }
+@keyframes livePulse { 0%,100% { opacity: 1; } 50% { opacity: .25; } }
+.spinner    { width: 9px; height: 9px; border-radius: 50%; border: 2px solid var(--brand);
+              border-top-color: transparent; animation: spin 1.1s linear infinite;
+              flex-shrink: 0; display: inline-block; }
+@keyframes spin { to { transform: rotate(360deg); } }
+
+/* ── Selector de chips ───────────────────────────────────────────
+   Sustituye a <select multiple>, que en teléfono obliga a un
+   gesto de multi-toque que casi nadie descubre.
+──────────────────────────────────────────────────────────────── */
+.chips-wrap   { border: 1px solid var(--line); border-radius: 9px; background: var(--input-bg); padding: 7px; }
+.chips-filtro { border: 0; background: transparent; padding: 3px 4px 7px; font-size: 13px;
+                border-bottom: 1px solid var(--line); border-radius: 0; margin-bottom: 7px; }
+.chips-filtro:focus { border-color: var(--brand); }
+.chips        { display: flex; flex-wrap: wrap; gap: 6px; max-height: 148px; overflow-y: auto;
+                -webkit-overflow-scrolling: touch; }
+.chip         { border: 1px solid var(--line); background: var(--card); color: var(--txt);
+                border-radius: 999px; padding: 7px 13px; font-size: 13px; font-weight: 500;
+                cursor: pointer; line-height: 1.2; transition: background .12s, border-color .12s; }
+.chip:hover   { border-color: var(--brand); }
+.chip.on      { background: var(--brand); border-color: var(--brand); color: #fff; font-weight: 600; }
+.chip.on::before { content: "✓ "; font-weight: 700; }
+.chips-vacio  { color: var(--muted); font-size: 12.5px; padding: 6px 4px; }
+.chips-cuenta { font-size: 11px; color: var(--muted); margin-top: 6px; }
+
+/* ── Tabla en modo tarjeta (teléfono) ────────────────────────── */
+.dt-cards     { display: flex; flex-direction: column; gap: 10px; }
+.dt-cardrow   { border: 1px solid var(--line); border-radius: 11px; background: var(--card);
+                padding: 12px 13px; box-shadow: var(--shadow); }
+.dt-cardrow.sel { border-color: var(--brand); background: var(--row-sel); }
+.dt-cardhead  { display: flex; align-items: center; gap: 10px; margin-bottom: 9px; }
+.dt-cardhead input[type=checkbox] { width: 20px; height: 20px; flex-shrink: 0; }
+.dt-cardtitle { font-weight: 700; font-size: 14.5px; flex: 1; min-width: 0;
+                overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.dt-cardgrid  { display: grid; grid-template-columns: repeat(auto-fit, minmax(118px, 1fr)); gap: 9px 12px; }
+.dt-cardk     { font-size: 9.5px; text-transform: uppercase; letter-spacing: .05em; color: var(--muted); }
+.dt-cardv     { font-size: 13.5px; margin-top: 1px; overflow-wrap: anywhere; }
+.dt-cardacc   { margin-top: 11px; padding-top: 10px; border-top: 1px solid var(--line);
+                display: flex; gap: 7px; flex-wrap: wrap; }
+
+/* ════════════════════════════════════════════════════════════════
+   TELÉFONO — el almacén se opera con una mano
+════════════════════════════════════════════════════════════════ */
+@media (max-width: 760px) {
+  body   { font-size: 15px; }
+  .wrap  { padding: 12px 13px calc(26px + env(safe-area-inset-bottom)); }
+
+  /* iOS hace zoom en cualquier campo por debajo de 16px */
+  input, select, textarea { font-size: 16px; padding: 11px 12px; }
+  select[multiple] { height: 150px; }
+
+  /* Objetivos táctiles cómodos */
+  button        { padding: 12px 16px; min-height: 44px; }
+  button.sm     { padding: 9px 13px; min-height: 38px; font-size: 13px; }
+  button.xs     { padding: 7px 11px; min-height: 34px; font-size: 12px; }
+  .chip         { padding: 9px 15px; font-size: 14px; }
+  input[type=checkbox] { width: 19px; height: 19px; }
+
+  header   { gap: 8px; margin-bottom: 12px; }
+  header h1 { font-size: 16px; }
+  .card    { padding: 13px; border-radius: 11px; margin-bottom: 12px; }
+  .grid    { grid-template-columns: 1fr; gap: 11px; }
+  h2       { font-size: 11px; }
+
+  /* Pestañas: una sola fila deslizable y siempre a la vista */
+  .tabs {
+    position: sticky; top: 0; z-index: 40;
+    display: flex; flex-wrap: nowrap; overflow-x: auto; -webkit-overflow-scrolling: touch;
+    gap: 6px; margin: 0 -13px 12px; padding: 9px 13px;
+    background: color-mix(in srgb, var(--bg) 92%, transparent);
+    backdrop-filter: blur(8px);
+    border-bottom: 1px solid var(--line);
+    scrollbar-width: none;
+  }
+  .tabs::-webkit-scrollbar { display: none; }
+  .tabs button { flex: 0 0 auto; white-space: nowrap; }
+
+  /* Modales como hoja inferior */
+  .modal-overlay { align-items: flex-end; }
+  .modal-box {
+    width: 100%; max-width: none; max-height: 92vh;
+    border-radius: 16px 16px 0 0; padding: 18px 15px calc(18px + env(safe-area-inset-bottom));
+    animation: sheetUp .22s cubic-bezier(.2,.8,.3,1) both;
+  }
+  @keyframes sheetUp { from { transform: translateY(14%); opacity: .6; } to { transform: none; opacity: 1; } }
+  .modal-box::before {
+    content: ""; display: block; width: 38px; height: 4px; border-radius: 999px;
+    background: var(--line); margin: -6px auto 14px;
+  }
+  .modal-box .row { gap: 8px; }
+  .modal-box .row > button { flex: 1; }
+
+  .toast { bottom: calc(16px + env(safe-area-inset-bottom)); width: calc(100% - 26px); max-width: none; }
+
+  /* La tabla se convierte en tarjetas; la barra de acciones se apila */
+  .dt-wrap.scroll-y { max-height: none; }
+  .dt-toolbar > div { min-width: 0; flex: 1 1 46%; }
+  .dt-toolbar .dt-search { flex: 1 1 100%; }
+  .dt-selbar { position: sticky; bottom: 0; z-index: 30; }
+  .dt-foot { justify-content: center; }
+
+  table { font-size: 12.5px; }
+  th, td { padding: 7px 6px; }
+}
+
+@media (max-width: 400px) {
+  .wrap { padding: 10px 10px calc(24px + env(safe-area-inset-bottom)); }
+  .tabs { margin: 0 -10px 10px; padding: 8px 10px; }
+  .dt-toolbar > div { flex: 1 1 100%; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .modal-box { animation: none; }
+}
+</style>
