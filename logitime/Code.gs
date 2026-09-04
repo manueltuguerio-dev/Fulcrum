@@ -148,9 +148,9 @@ var CAMPOS_DEFAULT = [
   ['unidad_medida',      'Unidad de medida',         'carga',      false, true, 140],
   ['tarimas',            'Tarimas',                  'carga',      false, true, 150],
   ['peso_tons',          'Peso bruto (toneladas)',   'carga',      false, false,160],
-  ['cant_equipos',       'Cant. de equipos',         'carga',      false, true, 170],
+  ['cant_equipos',       'Cant. de equipos',         'carga',      false, false,170],
   ['tipo_montacargas',   'Tipo de montacargas',      'carga',      false, true, 180],
-  ['num_montacargas',    'Núm. de montacargas',      'carga',      true,  true, 190],
+  ['num_montacargas',    'Núm. de montacargas',      'carga',      false, false,190],
 
   ['hora_posicionamiento','Hora de posicionamiento del furgón', 'tiempos', false, true, 205],
   ['hora_liberacion',    'Hora de liberación del furgón',       'tiempos', false, true, 206],
@@ -1920,6 +1920,20 @@ function getCatalogos(ctx) {
   out.SECUENCIAS     = seq;
   out.DEPARTAMENTOS  = getDepartamentos(true).map(function(d) { return d.nombre; });
   out.EQUIPOS        = getEquipos(true).map(function(e) { return e.nombre; });
+  // Quién trabaja en cada equipo, para poder preseleccionarlos en la maniobra
+  out.EQUIPO_PERSONAL = {};
+  getEmpleados().forEach(function(e) {
+    if (!e.activo || !e.equipo) return;
+    if (!out.EQUIPO_PERSONAL[e.equipo]) out.EQUIPO_PERSONAL[e.equipo] = [];
+    out.EQUIPO_PERSONAL[e.equipo].push({ nombre: e.nombre, posicion: e.posicion });
+  });
+  // El montacargas también sabe a qué equipo pertenece
+  out.EQUIPO_MONTACARGAS = {};
+  getMontacargas(true).forEach(function(m) {
+    if (!m.equipo || m.estado === 'baja') return;
+    if (!out.EQUIPO_MONTACARGAS[m.equipo]) out.EQUIPO_MONTACARGAS[m.equipo] = [];
+    out.EQUIPO_MONTACARGAS[m.equipo].push(m.codigo + (m.tipo ? ' · ' + m.tipo : ''));
+  });
   out.ADICIONALES    = getAdicionalesCatalogo('');
   out.MIN_FOTOS      = getMinimoFotos('');
   out.CLIENTES_CFG   = getClientesConfig();

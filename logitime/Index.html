@@ -603,6 +603,7 @@
             </select>
           </div>
           <div><label>Ubicación</label><input id="m_ubicacion" placeholder="Almacén 1"></div>
+          <div><label>Equipo / cuadrilla</label><select id="m_equipo"></select></div>
           <div style="grid-column:1/-1"><label>Notas</label><textarea id="m_notas" style="min-height:56px"></textarea></div>
         </div>
         <div class="row" style="margin-top:12px">
@@ -631,7 +632,12 @@
         <div><label>Nombre completo <span class="req-star">*</span></label><input id="e_nombre" placeholder="Nombre Apellido"></div>
         <div><label>Posición <span class="req-star">*</span></label><input id="e_posicion" placeholder="Montacarguista / Ayudante / Supervisor"></div>
         <div><label>Montacargas asignado</label><select id="e_montacargas"></select></div>
+        <div><label>Equipo / cuadrilla</label><select id="e_equipo"></select></div>
       </div>
+      <p class="muted" style="margin:10px 0 0">
+        Al elegir un equipo en la maniobra, su gente y sus montacargas se
+        seleccionan solos.
+      </p>
       <div class="row" style="margin-top:12px"><button onclick="Empleados.guardar()">Guardar empleado</button></div>
     </div>
     <div class="card">
@@ -2256,7 +2262,9 @@ var CAMPO_META = {
                       hint: 'Un registro = una maniobra. No combines operaciones.' },
   aditamento:       { tipo: 'select', cat: 'ADITAMENTOS', vacio: '—' },
   anden:            { tipo: 'select', cat: 'ANDENES', vacio: '—' },
-  equipo:           { tipo: 'select', cat: 'EQUIPOS',  vacio: '—' },
+  equipo:           { tipo: 'select', cat: 'EQUIPOS',  vacio: '—',
+                      onchange: 'Nueva.onEquipo()',
+                      hint: 'Selecciona solo a su gente y sus montacargas' },
   toneladas_netas:  { tipo: 'number', step: 'any', min: '0' },
   atados:           { tipo: 'number', min: '0' },
   piezas_sueltas:   { tipo: 'number', min: '0' },
@@ -2322,7 +2330,9 @@ var App = {
       UI.opts('modal-causa',    c.CAUSAS_DEMORA, '—');
       UI.opts('i_empleado',     c.EMPLEADOS, '—');
       UI.opts('m_tipo',         c.TIPOS_MONTACARGAS, '—');
+      UI.opts('m_equipo',       c.EQUIPOS, '— Sin equipo —');
       UI.opts('e_montacargas',  c.MONTACARGAS, '—');
+      UI.opts('e_equipo',       c.EQUIPOS, '— Sin equipo —');
       UI.opts('edit-cliente',       c.CLIENTES, '— Selecciona —');
       UI.opts('edit-tipo_equipo',   c.TIPOS_EQUIPO, '—');
       UI.opts('edit-material',      c.MATERIALES, '—');
@@ -2463,6 +2473,41 @@ var Nueva = {
     });
     Nueva.onFlujo();
     Nueva.onTipoManiobra();
+  },
+
+  /**
+   * Al elegir el equipo se marca sola su gente y sus montacargas.
+   * Quien opera montacargas va a Montacarguistas; el resto, a Ayudantes.
+   * Todo queda editable: es un punto de partida, no una imposición.
+   */
+  onEquipo: function() {
+    var el = $('equipo');
+    if (!el) return;
+    var eq = el.value;
+    if (!eq) return;
+
+    var gente = (STATE.cat.EQUIPO_PERSONAL || {})[eq] || [];
+    var monta = (STATE.cat.EQUIPO_MONTACARGAS || {})[eq] || [];
+    if (!gente.length && !monta.length) {
+      UI.toast('El equipo ' + eq + ' no tiene personal ni montacargas asignados.', 'err');
+      return;
+    }
+
+    var operadores = [], apoyo = [];
+    gente.forEach(function(p) {
+      if (/montacarg/i.test(p.posicion || '')) operadores.push(p.nombre);
+      else apoyo.push(p.nombre);
+    });
+
+    if (operadores.length) Chips.set('montacarguistas', operadores);
+    if (apoyo.length)      Chips.set('ayudantes', apoyo);
+    if (monta.length)      Chips.set('montacargas', monta);
+
+    var partes = [];
+    if (operadores.length) partes.push(operadores.length + ' montacarguista(s)');
+    if (apoyo.length)      partes.push(apoyo.length + ' ayudante(s)');
+    if (monta.length)      partes.push(monta.length + ' montacargas');
+    UI.toast('Equipo ' + eq + ': ' + partes.join(', '), 'ok');
   },
 
   /** "Otro" obliga a justificar en Observaciones; el aviso lo deja claro antes de guardar */
@@ -3459,6 +3504,7 @@ var Montacargas = {
           { key: 'modelo',    label: 'Modelo' },
           { key: 'capacidad', label: 'Cap. (ton)', tipo: 'num' },
           { key: 'estado',    label: 'Estado', tipo: 'estado' },
+          { key: 'equipo',    label: 'Equipo' },
           { key: 'ubicacion', label: 'Ubicación' },
           { key: 'notas',     label: 'Notas' },
           { key: 'activo',    label: 'Activo', tipo: 'bool' },
@@ -3493,6 +3539,7 @@ var Montacargas = {
     $('m_capacidad').value = m.capacidad;
     $('m_estado').value    = m.estado;
     $('m_ubicacion').value = m.ubicacion;
+    $('m_equipo').value    = m.equipo || '';
     $('m_notas').value     = m.notas;
     $('sec-mon-form').classList.remove('hidden');
     $('chev-mon').classList.add('open');
@@ -3509,6 +3556,7 @@ var Montacargas = {
       capacidad: $('m_capacidad').value,
       estado:    $('m_estado').value,
       ubicacion: $('m_ubicacion').value,
+      equipo:    $('m_equipo').value,
       notas:     $('m_notas').value
     };
     if (!d.codigo) { UI.toast('El código es obligatorio', 'err'); return; }
@@ -3521,9 +3569,8 @@ var Montacargas = {
   },
 
   limpiar: function() {
-    ['m_id','m_codigo','m_marca','m_modelo','m_capacidad','m_ubicacion','m_notas'].forEach(function(k) {
-      $(k).value = '';
-    });
+    ['m_id','m_codigo','m_marca','m_modelo','m_capacidad','m_ubicacion','m_notas','m_equipo']
+      .forEach(function(k) { $(k).value = ''; });
     $('m_estado').value = 'disponible';
   },
 
@@ -3546,7 +3593,8 @@ var Empleados = {
       Empleados.dt = DT.crear({
         mount: 'dt-empleados', nombre: 'empleados', idKey: 'id',
         vacio: 'Sin empleados registrados.',
-        filtros: [{ key: 'posicion', label: 'Posición' }, { key: 'montacargas', label: 'Montacargas' }],
+        filtros: [{ key: 'posicion', label: 'Posición' }, { key: 'equipo', label: 'Equipo' },
+                  { key: 'montacargas', label: 'Montacargas' }],
         acciones: [
           { label: '🗑 Eliminar', clase: 'danger',
             confirmar: '¿Eliminar {n} empleado(s)?',
@@ -3561,6 +3609,7 @@ var Empleados = {
           { key: 'nombre',      label: 'Nombre' },
           { key: 'posicion',    label: 'Posición' },
           { key: 'montacargas', label: 'Montacargas' },
+          { key: 'equipo',      label: 'Equipo' },
           { key: 'activo',      label: 'Activo', tipo: 'bool' }
         ]
       });
@@ -3572,7 +3621,8 @@ var Empleados = {
     var d = {
       nombre:      ($('e_nombre').value || '').trim(),
       posicion:    ($('e_posicion').value || '').trim(),
-      montacargas: $('e_montacargas').value
+      montacargas: $('e_montacargas').value,
+      equipo:      $('e_equipo').value
     };
     if (!d.nombre || !d.posicion) { UI.toast('Nombre y posición son obligatorios', 'err'); return; }
     API.call('guardarEmpleado', [d], function() {
