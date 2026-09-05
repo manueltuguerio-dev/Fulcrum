@@ -48,6 +48,28 @@ Filtrar por ese color deja un renglón visible por parte en riesgo.
 
 ---
 
+## ¿Y la versión de Google Apps Script?
+
+En `apps-script-supply/` está el mismo proceso corriendo sobre Google Sheets,
+para cuando la corrida la hacen varias personas o se quiere dejar programada
+sin prender una computadora.
+
+Las dos conviven y se reparten el trabajo:
+
+| Necesitas | Usa |
+|---|---|
+| El `.xlsx` del libro MX con sus fórmulas y formato intactos | esta aplicación |
+| Que los datos no pasen por Drive | esta aplicación |
+| Acceso compartido, o dejarlo programado | Apps Script |
+| Solo el consolidado y los correos | Apps Script |
+
+El motor de cálculo es el mismo: `apps-script-supply/Motor.gs` es un port casi
+literal de `lib/engine.js`, y hay una prueba que lo verifica contra esta
+aplicación registro por registro. Los detalles están en
+`apps-script-supply/IMPLEMENTACION.md`.
+
+---
+
 ## Instalación
 
 Se necesita [Node.js 18 o superior](https://nodejs.org). Para comprobar la

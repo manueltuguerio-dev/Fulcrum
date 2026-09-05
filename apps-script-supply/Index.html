@@ -1,0 +1,211 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<base target="_top">
+<?!= include('Estilos'); ?>
+</head>
+<body>
+
+<header>
+  <h1>MX Supply Assurance</h1>
+  <span>Riesgo de faltante por numero de parte y consolidado por proveedor</span>
+</header>
+
+<nav role="tablist">
+  <button role="tab" aria-selected="true" data-tab="proceso">1. Proceso</button>
+  <button role="tab" aria-selected="false" data-tab="resultado">2. Resultado</button>
+  <button role="tab" aria-selected="false" data-tab="contactos">3. Contactos</button>
+  <button role="tab" aria-selected="false" data-tab="correo">4. Correo</button>
+</nav>
+
+<main>
+
+<!-- ==================== PROCESO ==================== -->
+<section id="tab-proceso">
+  <div class="panel">
+    <h2>Archivos de entrada</h2>
+    <p class="ayuda">Deja en una carpeta de Drive el libro MX y el archivo Data del mes.
+      El script los convierte a Hojas de calculo sin modificar los originales, y borra las
+      copias al terminar.</p>
+    <label>Liga de la carpeta de Drive</label>
+    <input type="text" id="carpeta" placeholder="https://drive.google.com/drive/folders/...">
+    <p class="ayuda" style="margin-top:8px">El archivo cuyo nombre contenga <code>data</code> se toma como
+      el export de partes; el otro .xlsx de la carpeta se toma como el libro MX.</p>
+  </div>
+
+  <div class="panel">
+    <h2>Ventana de riesgo</h2>
+    <p class="ayuda">Define en que semanas cuenta el rojo. El rojo es la proyeccion negativa,
+      el mismo <code>&lt; 0</code> del formato condicional del libro.</p>
+    <div class="fila-radio">
+      <label><input type="radio" name="modo" value="rango" checked>
+        <span>Rango de fechas
+          <small>Cuenta el rojo en cualquier semana que toque el rango. Por omision, de hoy al fin del mes siguiente.</small>
+        </span></label>
+      <label><input type="radio" name="modo" value="semana">
+        <span>Una sola columna
+          <small>El paso literal: evaluar el color solo en la columna que elijas.</small>
+        </span></label>
+    </div>
+
+    <div class="rejilla" id="camposRango">
+      <div><label>Desde</label><input type="date" id="desde"></div>
+      <div><label>Hasta</label><input type="date" id="hasta"></div>
+    </div>
+    <div class="rejilla" id="camposSemana" hidden>
+      <div><label>Columna de semana</label><select id="columna"></select></div>
+    </div>
+
+    <div class="rejilla" style="margin-top:12px">
+      <div><label>Fecha de corrida <span class="nota">(el TODAY de la columna L)</span></label>
+        <input type="date" id="hoy"></div>
+      <div><label>Estatus a conservar</label>
+        <select id="estatus" multiple size="3" style="height:auto">
+          <option value="SHORTAGE" selected>SHORTAGE</option>
+          <option value="OK PER LT">OK PER LT</option>
+          <option value="OK">OK</option>
+        </select></div>
+    </div>
+
+    <div class="rejilla" style="margin-top:12px">
+      <div><label>DEFAULT_BUYER a sustituir</label><input type="text" id="sustDe" value="LZR22"></div>
+      <div><label>Se escribe como</label><input type="text" id="sustA" value="Luis Rodriguez"></div>
+    </div>
+
+    <details>
+      <summary>Opciones avanzadas</summary>
+      <label class="check"><input type="checkbox" id="incluirOpenPO" checked>
+        Leer Open_PO para llenar las filas Promise y Need. Quitarlo acelera la corrida;
+        esas dos filas no intervienen en la proyeccion ni en el estatus.</label>
+      <label class="check"><input type="checkbox" id="escribirKB" checked>
+        Escribir la hoja KB Supply completa. Quitarlo deja solo el consolidado y es mucho mas rapido.</label>
+    </details>
+
+    <div class="acciones">
+      <button class="btn" id="correr">Correr proceso</button>
+      <button class="btn claro" id="guardar">Guardar configuracion</button>
+      <button class="btn claro" id="preparar">Preparar libro</button>
+    </div>
+    <div id="msgProceso"></div>
+    <div id="avance"></div>
+  </div>
+</section>
+
+<!-- ==================== RESULTADO ==================== -->
+<section id="tab-resultado" hidden>
+  <div id="sinResultado" class="panel vacio">
+    Todavia no hay una corrida terminada. Ve a <b>1. Proceso</b> y presiona Correr proceso.
+  </div>
+  <div id="conResultado" hidden>
+    <div class="cifras" id="cifras"></div>
+    <div id="avisos"></div>
+    <div class="panel">
+      <h2>Que se hizo</h2>
+      <ol class="pasos" id="pasos"></ol>
+      <div class="acciones">
+        <a class="btn" id="verLibro" target="_blank" rel="noopener">Abrir el libro de resultados</a>
+      </div>
+    </div>
+    <div class="panel">
+      <h2>Consolidado por proveedor</h2>
+      <div class="desplaza">
+        <table>
+          <thead><tr>
+            <th>Proveedor</th><th class="num">Partes</th><th class="num">Renglones</th>
+            <th class="num">Faltante</th><th>Mas proximo</th><th>Correo</th>
+          </tr></thead>
+          <tbody id="tblProv"></tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ==================== CONTACTOS ==================== -->
+<section id="tab-contactos" hidden>
+  <div class="panel">
+    <h2>Importar catalogo</h2>
+    <p class="ayuda">Excel, CSV u hoja de calculo con una columna de proveedor y otra de correo.
+      Si los encabezados dicen <b>proveedor</b> y <b>correo</b> se detectan solos; si no, se toma
+      la columna A y la B.</p>
+    <div class="rejilla">
+      <div><label>Liga del archivo en Drive</label>
+        <input type="text" id="ligaContactos" placeholder="https://drive.google.com/file/d/..."></div>
+      <div><label>Al importar</label>
+        <select id="modoImport">
+          <option value="false">Agregar y actualizar lo que ya existe</option>
+          <option value="true">Reemplazar todo el catalogo</option>
+        </select></div>
+    </div>
+    <div class="acciones"><button class="btn" id="importar">Importar</button></div>
+    <div id="msgContactos"></div>
+  </div>
+
+  <div class="panel">
+    <h2>Catalogo <span id="totalContactos" class="nota"></span></h2>
+    <div class="rejilla">
+      <div><label>Proveedor <span class="nota">(como aparece en la columna SUPPLIER)</span></label>
+        <input type="text" id="nuevoProv" list="listaProv" placeholder="ENDRIES INTERNATIONAL INC">
+        <datalist id="listaProv"></datalist></div>
+      <div><label>Correos</label>
+        <input type="text" id="nuevoMail" placeholder="compras@proveedor.com; ventas@proveedor.com"></div>
+    </div>
+    <div class="acciones"><button class="btn claro" id="guardarContacto">Guardar</button></div>
+    <div class="desplaza" style="margin-top:12px">
+      <table><thead><tr><th>Proveedor</th><th>Correos</th><th style="width:80px"></th></tr></thead>
+        <tbody id="tblContactos"></tbody></table>
+    </div>
+  </div>
+</section>
+
+<!-- ==================== CORREO ==================== -->
+<section id="tab-correo" hidden>
+  <div class="panel">
+    <h2>Mensaje</h2>
+    <p class="ayuda">Los correos salen con la cuenta de Google que autorizo el script.
+      No hay que configurar servidor. <span id="cuota"></span></p>
+    <label>Asunto <span class="nota">acepta {proveedor}, {partes} y {ventana}</span></label>
+    <input type="text" id="asunto" value="Material en riesgo de faltante - {proveedor} - {partes} parte(s)">
+    <div style="margin-top:12px"><label>Saludo</label><input type="text" id="saludo" value="Buen dia,"></div>
+    <div style="margin-top:12px"><label>Introduccion</label>
+      <textarea id="intro">Les comparto el material que tenemos en riesgo de faltante para la ventana indicada. Agradecemos confirmar fecha de entrega para cada numero de parte.</textarea></div>
+    <div style="margin-top:12px"><label>Cierre</label>
+      <textarea id="cierre">El detalle completo va adjunto. Quedo al pendiente de su respuesta.</textarea></div>
+    <div class="rejilla" style="margin-top:12px">
+      <div><label>Firma</label><input type="text" id="firma" placeholder="Luis Rodriguez"></div>
+      <div><label>Copia a <span class="nota">(opcional)</span></label>
+        <input type="text" id="cc" placeholder="planeacion@empresa.com"></div>
+    </div>
+    <label class="check"><input type="checkbox" id="adjuntar" checked>
+      Adjuntar el detalle de ese proveedor</label>
+    <div class="rejilla" style="margin-top:8px">
+      <div><label>Formato del adjunto</label>
+        <select id="formatoAdjunto">
+          <option value="xlsx">Excel (.xlsx)</option>
+          <option value="csv">CSV</option>
+        </select></div>
+    </div>
+  </div>
+
+  <div class="panel">
+    <h2>Envio</h2>
+    <p class="ayuda">Revisa la vista previa antes de enviar. Solo se manda a los proveedores
+      marcados que tengan correo registrado.</p>
+    <div id="listaEnvio" class="desplaza" style="max-height:240px">
+      <div class="vacio">Corre el proceso primero.</div>
+    </div>
+    <div class="acciones">
+      <button class="btn claro" id="verPrevia">Ver vista previa</button>
+      <button class="btn" id="enviar">Enviar correos</button>
+    </div>
+    <div id="msgCorreo"></div>
+    <div id="previa"></div>
+  </div>
+</section>
+
+</main>
+
+<?!= include('Cliente'); ?>
+</body>
+</html>

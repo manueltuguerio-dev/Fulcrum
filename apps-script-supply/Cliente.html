@@ -1,0 +1,382 @@
+<script>
+/* Interfaz de MX Supply Assurance en Apps Script.
+   El proceso avanza por fases en el servidor, asi que esta pantalla consulta
+   el estado cada pocos segundos hasta que termina. */
+
+var proveedores = [];
+var contactos = [];
+var urlLibro = '';
+var encuesta = null;
+
+var FASES_ORDEN = ['CONVERTIR','DATA','ONHAND','GAPS','PLAN','OPENPO','CALCULAR',
+  'DETAILS','KB','CONSOLIDAR','LIMPIAR','FIN'];
+
+function $(s){ return document.querySelector(s); }
+function $$(s){ return Array.prototype.slice.call(document.querySelectorAll(s)); }
+
+$$('nav button').forEach(function(b){
+  b.addEventListener('click', function(){ mostrar(b.dataset.tab); });
+});
+function mostrar(tab){
+  $$('nav button').forEach(function(b){ b.setAttribute('aria-selected', String(b.dataset.tab===tab)); });
+  $$('main section').forEach(function(s){ s.hidden = s.id !== 'tab-'+tab; });
+}
+
+function aviso(destino, clase, texto){
+  $(destino).innerHTML = '<div class="aviso '+clase+'">'+escapar(texto)+'</div>';
+}
+function escapar(s){
+  return String(s===null||s===undefined?'':s)
+    .replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+}
+function nf(n){
+  if(n===null||n===undefined||n==='') return '';
+  return Number(n).toLocaleString('es-MX',{maximumFractionDigits:2});
+}
+function fechaEs(iso){
+  if(!iso) return '';
+  var p=String(iso).split('-');
+  var m=['ene','feb','mar','abr','may','jun','jul','ago','sep','oct','nov','dic'];
+  return p[2]+'-'+m[+p[1]-1]+'-'+p[0];
+}
+
+/** Envuelve google.script.run en una promesa y desarma el { ok, datos }. */
+function llamar(nombre){
+  var args = Array.prototype.slice.call(arguments, 1);
+  return new Promise(function(resolve, reject){
+    var run = google.script.run
+      .withSuccessHandler(function(r){
+        if(r && r.ok === false) reject(new Error(r.error));
+        else resolve(r && r.ok ? r.datos : r);
+      })
+      .withFailureHandler(function(e){ reject(e); });
+    run[nombre].apply(run, args);
+  });
+}
+
+// --- configuracion ----------------------------------------------------------
+
+var COLUMNAS_SEMANA=['P','Q','R','S','T','U','V','W','X','Y','Z','AA','AB'];
+$('#columna').innerHTML = COLUMNAS_SEMANA.map(function(c){
+  return '<option value="'+c+'"'+(c==='W'?' selected':'')+'>'+c+'</option>';
+}).join('');
+
+$$('input[name=modo]').forEach(function(r){
+  r.addEventListener('change', function(){
+    var rango = $('input[name=modo]:checked').value==='rango';
+    $('#camposRango').hidden = !rango;
+    $('#camposSemana').hidden = rango;
+  });
+});
+
+function datosDeFormulario(){
+  return {
+    carpeta: $('#carpeta').value.trim(),
+    hoy: $('#hoy').value,
+    modo: $('input[name=modo]:checked').value,
+    columna: $('#columna').value,
+    desde: $('#desde').value,
+    hasta: $('#hasta').value,
+    estatus: $$('#estatus option').filter(function(o){ return o.selected; })
+      .map(function(o){ return o.value; }),
+    incluirOpenPO: $('#incluirOpenPO').checked,
+    escribirKB: $('#escribirKB').checked,
+    sustituirDe: $('#sustDe').value.trim(),
+    sustituirA: $('#sustA').value.trim(),
+  };
+}
+
+function cargarParametros(){
+  return llamar('apiParametros').then(function(p){
+    urlLibro = p.urlLibro;
+    $('#carpeta').value = p.carpeta || '';
+    $('#hoy').value = p.hoy || '';
+    $('#desde').value = p.desde || '';
+    $('#hasta').value = p.hasta || '';
+    $('#columna').value = p.columna || 'W';
+    $('#incluirOpenPO').checked = p.incluirOpenPO !== false;
+    $('#escribirKB').checked = p.escribirKB !== false;
+    var modo = (p.modo === 'semana' || p.modo === 'week') ? 'semana' : 'rango';
+    $$('input[name=modo]').forEach(function(r){ r.checked = r.value===modo; });
+    $('#camposRango').hidden = modo!=='rango';
+    $('#camposSemana').hidden = modo==='rango';
+    $$('#estatus option').forEach(function(o){
+      o.selected = (p.estatus||[]).indexOf(o.value) !== -1;
+    });
+    for(var k in p.sustituciones){ $('#sustDe').value=k; $('#sustA').value=p.sustituciones[k]; break; }
+    if(urlLibro) $('#verLibro').href = urlLibro;
+  }).catch(function(e){
+    aviso('#msgProceso','adv', e.message + ' Presiona "Preparar libro" para crear las hojas que faltan.');
+  });
+}
+
+$('#preparar').addEventListener('click', function(){
+  llamar('apiPreparar')
+    .then(function(r){ aviso('#msgProceso','ok', r.mensaje); return cargarParametros(); })
+    .catch(function(e){ aviso('#msgProceso','err', e.message); });
+});
+
+$('#guardar').addEventListener('click', function(){
+  llamar('apiGuardarParametros', datosDeFormulario())
+    .then(function(r){ aviso('#msgProceso','ok', r.mensaje); })
+    .catch(function(e){ aviso('#msgProceso','err', e.message); });
+});
+
+// --- corrida ----------------------------------------------------------------
+
+$('#correr').addEventListener('click', function(){
+  var boton = $('#correr');
+  boton.disabled = true;
+  boton.innerHTML = '<span class="cargando"></span>Corriendo';
+  aviso('#msgProceso','info','Guardando configuracion y arrancando.');
+
+  llamar('apiGuardarParametros', datosDeFormulario())
+    .then(function(){ return llamar('apiIniciar'); })
+    .then(function(e){ pintarAvance(e); if(!e.terminado) empezarEncuesta(); else terminar(e); })
+    .catch(function(e){
+      aviso('#msgProceso','err', e.message);
+      boton.disabled=false; boton.textContent='Correr proceso';
+    });
+});
+
+function empezarEncuesta(){
+  if(encuesta) clearInterval(encuesta);
+  encuesta = setInterval(function(){
+    llamar('apiEstado').then(function(e){
+      pintarAvance(e);
+      if(e.error){ clearInterval(encuesta); encuesta=null; liberarBoton();
+        aviso('#msgProceso','err', e.error); return; }
+      if(e.terminado){ clearInterval(encuesta); encuesta=null; terminar(e); }
+    }).catch(function(){ /* un fallo de red suelto no debe cortar la encuesta */ });
+  }, 5000);
+}
+
+function liberarBoton(){
+  var b=$('#correr'); b.disabled=false; b.textContent='Correr proceso';
+}
+
+function terminar(e){
+  liberarBoton();
+  aviso('#msgProceso','ok','Proceso terminado.');
+  pintarResultado(e);
+  pintarEnvio();
+  mostrar('resultado');
+}
+
+function pintarAvance(e){
+  var i = FASES_ORDEN.indexOf(e.fase);
+  var pct = i < 0 ? 0 : Math.round((i / (FASES_ORDEN.length-1)) * 100);
+  $('#avance').innerHTML =
+    '<div class="aviso info">'+escapar(e.descripcion||e.fase)+
+    (e.cursor ? ' (renglon '+nf(e.cursor)+')' : '')+
+    '<div class="barra"><i style="width:'+pct+'%"></i></div></div>';
+}
+
+function pintarResultado(e){
+  if(!e.resumen) return;
+  $('#sinResultado').hidden = true;
+  $('#conResultado').hidden = false;
+  proveedores = e.proveedores || [];
+
+  var r = e.resumen;
+  $('#cifras').innerHTML = [
+    ['Partes analizadas', r.totalPartes, ''],
+    ['Renglones en riesgo', r.renglonesEnRiesgo, 'alerta'],
+    ['Partes unicas', r.partesUnicas, 'alerta'],
+    ['Proveedores', r.proveedores, ''],
+    ['SHORTAGE en total', r.porEstatus.SHORTAGE || 0, ''],
+    ['OK PER LT', r.porEstatus['OK PER LT'] || 0, ''],
+  ].map(function(x){
+    return '<div class="cifra '+x[2]+'"><small>'+x[0]+'</small><b>'+nf(x[1])+'</b></div>';
+  }).join('');
+
+  var avisos = ['<div class="aviso info">Ventana evaluada: <b>'+escapar(r.ventana)+
+    '</b>. Estatus: <b>'+escapar(r.estatusFiltrado.join(', '))+
+    '</b>. TODAY usado: <b>'+fechaEs(r.hoy)+'</b>.</div>'];
+  (e.avisos||[]).forEach(function(a){ avisos.push('<div class="aviso adv">'+escapar(a)+'</div>'); });
+  var sin = proveedores.filter(function(p){ return !p.correos.length; });
+  if(sin.length){
+    avisos.push('<div class="aviso adv"><b>'+sin.length+' proveedor(es) sin correo registrado:</b> '+
+      escapar(sin.map(function(p){return p.nombre;}).join(', '))+
+      '. Cargalos en la pestana Contactos para poderles enviar.</div>');
+  }
+  $('#avisos').innerHTML = avisos.join('');
+
+  $('#pasos').innerHTML = (e.pasos||[]).map(function(p){
+    return '<li><b>'+escapar(p.titulo)+'</b>'+escapar(p.detalle)+'</li>';
+  }).join('');
+
+  $('#tblProv').innerHTML = proveedores.map(function(p){
+    return '<tr><td><b>'+escapar(p.nombre)+'</b></td>'+
+      '<td class="num">'+nf(p.partes)+'</td>'+
+      '<td class="num">'+nf(p.renglones)+'</td>'+
+      '<td class="num" style="color:var(--rojo);font-weight:600">'+nf(p.faltante)+'</td>'+
+      '<td>'+fechaEs(p.fecha)+'</td>'+
+      '<td>'+(p.correos.length?escapar(p.correos.join(', ')):'<span class="marca rojo">sin correo</span>')+'</td></tr>';
+  }).join('');
+
+  if(urlLibro) $('#verLibro').href = urlLibro;
+}
+
+// --- contactos --------------------------------------------------------------
+
+function cargarContactos(){
+  return llamar('apiContactosListar').then(function(r){
+    contactos = r.contactos || [];
+    urlLibro = r.url || urlLibro;
+    $('#totalContactos').textContent = '('+contactos.length+' proveedor'+(contactos.length===1?'':'es')+')';
+    $('#tblContactos').innerHTML = contactos.length ? contactos.map(function(c){
+      return '<tr><td>'+escapar(c.proveedor)+'</td><td>'+escapar(c.correos.join(', '))+'</td>'+
+        '<td><button class="btn claro chico borrar" data-p="'+escapar(c.proveedor)+'">Borrar</button></td></tr>';
+    }).join('') : '<tr><td colspan="3" class="vacio">Todavia no hay contactos cargados.</td></tr>';
+
+    $$('#tblContactos .borrar').forEach(function(b){
+      b.addEventListener('click', function(){
+        llamar('apiContactosGuardar', b.dataset.p, '', true)
+          .then(function(){ return cargarContactos(); })
+          .then(pintarEnvio)
+          .catch(function(e){ aviso('#msgContactos','err', e.message); });
+      });
+    });
+    $('#listaProv').innerHTML = proveedores.map(function(p){
+      return '<option value="'+escapar(p.nombre)+'">';
+    }).join('');
+  });
+}
+
+$('#importar').addEventListener('click', function(){
+  var liga = $('#ligaContactos').value.trim();
+  if(!liga) return aviso('#msgContactos','err','Pega la liga del archivo en Drive.');
+  aviso('#msgContactos','info','Importando.');
+  llamar('apiContactosImportar', liga, $('#modoImport').value==='true')
+    .then(function(r){
+      var msg = 'Se importaron '+r.importados+' proveedor(es). El catalogo tiene '+r.total+'.';
+      if(r.invalidos.length){
+        msg += ' Se descartaron valores que no son correo en '+r.invalidos.length+' renglon(es): '+
+          r.invalidos.slice(0,5).map(function(i){
+            return 'fila '+i.fila+' ('+i.valores.join(', ')+')'; }).join('; ');
+      }
+      aviso('#msgContactos', r.invalidos.length?'adv':'ok', msg);
+      return cargarContactos();
+    })
+    .then(pintarEnvio)
+    .catch(function(e){ aviso('#msgContactos','err', e.message); });
+});
+
+$('#guardarContacto').addEventListener('click', function(){
+  var p = $('#nuevoProv').value.trim();
+  var c = $('#nuevoMail').value.trim();
+  if(!p || !c) return aviso('#msgContactos','err','Escribe el proveedor y al menos un correo.');
+  llamar('apiContactosGuardar', p, c, false)
+    .then(function(r){
+      aviso('#msgContactos', r.aviso?'adv':'ok', r.aviso || ('Guardado: '+p+'.'));
+      $('#nuevoProv').value=''; $('#nuevoMail').value='';
+      return cargarContactos();
+    })
+    .then(pintarEnvio)
+    .catch(function(e){ aviso('#msgContactos','err', e.message); });
+});
+
+// --- correo -----------------------------------------------------------------
+
+function correosDe(nombre){
+  var clave = nombre.trim().replace(/\s+/g,' ').toUpperCase();
+  for(var i=0;i<contactos.length;i++){
+    if(contactos[i].proveedor.trim().replace(/\s+/g,' ').toUpperCase()===clave) return contactos[i].correos;
+  }
+  return [];
+}
+
+function pintarEnvio(){
+  if(!proveedores.length) return;
+  $('#listaEnvio').innerHTML = '<table><thead><tr>'+
+    '<th style="width:34px"><input type="checkbox" id="todos" checked></th>'+
+    '<th>Proveedor</th><th class="num">Partes</th><th>Destinatarios</th></tr></thead><tbody>'+
+    proveedores.map(function(p){
+      var correos = correosDe(p.nombre);
+      var sin = !correos.length;
+      return '<tr><td><input type="checkbox" class="pick" data-p="'+escapar(p.nombre)+'"'+
+        (sin?' disabled':' checked')+'></td>'+
+        '<td>'+escapar(p.nombre)+'</td><td class="num">'+nf(p.partes)+'</td>'+
+        '<td>'+(sin?'<span class="marca rojo">sin correo</span>':escapar(correos.join(', ')))+'</td></tr>';
+    }).join('')+'</tbody></table>';
+
+  $('#todos').addEventListener('change', function(e){
+    $$('#listaEnvio .pick').forEach(function(c){ if(!c.disabled) c.checked = e.target.checked; });
+  });
+}
+
+function seleccionados(){
+  return $$('#listaEnvio .pick').filter(function(c){ return c.checked && !c.disabled; })
+    .map(function(c){ return c.dataset.p; });
+}
+
+function cuerpoDeFormulario(){
+  return {
+    asunto: $('#asunto').value,
+    saludo: $('#saludo').value,
+    intro: $('#intro').value,
+    cierre: $('#cierre').value,
+    firma: $('#firma').value,
+    cc: $('#cc').value,
+    adjuntar: $('#adjuntar').checked,
+    formatoAdjunto: $('#formatoAdjunto').value,
+  };
+}
+
+$('#verPrevia').addEventListener('click', function(){
+  aviso('#msgCorreo','info','Armando la vista previa.');
+  llamar('apiCorreoPrevia', seleccionados(), cuerpoDeFormulario())
+    .then(function(r){
+      $('#cuota').textContent = 'Te quedan '+r.cuota+' correos de la cuota de hoy.';
+      aviso('#msgCorreo','info', r.conCorreo+' correo(s) listos de '+r.total+' seleccionados.'+
+        (r.sinCorreo.length?' Sin correo: '+r.sinCorreo.join(', ')+'.':''));
+      $('#previa').innerHTML = r.correos.filter(function(c){ return !c.sinCorreo; }).map(function(c){
+        return '<details style="margin-top:10px"><summary>'+escapar(c.proveedor)+' &rarr; '+
+          escapar(c.para.join(', '))+' &middot; '+c.partes+' parte(s)</summary>'+
+          '<p class="nota" style="margin:8px 0"><b>Asunto:</b> '+escapar(c.asunto)+'</p>'+
+          '<div class="previa">'+c.html+'</div></details>';
+      }).join('');
+    })
+    .catch(function(e){ aviso('#msgCorreo','err', e.message); });
+});
+
+$('#enviar').addEventListener('click', function(){
+  var lista = seleccionados();
+  if(!lista.length) return aviso('#msgCorreo','err','No hay proveedores marcados con correo.');
+  if(!confirm('Se enviaran '+lista.length+' correo(s). Esta accion no se puede deshacer. Continuar?')) return;
+
+  var boton = $('#enviar');
+  boton.disabled = true;
+  boton.innerHTML = '<span class="cargando"></span>Enviando';
+  llamar('apiCorreoEnviar', lista, cuerpoDeFormulario())
+    .then(function(r){
+      aviso('#msgCorreo', r.fallidos?'adv':'ok',
+        'Enviados '+r.enviados+'. Fallidos '+r.fallidos+'. Omitidos '+r.omitidos+
+        '. Te quedan '+r.cuotaRestante+' de la cuota de hoy.');
+      $('#previa').innerHTML = '<div class="desplaza" style="margin-top:12px"><table>'+
+        '<thead><tr><th>Proveedor</th><th>Resultado</th></tr></thead><tbody>'+
+        r.resultados.map(function(x){
+          return '<tr><td>'+escapar(x.proveedor)+'</td><td>'+
+            (x.ok ? '<span class="marca verde">enviado</span> '+escapar((x.para||[]).join(', '))
+                  : '<span class="marca '+(x.omitido?'ambar':'rojo')+'">'+
+                    (x.omitido?'omitido':'error')+'</span> '+escapar(x.mensaje||''))+
+            '</td></tr>';
+        }).join('')+'</tbody></table></div>';
+    })
+    .catch(function(e){ aviso('#msgCorreo','err', e.message); })
+    .then(function(){ boton.disabled=false; boton.textContent='Enviar correos'; });
+});
+
+// --- arranque ---------------------------------------------------------------
+
+cargarParametros()
+  .then(cargarContactos)
+  .then(function(){ return llamar('apiEstado'); })
+  .then(function(e){
+    if(e.fase==='SIN_ESTADO') return;
+    if(e.terminado){ pintarResultado(e); pintarEnvio(); }
+    else { pintarAvance(e); $('#correr').disabled = true; empezarEncuesta(); }
+  })
+  .catch(function(){ /* la pantalla arranca vacia y el usuario prepara el libro */ });
+</script>
