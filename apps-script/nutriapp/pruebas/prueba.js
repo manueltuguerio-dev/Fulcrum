@@ -15,7 +15,8 @@ const vm = require('vm');
 const { contexto, efectos, reiniciar } = require('./simulador');
 
 const RAIZ = path.join(__dirname, '..');
-const ARCHIVOS = ['Code.gs', 'Datos.gs', 'Auth.gs', 'KatchMcArdle.gs', 'Menus.gs', 'MetaWhatsApp.gs', 'Api.gs'];
+const ARCHIVOS = ['Code.gs', 'Datos.gs', 'Auth.gs', 'KatchMcArdle.gs', 'Reglas.gs', 'Menus.gs', 'Milpa.gs',
+  'IA.gs', 'MetaWhatsApp.gs', 'Api.gs'];
 
 const sandbox = vm.createContext(Object.assign({ console }, contexto));
 ARCHIVOS.forEach((archivo) => {
@@ -433,11 +434,40 @@ prueba('borrar un registro actualiza el total del día', () => {
 
 grupo('Platillos mexicanos prediseñados');
 
-prueba('hay tres opciones por cada tiempo de comida', () => {
+prueba('hay diez opciones para desayuno, comida y cena', () => {
   const platillos = sandbox.getPlatillosSugeridos(sesionPaciente.token);
-  ['Desayuno', 'Comida', 'Cena', 'Colacion'].forEach((tiempo) => {
-    igual(platillos[tiempo].length, 3, 'Faltan platillos en ' + tiempo);
+  ['Desayuno', 'Comida', 'Cena'].forEach((tiempo) => {
+    igual(platillos[tiempo].length, 10, 'Faltan platillos en ' + tiempo);
   });
+  cierto(platillos.Colacion.length >= 3, 'Faltan colaciones');
+});
+
+prueba('la rotación destaca tres por tiempo y las demás siguen disponibles', () => {
+  const platillos = sandbox.getPlatillosSugeridos(sesionPaciente.token);
+  ['Desayuno', 'Comida', 'Cena'].forEach((tiempo) => {
+    const destacados = platillos[tiempo].filter((p) => p.destacado);
+    igual(destacados.length, 3, 'Destacados incorrectos en ' + tiempo);
+  });
+  cierto(platillos._rotacion.cadaDias === 3, 'La rotación no es de tres días');
+  cierto(platillos._rotacion.cambia > sandbox.aFechaISO_(new Date()) ||
+    platillos._rotacion.cambia === sandbox.aFechaISO_(new Date()), 'No informa cuándo cambia');
+});
+
+prueba('la rotación es estable dentro del periodo y cambia al siguiente', () => {
+  const periodo = sandbox.periodoRotacion_(new Date());
+  const hoy = sandbox.indicesDestacados_(10, 3, periodo);
+  const otraVez = sandbox.indicesDestacados_(10, 3, periodo);
+  igual(JSON.stringify(hoy), JSON.stringify(otraVez), 'No es estable dentro del periodo');
+  const siguiente = sandbox.indicesDestacados_(10, 3, periodo + 1);
+  cierto(JSON.stringify(hoy) !== JSON.stringify(siguiente), 'No cambia al siguiente periodo');
+});
+
+prueba('la rotación recorre las diez opciones antes de repetirse', () => {
+  const vistos = new Set();
+  for (let p = 0; p < 10; p++) {
+    sandbox.indicesDestacados_(10, 3, p).forEach((i) => vistos.add(i));
+  }
+  igual(vistos.size, 10, 'Hay platillos que nunca se destacan');
 });
 
 prueba('incluye los tres platillos que nombra la guía', () => {
@@ -689,6 +719,391 @@ prueba('el estado inicial del nutriólogo trae la lista de pacientes', () => {
   const estado = sandbox.getEstadoInicial(sesionNutriologo.token);
   igual(estado.rol, 'Nutriologo');
   cierto(estado.pacientes.length > 0, 'No trae pacientes');
+});
+
+/* ================= REGLAS DE SALUD ================= */
+
+grupo('Reglas de salud');
+
+prueba('clasifica frutas, origen vegetal y grasas saturadas', () => {
+  const c = (nombre) => {
+    const a = sandbox.buscarAlimentos(sesionPaciente.token, nombre)[0];
+    cierto(a, 'No existe ' + nombre + ' en el catálogo');
+    return sandbox.clasificarAlimento_(a);
+  };
+  cierto(c('Manzana con cáscara').esFruta, 'La manzana no cuenta como fruta');
+  cierto(c('Frijol negro cocido').esVegetal, 'El frijol no cuenta como vegetal');
+  cierto(!c('Pechuga de pollo sin piel cocida').esVegetal, 'El pollo cuenta como vegetal');
+  ['Manteca de cerdo', 'Mantequilla', 'Aceite de coco', 'Aceite de palma', 'Bistec de res magro cocido']
+    .forEach((n) => cierto(c(n).esGrasaSaturada, n + ' no se marcó como grasa saturada'));
+});
+
+prueba('compara por palabra completa y no por subcadena', () => {
+  /* "Salsa mexicana fresca" y "Fresa" contienen "res". Buscar por subcadena las
+     marcaba como grasa saturada y la app regañaba por comer fruta. */
+  ['Salsa mexicana fresca', 'Fresa', 'Aceite de girasol', 'Aceite de oliva', 'Requesón', 'Crema de cacahuate natural']
+    .forEach((nombre) => {
+      const a = sandbox.buscarAlimentos(sesionPaciente.token, nombre)[0];
+      cierto(a, 'No existe ' + nombre + ' en el catálogo');
+      cierto(!sandbox.clasificarAlimento_(a).esGrasaSaturada, nombre + ' se marcó como grasa saturada');
+    });
+});
+
+prueba('el ayudante de palabras completas distingue "res" de "fresca"', () => {
+  cierto(sandbox.contienePalabras_('bistec de res magro cocido', 'res'), 'No encuentra "res" suelta');
+  cierto(!sandbox.contienePalabras_('salsa mexicana fresca', 'res'), 'Encuentra "res" dentro de "fresca"');
+  cierto(!sandbox.contienePalabras_('fresa', 'res'), 'Encuentra "res" dentro de "fresa"');
+  cierto(sandbox.contienePalabras_('aceite de coco', 'aceite de coco'), 'No encuentra una secuencia de palabras');
+  cierto(!sandbox.contienePalabras_('aceite de oliva', 'aceite de coco'), 'Confunde secuencias distintas');
+});
+
+prueba('un día con fresas y salsa no dispara la alerta de grasas', () => {
+  const otra = sandbox.crearPaciente(sesionNutriologo.token, { nombre: 'Fresa', email: 'fresa@ejemplo.com' });
+  const s = sandbox.loginUser('fresa@ejemplo.com', otra.passwordTemporal);
+  const fresa = sandbox.buscarAlimentos(s.token, 'Fresa')[0];
+  const salsa = sandbox.buscarAlimentos(s.token, 'Salsa mexicana fresca')[0];
+  sandbox.guardarRegistroDiario(s.token, {
+    fecha: hoy(), tiempoComida: 'Colacion',
+    alimentos: [{ idAlimento: fresa.id, gramos: 150 }, { idAlimento: salsa.id, gramos: 50 }]
+  });
+  const regla = sandbox.getResumenDiario(s.token, hoy()).reglas.filter((r) => r.clave === 'saturadas')[0];
+  igual(regla.estado, 'logrado', 'Marcó grasas saturadas donde solo hay fruta y salsa');
+});
+
+prueba('el resumen del día trae las cuatro reglas de la guía', () => {
+  const reglas = sandbox.getResumenDiario(sesionPaciente.token, hoy()).reglas;
+  const claves = reglas.map((r) => r.clave).sort();
+  igual(JSON.stringify(claves), JSON.stringify(['fibra', 'fruta', 'saturadas', 'vegetal']));
+});
+
+prueba('la regla de fibra pide entre 25 y 30 g', () => {
+  igual(sandbox.reglaFibra_(27, true).estado, 'logrado');
+  igual(sandbox.reglaFibra_(12, true).estado, 'pendiente');
+  cierto(sandbox.reglaFibra_(12, true).mensaje.indexOf('13') >= 0, 'No dice cuánto falta');
+  igual(sandbox.reglaFibra_(40, true).estado, 'logrado', 'Pasarse de fibra no es un fallo');
+});
+
+prueba('la regla de fruta se cumple con una porción', () => {
+  igual(sandbox.reglaFruta_(0, true).estado, 'pendiente');
+  igual(sandbox.reglaFruta_(1, true).estado, 'logrado');
+});
+
+prueba('un día con fruta y frijol cumple fibra, fruta y origen vegetal', () => {
+  const otra = sandbox.crearPaciente(sesionNutriologo.token, { nombre: 'Reglas', email: 'reglas@ejemplo.com' });
+  const s = sandbox.loginUser('reglas@ejemplo.com', otra.passwordTemporal);
+  const frijol = sandbox.buscarAlimentos(s.token, 'Frijol negro cocido')[0];
+  const guayaba = sandbox.buscarAlimentos(s.token, 'Guayaba')[0];
+  const nopal = sandbox.buscarAlimentos(s.token, 'Nopal cocido')[0];
+
+  sandbox.guardarRegistroDiario(s.token, {
+    fecha: hoy(), tiempoComida: 'Comida',
+    alimentos: [
+      { idAlimento: frijol.id, gramos: 250 },
+      { idAlimento: guayaba.id, gramos: 150 },
+      { idAlimento: nopal.id, gramos: 200 }
+    ]
+  });
+
+  const reglas = sandbox.getResumenDiario(s.token, hoy()).reglas;
+  const por = {};
+  reglas.forEach((r) => { por[r.clave] = r; });
+  igual(por.fibra.estado, 'logrado', 'La fibra no llegó a la meta: ' + por.fibra.valor);
+  igual(por.fruta.estado, 'logrado', 'No contó la guayaba como fruta');
+  igual(por.vegetal.estado, 'logrado', 'No reconoció el día como de origen vegetal');
+  igual(por.saturadas.estado, 'logrado', 'Marcó grasas saturadas donde no las hay');
+});
+
+prueba('registrar mantequilla dispara el aviso de grasas saturadas', () => {
+  const otra = sandbox.crearPaciente(sesionNutriologo.token, { nombre: 'Grasa', email: 'grasa@ejemplo.com' });
+  const s = sandbox.loginUser('grasa@ejemplo.com', otra.passwordTemporal);
+  const mantequilla = sandbox.buscarAlimentos(s.token, 'Mantequilla')[0];
+  sandbox.guardarRegistroDiario(s.token, {
+    fecha: hoy(), tiempoComida: 'Desayuno', alimentos: [{ idAlimento: mantequilla.id, gramos: 20 }]
+  });
+  const regla = sandbox.getResumenDiario(s.token, hoy()).reglas.filter((r) => r.clave === 'saturadas')[0];
+  igual(regla.estado, 'atencion');
+  cierto(regla.detectados.indexOf('Mantequilla') >= 0, 'No nombró el alimento detectado');
+  cierto(regla.mensaje.indexOf('no es prohibido') >= 0 || regla.mensaje.indexOf('No es prohibido') >= 0,
+    'El tono debe ser de recordatorio, no de regaño');
+});
+
+/* ================= IMC Y PERFIL ================= */
+
+grupo('IMC y perfil');
+
+prueba('calcula el IMC y lo clasifica', () => {
+  igual(sandbox.calcularIMC(70, 170).valor, 24.2);
+  igual(sandbox.calcularIMC(70, 170).clasificacion, 'Peso normal');
+  igual(sandbox.calcularIMC(50, 170).clasificacion, 'Bajo peso');
+  igual(sandbox.calcularIMC(80, 170).clasificacion, 'Sobrepeso');
+  igual(sandbox.calcularIMC(95, 170).clasificacion, 'Obesidad grado I');
+});
+
+prueba('el IMC advierte que no distingue músculo de grasa', () => {
+  cierto(sandbox.calcularIMC(70, 170).advertencia.indexOf('músculo') >= 0, 'Falta la advertencia');
+});
+
+prueba('sin peso o sin estatura no inventa un IMC', () => {
+  igual(sandbox.calcularIMC(0, 170), null);
+  igual(sandbox.calcularIMC(70, 0), null);
+});
+
+prueba('calcula la edad desde la fecha de nacimiento', () => {
+  const hace30 = new Date();
+  hace30.setFullYear(hace30.getFullYear() - 30);
+  hace30.setDate(hace30.getDate() - 1);
+  igual(sandbox.calcularEdad_(sandbox.aFechaISO_(hace30)), 30);
+  igual(sandbox.calcularEdad_(''), null);
+  igual(sandbox.calcularEdad_('no es fecha'), null);
+});
+
+prueba('el perfil trae datos personales, IMC y laboratorio', () => {
+  const perfil = sandbox.getPerfilPaciente(sesionPaciente.token);
+  igual(perfil.nombre, 'María López');
+  cierto(perfil.peso_kg > 0, 'No trae el peso');
+  cierto(perfil.laboratorio, 'No trae el laboratorio');
+});
+
+prueba('guardar el perfil con estatura calcula el IMC', () => {
+  const res = sandbox.guardarPerfilPaciente(sesionPaciente.token, {
+    estatura_cm: 162, sexo: 'Mujer', nivelActividad: 'Alta',
+    tipoEjercicio: 'Anaeróbico', patologias: 'Hipotiroidismo'
+  });
+  cierto(res.perfil.imc, 'No calculó el IMC');
+  igual(res.perfil.nivelActividad, 'Alta');
+  igual(res.perfil.tipoEjercicio, 'Anaeróbico');
+  igual(res.perfil.patologias, 'Hipotiroidismo');
+});
+
+prueba('cambiar el nivel de actividad mueve el factor y la meta', () => {
+  const antes = sandbox.obtenerPlanCaloricoMensual(idPaciente).get;
+  sandbox.guardarPerfilPaciente(sesionPaciente.token, { nivelActividad: 'Baja' });
+  const despues = sandbox.obtenerPlanCaloricoMensual(idPaciente).get;
+  cierto(despues < antes, 'Bajar el nivel de actividad no bajó el gasto: ' + antes + ' → ' + despues);
+  sandbox.guardarPerfilPaciente(sesionPaciente.token, { nivelActividad: 'Moderada' });
+});
+
+prueba('rechaza estaturas imposibles', () => {
+  lanza(() => sandbox.guardarPerfilPaciente(sesionPaciente.token, { estatura_cm: 40 }), 'estatura');
+  lanza(() => sandbox.guardarPerfilPaciente(sesionPaciente.token, { estatura_cm: 300 }), 'estatura');
+});
+
+prueba('la tendencia devuelve la serie de la métrica pedida', () => {
+  const t = sandbox.getTendenciaMetrica(sesionPaciente.token, 'peso');
+  igual(t.unidad, 'kg');
+  cierto(t.puntos.length >= 2, 'Faltan puntos en la serie');
+  cierto(t.disponibles.length >= 8, 'No ofrece todas las métricas filtrables');
+});
+
+prueba('la tendencia de una métrica sin datos sale vacía, no rota', () => {
+  const otra = sandbox.crearPaciente(sesionNutriologo.token, { nombre: 'Vacío', email: 'vacio@ejemplo.com' });
+  const s = sandbox.loginUser('vacio@ejemplo.com', otra.passwordTemporal);
+  const t = sandbox.getTendenciaMetrica(s.token, 'glucosa');
+  igual(t.puntos.length, 0);
+  igual(t.cambio, 0);
+});
+
+/* ================= PLATO DE LA MILPA ================= */
+
+grupo('Plato de la Dieta de la Milpa');
+
+prueba('trae los cinco grupos con sus proporciones', () => {
+  const milpa = sandbox.getPlatoMilpa(sesionPaciente.token);
+  igual(milpa.grupos.length, 5);
+  const suma = milpa.grupos.reduce((t, g) => t + g.proporcion, 0);
+  igual(suma, 100, 'Las proporciones del plato no suman 100');
+});
+
+prueba('incluye maíz, frijol, calabaza y la soya que agrega la guía', () => {
+  const milpa = sandbox.getPlatoMilpa(sesionPaciente.token);
+  const claves = milpa.grupos.map((g) => g.clave);
+  ['maiz', 'frijol', 'verduras', 'soya'].forEach((c) =>
+    cierto(claves.indexOf(c) >= 0, 'Falta el grupo ' + c));
+  const soya = milpa.grupos.filter((g) => g.clave === 'soya')[0];
+  const nombres = soya.alimentos.map((a) => a.alimento);
+  cierto(nombres.some((n) => n.indexOf('Tofu') >= 0), 'Falta el tofu');
+  cierto(nombres.some((n) => n.indexOf('Soya texturizada') >= 0), 'Falta la soya texturizada');
+});
+
+prueba('cada alimento del plato trae su tabla nutricional', () => {
+  const milpa = sandbox.getPlatoMilpa(sesionPaciente.token);
+  milpa.grupos.forEach((g) => {
+    cierto(g.alimentos.length > 0, 'El grupo ' + g.clave + ' quedó sin alimentos');
+    g.alimentos.forEach((a) => {
+      ['calorias', 'proteinas', 'grasas', 'carbohidratos', 'fibra'].forEach((llave) =>
+        cierto(llave in a, 'A ' + a.alimento + ' le falta ' + llave));
+    });
+  });
+});
+
+prueba('lista los alimentos que la guía pide limitar con su motivo', () => {
+  const limitar = sandbox.getPlatoMilpa(sesionPaciente.token).limitar;
+  const nombres = limitar.map((l) => sandbox.normalizarTexto_(l.alimento));
+  ['manteca', 'mantequilla', 'aceite de coco', 'aceite de palma', 'carne roja']
+    .forEach((n) => cierto(nombres.some((x) => x.indexOf(n) >= 0), 'Falta ' + n));
+  limitar.forEach((l) => cierto(l.motivo.length > 20, 'A ' + l.alimento + ' le falta el motivo'));
+});
+
+/* ================= REGISTRO POR TEXTO ================= */
+
+grupo('Registro por texto');
+
+prueba('sin llave de IA usa el analizador local y lo dice', () => {
+  const res = sandbox.analizarComidaTexto(sesionPaciente.token, '150 g de frijol negro cocido con nopal');
+  igual(res.origen, 'local');
+  cierto(res.alimentos.length >= 1, 'No reconoció ningún alimento');
+});
+
+prueba('el analizador local respeta los gramos que se escriben', () => {
+  const res = sandbox.analizarComidaTexto(sesionPaciente.token, 'comí 200 g de frijol negro cocido');
+  const frijol = res.alimentos.filter((a) => a.alimento.indexOf('Frijol negro') >= 0)[0];
+  cierto(frijol, 'No encontró el frijol');
+  igual(frijol.gramos, 200);
+});
+
+prueba('suma los totales de lo que reconoció', () => {
+  const res = sandbox.analizarComidaTexto(sesionPaciente.token, '100 g de avena en hojuelas');
+  cierto(res.totales.calorias > 300 && res.totales.calorias < 450,
+    'Los totales no cuadran: ' + res.totales.calorias);
+});
+
+prueba('cuando no reconoce nada lo dice sin fallar', () => {
+  const res = sandbox.analizarComidaTexto(sesionPaciente.token, 'zzzz qqqq');
+  igual(res.alimentos.length, 0);
+  cierto(res.comentario.indexOf('No reconocí') >= 0, 'No explica qué pasó');
+});
+
+prueba('rechaza texto vacío o demasiado largo', () => {
+  lanza(() => sandbox.analizarComidaTexto(sesionPaciente.token, '   '), 'escribe qué comiste');
+  lanza(() => sandbox.analizarComidaTexto(sesionPaciente.token, 'a'.repeat(2000)), 'muy larga');
+});
+
+prueba('con llave configurada llama a la API de Claude con el modelo correcto', () => {
+  reiniciar();
+  sandbox.PropertiesService.getScriptProperties().setProperty('ANTHROPIC_API_KEY', 'llave-de-prueba');
+  try {
+    sandbox.analizarComidaTexto(sesionPaciente.token, 'dos tacos de nopal');
+    igual(efectos.peticiones.length, 1, 'No llamó a la API');
+
+    const peticion = efectos.peticiones[0];
+    igual(peticion.url, 'https://api.anthropic.com/v1/messages');
+    igual(peticion.opciones.headers['x-api-key'], 'llave-de-prueba');
+    igual(peticion.opciones.headers['anthropic-version'], '2023-06-01');
+
+    const cuerpo = JSON.parse(peticion.opciones.payload);
+    igual(cuerpo.model, 'claude-opus-5');
+    igual(cuerpo.thinking.type, 'adaptive');
+    igual(cuerpo.output_config.format.type, 'json_schema');
+    cierto(cuerpo.system[0].text.indexOf('ALI-') >= 0, 'No manda el catálogo con sus IDs');
+  } finally {
+    sandbox.PropertiesService.getScriptProperties().deleteProperty('ANTHROPIC_API_KEY');
+  }
+});
+
+prueba('si la API falla, cae al analizador local en vez de romperse', () => {
+  reiniciar();
+  sandbox.PropertiesService.getScriptProperties().setProperty('ANTHROPIC_API_KEY', 'llave-de-prueba');
+  const original = sandbox.UrlFetchApp.fetch;
+  sandbox.UrlFetchApp.fetch = () => ({ getResponseCode: () => 500, getContentText: () => 'error' });
+  try {
+    const res = sandbox.analizarComidaTexto(sesionPaciente.token, '100 g de frijol negro cocido');
+    igual(res.origen, 'local');
+    cierto(res.aviso.length > 0, 'No avisa que la IA no respondió');
+  } finally {
+    sandbox.UrlFetchApp.fetch = original;
+    sandbox.PropertiesService.getScriptProperties().deleteProperty('ANTHROPIC_API_KEY');
+  }
+});
+
+/* ================= CHAT ASISTENTE ================= */
+
+grupo('Chat asistente');
+
+prueba('contesta sin IA con una respuesta del recetario', () => {
+  const res = sandbox.preguntarAsistente(sesionPaciente.token, '¿cuánta fibra debo comer?');
+  igual(res.origen, 'local');
+  cierto(res.respuesta.indexOf('25') >= 0, 'No menciona la meta de fibra');
+});
+
+prueba('para dudas clínicas remite al nutriólogo', () => {
+  const res = sandbox.preguntarAsistente(sesionPaciente.token, '¿qué medicamento tomo para la tiroides?');
+  cierto(res.respuesta.indexOf('nutriólogo') >= 0, 'No remite al nutriólogo');
+});
+
+prueba('la conversación con el bot queda guardada', () => {
+  const chat = sandbox.getChatAsistente(sesionPaciente.token);
+  cierto(chat.length >= 4, 'No se guardaron pregunta y respuesta');
+  igual(chat[chat.length - 1].enviadoPor, 'Asistente');
+});
+
+prueba('el chat del bot NO se mezcla con el del nutriólogo', () => {
+  const conNutriologo = sandbox.getChat(sesionPaciente.token);
+  cierto(conNutriologo.every((m) => m.enviadoPor !== 'Asistente'),
+    'Las respuestas del bot aparecen en el chat del nutriólogo');
+  const exp = sandbox.getExpediente(sesionNutriologo.token, idPaciente);
+  cierto(exp.chat.every((m) => m.enviadoPor !== 'Asistente'),
+    'El nutriólogo ve la conversación del bot en su expediente');
+});
+
+prueba('preguntar al bot no genera alertas al nutriólogo', () => {
+  reiniciar();
+  sandbox.preguntarAsistente(sesionPaciente.token, '¿el aguacate engorda?');
+  igual(efectos.correos.length, 0, 'Mandó correo por una pregunta al bot');
+  igual(efectos.peticiones.length, 0, 'Mandó WhatsApp por una pregunta al bot');
+});
+
+prueba('con llave configurada el bot llama a Claude con sus límites', () => {
+  reiniciar();
+  sandbox.PropertiesService.getScriptProperties().setProperty('ANTHROPIC_API_KEY', 'llave-de-prueba');
+  try {
+    sandbox.preguntarAsistente(sesionPaciente.token, '¿puedo cenar fruta?');
+    const cuerpo = JSON.parse(efectos.peticiones[0].opciones.payload);
+    igual(cuerpo.model, 'claude-opus-5');
+    const sistema = cuerpo.system[0].text;
+    cierto(sistema.indexOf('No diagnosticas') >= 0, 'No le prohíbe diagnosticar');
+    cierto(sistema.indexOf('No cambias su meta') >= 0, 'No le prohíbe cambiar el plan');
+    cierto(sistema.indexOf('María López') >= 0, 'No le pasa el contexto del paciente');
+  } finally {
+    sandbox.PropertiesService.getScriptProperties().deleteProperty('ANTHROPIC_API_KEY');
+  }
+});
+
+prueba('rechaza preguntas vacías o demasiado largas', () => {
+  lanza(() => sandbox.preguntarAsistente(sesionPaciente.token, '  '), 'escribe tu pregunta');
+  lanza(() => sandbox.preguntarAsistente(sesionPaciente.token, 'a'.repeat(1200)), 'muy larga');
+});
+
+prueba('el asistente sabe contestar las preguntas que él mismo sugiere', () => {
+  /* Los botones de sugerencia viven en la interfaz y el recetario en el
+     backend. Si se separan, la app propone preguntas a las que responde
+     "eso pregúntaselo a tu nutriólogo", que es la peor primera impresión
+     posible. Esta lista tiene que coincidir con SUGERENCIAS_ASISTENTE. */
+  const sugerencias = [
+    '¿Cuánta fibra debo comer?',
+    '¿El aguacate engorda?',
+    '¿Con qué sustituyo la carne?',
+    '¿Cuánta proteína necesito?'
+  ];
+  const evasiva = 'Esa la puede contestar mejor tu nutriólogo';
+
+  sugerencias.forEach((pregunta) => {
+    const respuesta = sandbox.respuestaFija_(pregunta);
+    cierto(respuesta.indexOf(evasiva) < 0,
+      'El asistente sugiere "' + pregunta + '" pero no la sabe contestar');
+  });
+});
+
+prueba('las sugerencias de la interfaz son las mismas que prueba el backend', () => {
+  const fs = require('fs');
+  const scripts = fs.readFileSync(path.join(RAIZ, 'Scripts.html'), 'utf8');
+  const bloque = scripts.match(/var SUGERENCIAS_ASISTENTE = \[([\s\S]*?)\];/);
+  cierto(bloque, 'No se encontró SUGERENCIAS_ASISTENTE en la interfaz');
+  const enInterfaz = (bloque[1].match(/'([^']+)'/g) || []).map((t) => t.slice(1, -1));
+  igual(enInterfaz.length, 4, 'Cambió el número de sugerencias');
+  enInterfaz.forEach((pregunta) => {
+    cierto(sandbox.respuestaFija_(pregunta).indexOf('Esa la puede contestar mejor') < 0,
+      'La interfaz sugiere "' + pregunta + '" y el recetario no la cubre');
+  });
 });
 
 /* ---------- Cierre ---------- */

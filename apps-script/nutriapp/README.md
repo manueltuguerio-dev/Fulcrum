@@ -12,20 +12,42 @@ separado, con su propio `appsscript.json`.
 
 ## Qué hace
 
-**Paciente**
+**Paciente** · cinco pestañas: Hoy, Comer, Perfil, Ciencia y Asistente
 
+*Hoy*
 - Anillo de progreso del día contra su meta calórica, con barras de proteína,
   carbohidratos, grasas y fibra.
-- Armador de platillos: tres opciones mexicanas por cada tiempo de comida
-  (desayuno, comida, cena, colación) más un buscador de más de 80 alimentos con
-  su composición por 100 g, para ajustar gramajes o crear un platillo desde cero.
+- Las cuatro metas de hábito del día, evaluadas contra lo que registró.
+- Lo que lleva comido y su actividad física.
+
+*Comer*
+- **¿Qué comí hoy?**: describe la comida con sus palabras y la IA calcula
+  calorías, macros y fibra. Sin llave de API, un analizador local reconoce los
+  alimentos del catálogo por su nombre.
+- **Menús**: 10 opciones de desayuno, 10 de comida y 10 de cena, más colaciones.
+  Las sugerencias destacadas rotan cada tres días.
+- **La Milpa**: el Plato del Buen Comer adaptado a la Dieta de la Milpa, con la
+  tabla nutricional de cada grupo y la lista de lo que conviene limitar.
+- Buscador de más de 110 alimentos con su composición por 100 g, y un armador
+  donde se ajustan los gramos antes de guardar.
+
+*Perfil*
+- Datos personales y físicos: edad, estatura, peso, IMC con su clasificación y
+  porcentaje de grasa corporal.
+- Nivel de actividad (Baja, Moderada, Alta, Muy Alta), tipo de ejercicio
+  (aeróbico o anaeróbico) y patologías.
+- **Mi progreso**: gráfica filtrable por métrica para comparar mes con mes.
 - Escaneo con la cámara: la foto de la báscula o del estudio de sangre se lee
   con Tesseract.js **en el propio teléfono**, prellena el formulario y se
   guarda en Drive.
-- Registro de actividad física con estimación de calorías quemadas según el
-  peso vigente.
-- Biblioteca de evidencia con la pirámide de niveles y enlaces a PubMed.
-- Chat con el nutriólogo, que dispara una alerta al momento.
+
+*Ciencia*
+- Pirámide de la evidencia y fichas ilustradas con enlaces a PubMed, editables
+  desde la hoja de cálculo.
+
+*Asistente*
+- Chatbot disponible a cualquier hora para dudas rápidas.
+- Botón para escalar al nutriólogo, que dispara una alerta al momento.
 
 **Nutriólogo**
 
@@ -34,6 +56,28 @@ separado, con su propio `appsscript.json`.
   visceral y corporal, triglicéridos, colesterol y glucosa.
 - Ajuste manual de la meta calórica y del factor de actividad.
 - Acceso directo a las imágenes que subió el paciente y respuesta en el chat.
+
+## Las cuatro metas de hábito
+
+Además de las calorías, la app revisa todos los días cuatro cosas que mueven
+más la aguja que contar energía:
+
+| Meta | Cómo se evalúa |
+|---|---|
+| **Fibra** | Entre 25 y 30 g al día. Pasarse no cuenta como falla. |
+| **Fruta** | Al menos una porción (80 g) al día. |
+| **Origen vegetal** | Que al menos el 60 % de la energía del día venga de plantas. |
+| **Grasas saturadas** | Señala manteca, mantequilla, aceite de coco, aceite de palma y carne roja cuando aparecen. |
+
+El tono es deliberado: son recordatorios, no reproches. Quien está registrando
+su comida ya está haciendo el trabajo, y una app que regaña se desinstala. Por
+eso el aviso de grasas saturadas dice "no es prohibido, conviene que sea la
+excepción" en lugar de marcar el día en rojo.
+
+La clasificación compara **palabras completas**, no subcadenas. Suena a detalle
+de implementación y no lo es: buscar "res" dentro del texto marcaba "Salsa
+mexicana fresca" y "Fresa" como grasa saturada, y la app terminaba regañando a
+alguien por comerse una fruta.
 
 ## Cómo se calcula la meta calórica
 
@@ -71,7 +115,10 @@ lectura hasta dejar al paciente en el piso.
 | `Datos.gs` | Catálogo de alimentos por 100 g y biblioteca de evidencia |
 | `Auth.gs` | Contraseñas, sesiones, recuperación y alta de pacientes |
 | `KatchMcArdle.gs` | TMB, gasto energético, macros y ajuste mensual del déficit |
-| `Menus.gs` | Los doce platillos mexicanos prediseñados |
+| `Reglas.gs` | Las cuatro metas de hábito, el IMC y los niveles de actividad |
+| `Menus.gs` | Los 35 platillos mexicanos prediseñados y su rotación |
+| `Milpa.gs` | El Plato de la Milpa y su tabla nutricional |
+| `IA.gs` | Registro por texto y chat asistente con la API de Claude |
 | `Api.gs` | Todo lo que la interfaz llama con `google.script.run` |
 | `MetaWhatsApp.gs` | Alertas por la Meta Cloud API y respaldo por correo |
 | `Index.html` | Estructura de la interfaz de una sola página |
@@ -90,10 +137,10 @@ lectura hasta dejar al paciente en el piso.
 | `Alimentos_100g` | ID, Categoria, Alimento, Proteina_g, Grasa_g, Carbohidratos_g, Fibra_g, Calorias_100g |
 | `Registro_Diario` | ID, ID_Paciente, Fecha, TiempoComida, AlimentosJSON, CaloriasTotales, ProteinasTotales, GrasasTotales, CarbohidratosTotales, FibraTotal |
 | `Actividad_Fisica` | ID, ID_Paciente, Fecha, TipoActividad, DuracionMinutos, CaloriasQuemadasEst |
-| `Chat_Soporte` | ID, ID_Paciente, Mensaje, EnviadoPor, Fecha, Estado |
-| `Config_Paciente` | ID_Paciente, CaloriasObjetivo, ProteinaObjetivo_g, FactorActividad, Estatura_cm, FechaNacimiento, Sexo, AjusteManual, FechaActualizacion, ActualizadoPor |
+| `Chat_Soporte` | ID, ID_Paciente, Mensaje, EnviadoPor, Fecha, Estado · guarda dos conversaciones distintas, la del nutriólogo y la del asistente, separadas por `EnviadoPor` |
+| `Config_Paciente` | ID_Paciente, CaloriasObjetivo, ProteinaObjetivo_g, FactorActividad, Estatura_cm, FechaNacimiento, Sexo, AjusteManual, FechaActualizacion, ActualizadoPor, NivelActividad, TipoEjercicio, Patologias |
 | `Sesiones` | Token, ID_Usuario, Rol, Tipo, Expira |
-| `Evidencia_Cientifica` | ID, Tema, Titulo, Resumen, NivelEvidencia, Enlace |
+| `Evidencia_Cientifica` | ID, Tema, Titulo, Resumen, NivelEvidencia, Enlace, Emoji, Orden |
 
 Las últimas tres no venían en la especificación original y se agregaron porque
 hacían falta: `Config_Paciente` guarda la meta que el nutriólogo fija a mano,
@@ -101,6 +148,13 @@ hacían falta: `Config_Paciente` guarda la meta que el nutriólogo fija a mano,
 `Evidencia_Cientifica` deja que las fichas se editen desde la hoja sin tocar
 código. `GrasaVisceral` se sumó a `Metricas_Paciente` porque el panel la
 grafica.
+
+Las columnas que se agregaron después de la primera versión van **al final** de
+su pestaña, no en medio: `escribirEncabezados_` solo reescribe el renglón 1, así
+que agregar al final deja los datos existentes alineados. Lo mismo aplica al
+catálogo de alimentos, donde el ID se asigna por posición en el arreglo:
+insertar en medio le daría a un alimento nuevo un ID que en una hoja ya
+desplegada pertenece a otro.
 
 Todo el catálogo es editable desde la hoja: la app lee de ahí, no del código.
 
@@ -159,6 +213,43 @@ marca un error señalando `Session.getEffectiveUser` y pidiendo el permiso
 `userinfo.email`, es que el manifiesto pegado en el proyecto no trae ese
 permiso en la lista. Cópialo de nuevo desde `appsscript.json` en esta carpeta,
 guarda, y vuelve a ejecutar `setupDatabase`; te va a pedir autorizar de nuevo.
+
+## La IA: registro por texto y chat asistente
+
+Dos funciones usan la API de Claude por HTTP con `UrlFetchApp`, porque Apps
+Script no puede instalar el SDK de Anthropic ni ningún paquete de npm:
+
+- **Registro por texto**: el paciente escribe "dos tacos de nopal con frijol y
+  una guayaba" y la IA devuelve el desglose. Se le pasa el catálogo para que
+  reutilice sus IDs, de modo que el registro quede ligado a la base y las cuatro
+  metas puedan clasificarlo. El resultado **no se guarda solo**: se muestra para
+  confirmar o corregir los gramos, porque estimar no es medir.
+- **Chat asistente**: contesta dudas rápidas con el contexto del día. Tiene dos
+  límites explícitos en el prompt, y son los importantes: no diagnostica y no
+  cambia el plan. Eso es del nutriólogo, y una app que lo confunde hace daño.
+
+Modelo: `claude-opus-5`, con pensamiento adaptativo. El registro por texto pide
+la respuesta como JSON con esquema, para no adivinar el formato.
+
+### Configurar la llave
+
+1. Consigue una llave en <https://console.anthropic.com>.
+2. Abre `IA.gs`, escríbela dentro de `setupCredencialIA()`, ejecútala una vez
+   desde el editor y **vuelve a dejar el marcador** antes de guardar el archivo
+   en git.
+3. Comprueba con `estadoIA()`.
+
+### Sin llave la app sigue funcionando
+
+No es un modo degradado accidental, está diseñado así: el registro por texto cae
+a un analizador local que busca los alimentos del catálogo por su nombre y toma
+los gramos que aparezcan junto a ellos, y el asistente responde desde un
+recetario de respuestas fijas que cubre las dudas más comunes. Peor, pero nunca
+una pantalla rota.
+
+**Cuesta dinero.** Cada análisis de comida y cada respuesta del asistente es una
+llamada facturada. Si vas a abrir la app a muchos pacientes, mide primero con
+unos pocos.
 
 ## Alertas por WhatsApp
 

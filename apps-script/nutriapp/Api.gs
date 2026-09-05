@@ -39,9 +39,14 @@ function getEstadoInicial(token) {
     resumenHoy: getResumenDiario(token, aFechaISO_(new Date())),
     alimentos: getCatalogoAlimentos(token),
     platillos: getPlatillosSugeridos(token),
+    milpa: getPlatoMilpa(token),
     evidencia: leerTabla_('Evidencia_Cientifica').map(limpiarFila_),
     ultimaMetrica: getUltimaMetrica(token),
-    chat: getChat(token)
+    datosPerfil: getPerfilPaciente(token),
+    tendencia: getTendenciaMetrica(token, 'peso'),
+    chat: getChat(token),
+    chatAsistente: getChatAsistente(token),
+    iaDisponible: hayIA_()
   };
 }
 
@@ -265,6 +270,7 @@ function getResumenDiario(token, fecha) {
     restante: redondear_(plan.caloriasObjetivo - consumido.calorias, 0),
     meta: plan.caloriasObjetivo,
     macrosObjetivo: plan.macros,
+    reglas: evaluarReglasDelDia_(comidas, consumido),
     comidas: comidas,
     actividades: actividades.map(function (a) {
       return {
@@ -320,6 +326,11 @@ function getHistorialDiario(token, dias) {
 
 /**
  * Los platillos mexicanos prediseñados, con sus macros ya calculados.
+ *
+ * Cada platillo trae `destacado`, que marca los que la rotación de tres días
+ * pone al frente hoy. Los demás siguen viajando al navegador: la variedad es
+ * de presentación, no de disponibilidad, y quien quiera ver los diez los ve.
+ *
  * @param {string} token El token de sesión.
  * @return {Object} Los platillos agrupados por tiempo de comida.
  */
@@ -330,9 +341,14 @@ function getPlatillosSugeridos(token) {
     porNombre[normalizarTexto_(a.alimento)] = a;
   });
 
+  var periodo = periodoRotacion_();
   var salida = {};
+
   Object.keys(PLATILLOS_MEXICANOS).forEach(function (tiempo) {
-    salida[tiempo] = PLATILLOS_MEXICANOS[tiempo].map(function (platillo) {
+    var lista = PLATILLOS_MEXICANOS[tiempo];
+    var destacados = indicesDestacados_(lista.length, DESTACADOS_POR_TIEMPO, periodo);
+
+    salida[tiempo] = lista.map(function (platillo, indice) {
       var items = platillo.ingredientes.map(function (ing) {
         var base = porNombre[normalizarTexto_(ing[0])];
         return base ? { idAlimento: base.id, gramos: ing[1] } : null;
@@ -344,12 +360,293 @@ function getPlatillosSugeridos(token) {
         descripcion: platillo.descripcion,
         alternativa: platillo.alternativa || '',
         alimentos: calculo.detalle,
-        totales: calculo.totales
+        totales: calculo.totales,
+        destacado: destacados.indexOf(indice) >= 0
       };
     });
   });
 
+  salida._rotacion = {
+    periodo: periodo,
+    cambia: proximaRotacion_(),
+    cadaDias: DIAS_ROTACION
+  };
   return salida;
+}
+
+/**
+ * El Plato del Buen Comer adaptado a la Dieta de la Milpa, con su tabla
+ * nutricional armada desde el catálogo.
+ * @param {string} token El token de sesión.
+ * @return {Object} Los grupos del plato y los alimentos a limitar.
+ */
+function getPlatoMilpa(token) {
+  return armarPlatoMilpa_(getCatalogoAlimentos(token));
+}
+
+/* ===================================================================
+   REGISTRO POR TEXTO CON IA
+   =================================================================== */
+
+/**
+ * Interpreta en texto libre lo que el paciente comió, sin guardarlo todavía.
+ *
+ * Devolver sin guardar es deliberado: la IA estima porciones, y estimar no es
+ * medir. El paciente confirma o corrige los gramos en pantalla y de ahí pasa al
+ * registro normal, que es el que hace las cuentas definitivas.
+ *
+ * @param {string} token El token de sesión.
+ * @param {string} descripcion Lo que escribió el paciente.
+ * @return {Object} Alimentos reconocidos, totales y comentario.
+ */
+function analizarComidaTexto(token, descripcion) {
+  requerirSesion_(token);
+  var texto = String(descripcion || '').trim();
+
+  if (!texto) {
+    throw new Error('Escribe qué comiste.');
+  }
+  if (texto.length > 1500) {
+    throw new Error('La descripción es muy larga. Resúmela en menos de 1500 caracteres.');
+  }
+
+  var catalogo = getCatalogoAlimentos(token);
+  var analisis = analizarDescripcionComida_(texto, catalogo);
+
+  var totales = { calorias: 0, proteinas: 0, grasas: 0, carbohidratos: 0, fibra: 0 };
+  analisis.alimentos.forEach(function (a) {
+    totales.calorias += aNumero_(a.calorias);
+    totales.proteinas += aNumero_(a.proteinas);
+    totales.grasas += aNumero_(a.grasas);
+    totales.carbohidratos += aNumero_(a.carbohidratos);
+    totales.fibra += aNumero_(a.fibra);
+  });
+  Object.keys(totales).forEach(function (llave) {
+    totales[llave] = redondear_(totales[llave], 1);
+  });
+
+  return {
+    alimentos: analisis.alimentos,
+    totales: totales,
+    comentario: analisis.comentario,
+    confianza: analisis.confianza,
+    origen: analisis.origen,
+    aviso: analisis.avisoIA || ''
+  };
+}
+
+/* ===================================================================
+   CHAT ASISTENTE
+   =================================================================== */
+
+/**
+ * Contesta una duda en el chat asistente.
+ *
+ * Esta conversación es aparte de la del nutriólogo: se guarda con EnviadoPor
+ * "Asistente" y no dispara alertas. Las dudas para el humano siguen su propio
+ * camino, en guardarMensajeChat.
+ *
+ * @param {string} token El token de sesión.
+ * @param {string} pregunta La duda.
+ * @return {Object} La respuesta y la conversación actualizada.
+ */
+function preguntarAsistente(token, pregunta) {
+  var usuario = requerirSesion_(token);
+  var texto = String(pregunta || '').trim();
+
+  if (!texto) {
+    throw new Error('Escribe tu pregunta.');
+  }
+  if (texto.length > 1000) {
+    throw new Error('La pregunta es muy larga. Resúmela en menos de 1000 caracteres.');
+  }
+
+  var historial = getChatAsistente(token);
+  var plan = obtenerPlanCaloricoMensual(usuario.ID);
+  var resumen = getResumenDiario(token, aFechaISO_(new Date()));
+
+  agregarFila_('Chat_Soporte', {
+    ID: nuevoId_('AST'),
+    ID_Paciente: usuario.ID,
+    Mensaje: texto,
+    EnviadoPor: 'Paciente-Asistente',
+    Fecha: new Date(),
+    Estado: 'Leido'
+  });
+
+  var respuesta = responderAsistente_(
+    { nombre: usuario.Nombre },
+    { plan: plan, resumen: resumen },
+    historial,
+    texto
+  );
+
+  agregarFila_('Chat_Soporte', {
+    ID: nuevoId_('AST'),
+    ID_Paciente: usuario.ID,
+    Mensaje: respuesta.texto,
+    EnviadoPor: 'Asistente',
+    Fecha: new Date(),
+    Estado: 'Leido'
+  });
+
+  return {
+    ok: true,
+    respuesta: respuesta.texto,
+    origen: respuesta.origen,
+    aviso: respuesta.aviso || '',
+    chat: getChatAsistente(token)
+  };
+}
+
+/**
+ * La conversación con el asistente, separada de la del nutriólogo.
+ * @param {string} token El token de sesión.
+ * @return {Array<Object>} Los mensajes ordenados por fecha.
+ */
+function getChatAsistente(token) {
+  var usuario = requerirSesion_(token);
+  return leerTabla_('Chat_Soporte')
+    .filter(function (c) {
+      return String(c.ID_Paciente) === String(usuario.ID) &&
+        (String(c.EnviadoPor) === 'Asistente' || String(c.EnviadoPor) === 'Paciente-Asistente');
+    })
+    .sort(function (a, b) { return new Date(a.Fecha) - new Date(b.Fecha); })
+    .map(function (c) {
+      return {
+        id: c.ID,
+        mensaje: c.Mensaje,
+        enviadoPor: c.EnviadoPor === 'Asistente' ? 'Asistente' : 'Paciente',
+        fecha: c.Fecha instanceof Date ? c.Fecha.toISOString() : String(c.Fecha)
+      };
+    });
+}
+
+/* ===================================================================
+   PERFIL DEL PACIENTE
+   =================================================================== */
+
+/**
+ * Los datos personales, físicos y clínicos del paciente, con el IMC calculado.
+ * @param {string} token El token de sesión.
+ * @return {Object} El perfil completo.
+ */
+function getPerfilPaciente(token) {
+  var usuario = requerirSesion_(token);
+  var config = obtenerConfigPaciente_(usuario.ID);
+  var ultima = getUltimaMetrica(token);
+
+  var peso = ultima ? aNumero_(ultima.Peso_kg) : 0;
+  var estatura = aNumero_(config.Estatura_cm);
+
+  return {
+    nombre: usuario.Nombre,
+    email: usuario.Email,
+    edad: calcularEdad_(config.FechaNacimiento),
+    fechaNacimiento: config.FechaNacimiento ? aFechaISO_(config.FechaNacimiento) : '',
+    sexo: config.Sexo || '',
+    estatura_cm: estatura || null,
+    peso_kg: peso || null,
+    imc: calcularIMC(peso, estatura),
+    porcentajeGrasa: ultima ? aNumero_(ultima.PorcentajeGrasa) || null : null,
+    nivelActividad: config.NivelActividad || 'Moderada',
+    tipoEjercicio: config.TipoEjercicio || '',
+    patologias: config.Patologias || '',
+    laboratorio: ultima ? {
+      trigliceridos: aNumero_(ultima.Trigliceridos) || null,
+      colesterol: aNumero_(ultima.Colesterol) || null,
+      glucosa: aNumero_(ultima.Glucosa) || null,
+      fecha: ultima.Fecha || ''
+    } : null
+  };
+}
+
+/**
+ * Guarda los datos del perfil que el paciente puede editar.
+ *
+ * El nivel de actividad mueve el factor con el que se calcula el gasto
+ * energético, así que cambiarlo recalcula la meta calórica: por eso devuelve el
+ * plan ya actualizado.
+ *
+ * @param {string} token El token de sesión.
+ * @param {Object} datos Estatura, fecha de nacimiento, sexo, nivel y patologías.
+ * @return {Object} El perfil y el plan recalculados.
+ */
+function guardarPerfilPaciente(token, datos) {
+  var usuario = requerirSesion_(token);
+  var config = obtenerConfigPaciente_(usuario.ID);
+  var cambios = { FechaActualizacion: new Date(), ActualizadoPor: usuario.Nombre };
+
+  if (datos.estatura_cm !== undefined && datos.estatura_cm !== '') {
+    var estatura = aNumero_(datos.estatura_cm);
+    if (estatura < 80 || estatura > 250) {
+      throw new Error('Revisa la estatura: debe estar entre 80 y 250 cm.');
+    }
+    cambios.Estatura_cm = estatura;
+  }
+  if (datos.fechaNacimiento) {
+    if (calcularEdad_(datos.fechaNacimiento) === null) {
+      throw new Error('Revisa la fecha de nacimiento.');
+    }
+    cambios.FechaNacimiento = datos.fechaNacimiento;
+  }
+  if (datos.sexo !== undefined) { cambios.Sexo = datos.sexo; }
+  if (datos.tipoEjercicio !== undefined) { cambios.TipoEjercicio = datos.tipoEjercicio; }
+  if (datos.patologias !== undefined) { cambios.Patologias = String(datos.patologias).slice(0, 500); }
+
+  if (datos.nivelActividad && NIVELES_ACTIVIDAD[datos.nivelActividad]) {
+    cambios.NivelActividad = datos.nivelActividad;
+    cambios.FactorActividad = factorPorNivel_(datos.nivelActividad);
+  }
+
+  actualizarFila_('Config_Paciente', config._fila, cambios);
+
+  return {
+    perfil: getPerfilPaciente(token),
+    plan: obtenerPlanCaloricoMensual(usuario.ID)
+  };
+}
+
+/**
+ * Serie histórica de una métrica, para la gráfica de tendencias del paciente.
+ * @param {string} token El token de sesión.
+ * @param {string} metrica La métrica a graficar.
+ * @return {Object} Puntos, unidad y etiqueta.
+ */
+function getTendenciaMetrica(token, metrica) {
+  var historial = getHistorialMetricas(token);
+
+  var definiciones = {
+    peso: { columna: 'Peso_kg', etiqueta: 'Peso', unidad: 'kg' },
+    masaMuscular: { columna: 'MasaMuscular_kg', etiqueta: 'Masa muscular', unidad: 'kg' },
+    porcentajeGrasa: { columna: 'PorcentajeGrasa', etiqueta: 'Grasa corporal', unidad: '%' },
+    agua: { columna: 'Agua_Porcentaje', etiqueta: 'Agua', unidad: '%' },
+    grasaVisceral: { columna: 'GrasaVisceral', etiqueta: 'Grasa visceral', unidad: '' },
+    trigliceridos: { columna: 'Trigliceridos', etiqueta: 'Triglicéridos', unidad: 'mg/dL' },
+    colesterol: { columna: 'Colesterol', etiqueta: 'Colesterol', unidad: 'mg/dL' },
+    glucosa: { columna: 'Glucosa', etiqueta: 'Glucosa', unidad: 'mg/dL' }
+  };
+
+  var definicion = definiciones[metrica] || definiciones.peso;
+
+  var puntos = historial.map(function (m) {
+    return { fecha: aFechaISO_(m.Fecha), valor: aNumero_(m[definicion.columna]) || null };
+  }).filter(function (p) { return p.valor !== null; });
+
+  var cambio = puntos.length > 1
+    ? redondear_(puntos[puntos.length - 1].valor - puntos[0].valor, 1)
+    : 0;
+
+  return {
+    metrica: metrica,
+    etiqueta: definicion.etiqueta,
+    unidad: definicion.unidad,
+    puntos: puntos,
+    cambio: cambio,
+    disponibles: Object.keys(definiciones).map(function (llave) {
+      return { clave: llave, etiqueta: definiciones[llave].etiqueta, unidad: definiciones[llave].unidad };
+    })
+  };
 }
 
 /* ===================================================================
@@ -576,7 +873,9 @@ function guardarMensajeChat(token, mensaje) {
 function getChat(token) {
   var usuario = requerirSesion_(token);
   return leerTabla_('Chat_Soporte')
-    .filter(function (c) { return String(c.ID_Paciente) === String(usuario.ID); })
+    .filter(function (c) {
+      return String(c.ID_Paciente) === String(usuario.ID) && !esMensajeDeAsistente_(c);
+    })
     .sort(function (a, b) { return new Date(a.Fecha) - new Date(b.Fecha); })
     .map(function (c) {
       return {
@@ -700,7 +999,9 @@ function getExpediente(token, idPaciente) {
     });
 
   var chat = leerTabla_('Chat_Soporte')
-    .filter(function (c) { return String(c.ID_Paciente) === String(idPaciente); })
+    .filter(function (c) {
+      return String(c.ID_Paciente) === String(idPaciente) && !esMensajeDeAsistente_(c);
+    })
     .sort(function (a, b) { return new Date(a.Fecha) - new Date(b.Fecha); })
     .map(function (c) {
       return {
@@ -838,6 +1139,23 @@ function cambiarEstadoPaciente(token, idPaciente, activo) {
   }
   actualizarFila_('Usuarios', paciente._fila, { Activo: activo ? 'SI' : 'NO' });
   return { ok: true };
+}
+
+/**
+ * Dice si una fila de Chat_Soporte pertenece a la conversación con el bot.
+ *
+ * Las dos conversaciones comparten pestaña pero no son la misma cosa: la del
+ * nutriólogo dispara alertas y espera respuesta de una persona; la del
+ * asistente se contesta sola. Mezclarlas haría que el nutriólogo viera
+ * preguntas que ya fueron contestadas y que el paciente creyera que un humano
+ * le respondió.
+ *
+ * @param {Object} fila La fila de Chat_Soporte.
+ * @return {boolean} true si es del asistente.
+ */
+function esMensajeDeAsistente_(fila) {
+  var de = String(fila.EnviadoPor);
+  return de === 'Asistente' || de === 'Paciente-Asistente';
 }
 
 /**

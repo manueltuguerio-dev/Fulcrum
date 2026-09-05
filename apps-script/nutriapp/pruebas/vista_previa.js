@@ -15,7 +15,8 @@ const vm = require('vm');
 const { contexto } = require('./simulador');
 
 const RAIZ = path.join(__dirname, '..');
-const ARCHIVOS = ['Code.gs', 'Datos.gs', 'Auth.gs', 'KatchMcArdle.gs', 'Menus.gs', 'MetaWhatsApp.gs', 'Api.gs'];
+const ARCHIVOS = ['Code.gs', 'Datos.gs', 'Auth.gs', 'KatchMcArdle.gs', 'Reglas.gs', 'Menus.gs', 'Milpa.gs',
+  'IA.gs', 'MetaWhatsApp.gs', 'Api.gs'];
 
 const sandbox = vm.createContext(Object.assign({ console }, contexto));
 ARCHIVOS.forEach((archivo) => {
@@ -68,6 +69,9 @@ sandbox.guardarMensajeChat(paciente.token, '¿Puedo cambiar el arroz integral po
 sandbox.responderChat(nutriologo.token, alta.idPaciente, 'Sí. Usa 150 g de quinoa cocida; queda casi igual en calorías.');
 sandbox.guardarMensajeChat(paciente.token, 'Perfecto, gracias. ¿Y el aguacate lo dejo igual?');
 
+sandbox.preguntarAsistente(paciente.token, '¿Cuánta fibra debo comer al día?');
+sandbox.preguntarAsistente(paciente.token, '¿Con qué puedo sustituir la carne?');
+
 const otro = sandbox.crearPaciente(nutriologo.token, { nombre: 'Jorge Ramírez', email: 'jorge@ejemplo.com' });
 const sesionJorge = sandbox.loginUser('jorge@ejemplo.com', otro.passwordTemporal);
 sandbox.guardarMetricas(sesionJorge.token, { fecha: haceDias(45), peso: 95.2, porcentajeGrasa: 31, masaMuscular: 62 });
@@ -80,7 +84,14 @@ const respuestas = {
     getEstadoInicial: sandbox.getEstadoInicial(paciente.token),
     getTiposActividad: sandbox.getTiposActividad(paciente.token),
     getResumenDiario: sandbox.getResumenDiario(paciente.token, sandbox.aFechaISO_(new Date())),
-    getChat: sandbox.getChat(paciente.token)
+    getChat: sandbox.getChat(paciente.token),
+    getChatAsistente: sandbox.getChatAsistente(paciente.token),
+    analisisEjemplo: sandbox.analizarComidaTexto(paciente.token, '200 g de frijol negro cocido con nopal y una guayaba'),
+    tendencias: ['peso', 'masaMuscular', 'porcentajeGrasa', 'agua', 'grasaVisceral', 'trigliceridos', 'colesterol', 'glucosa']
+      .reduce(function (acumulado, metrica) {
+        acumulado[metrica] = sandbox.getTendenciaMetrica(paciente.token, metrica);
+        return acumulado;
+      }, {})
   },
   nutriologo: {
     getEstadoInicial: sandbox.getEstadoInicial(nutriologo.token),
@@ -128,6 +139,22 @@ var respuestasDemo = {
     return DATOS_DEMO[quien].getEstadoInicial;
   },
   getTiposActividad: function () { return DATOS_DEMO.paciente.getTiposActividad; },
+  getPlatoMilpa: function () { return DATOS_DEMO.paciente.getEstadoInicial.milpa; },
+  getPerfilPaciente: function () { return DATOS_DEMO.paciente.getEstadoInicial.datosPerfil; },
+  guardarPerfilPaciente: function () {
+    return { perfil: DATOS_DEMO.paciente.getEstadoInicial.datosPerfil, plan: DATOS_DEMO.paciente.getEstadoInicial.plan };
+  },
+  getTendenciaMetrica: function (token, metrica) {
+    return DATOS_DEMO.paciente.tendencias[metrica] || DATOS_DEMO.paciente.tendencias.peso;
+  },
+  getChatAsistente: function () { return DATOS_DEMO.paciente.getChatAsistente; },
+  analizarComidaTexto: function () { return DATOS_DEMO.paciente.analisisEjemplo; },
+  preguntarAsistente: function (token, pregunta) {
+    var chat = DATOS_DEMO.paciente.getChatAsistente.slice();
+    chat.push({ mensaje: pregunta, enviadoPor: 'Paciente' });
+    chat.push({ mensaje: 'En la vista previa el asistente responde esto para que puedas ver el formato del chat.', enviadoPor: 'Asistente' });
+    return { ok: true, respuesta: 'Respuesta de ejemplo.', origen: 'local', chat: chat };
+  },
   getResumenDiario: function () { return DATOS_DEMO.paciente.getResumenDiario; },
   getChat: function () { return DATOS_DEMO.paciente.getChat; },
   listarPacientes: function () { return DATOS_DEMO.nutriologo.listarPacientes; },

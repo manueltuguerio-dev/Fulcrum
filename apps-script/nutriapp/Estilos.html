@@ -149,6 +149,39 @@
   }
   .dark .chip-tiempo { border-color: #475569; }
 
+  .sub-tab {
+    border-radius: .5rem;
+    padding: .55rem .3rem;
+    font-size: .8rem;
+    font-weight: 600;
+    color: #64748b;
+    transition: all .15s;
+  }
+  .sub-tab[data-activo="si"] {
+    background: #1f6f4f;
+    color: #ffffff;
+  }
+  .dark .sub-tab { color: #94a3b8; }
+  .dark .sub-tab[data-activo="si"] { color: #ffffff; }
+
+  /* Los tres puntos mientras el asistente piensa. El modelo puede tardar
+     varios segundos y un chat quieto parece descompuesto. */
+  .puntos-pensando { display: inline-flex; gap: .25rem; padding: .15rem 0; }
+  .puntos-pensando span {
+    height: .45rem;
+    width: .45rem;
+    border-radius: 9999px;
+    background: currentColor;
+    opacity: .35;
+    animation: latir 1.2s infinite;
+  }
+  .puntos-pensando span:nth-child(2) { animation-delay: .2s; }
+  .puntos-pensando span:nth-child(3) { animation-delay: .4s; }
+  @keyframes latir {
+    0%, 60%, 100% { opacity: .25; transform: translateY(0); }
+    30% { opacity: .9; transform: translateY(-.15rem); }
+  }
+
   .anillo-carga {
     height: 2.5rem;
     width: 2.5rem;

@@ -103,7 +103,48 @@ var ALIMENTOS_BASE = [
   ['Bebidas y libres', 'Salsa mexicana fresca', 1.0, 0.2, 4.0, 1.0, 22],
   ['Bebidas y libres', 'Salsa verde cocida', 1.0, 0.5, 5.0, 1.5, 30],
   ['Bebidas y libres', 'Cilantro fresco', 2.1, 0.5, 3.7, 2.8, 23],
-  ['Bebidas y libres', 'Jugo de limón', 0.4, 0.2, 6.9, 0.3, 22]
+  ['Bebidas y libres', 'Jugo de limón', 0.4, 0.2, 6.9, 0.3, 22],
+
+  /* Bloque agregado después de la primera versión. Va al FINAL a propósito:
+     sembrarAlimentos_ asigna el ID por la posición en este arreglo, así que
+     insertar en medio le daría a un alimento nuevo un ID que en una hoja ya
+     desplegada pertenece a otro. Agregar al final nunca colisiona.
+
+     Las cinco primeras son las grasas saturadas que la guía pide limitar: se
+     cargan para que el registro las reconozca y pueda alertar, no porque se
+     recomienden. */
+  ['Grasas y oleaginosas', 'Manteca de cerdo', 0.0, 100.0, 0.0, 0.0, 902],
+  ['Grasas y oleaginosas', 'Mantequilla', 0.9, 81.1, 0.1, 0.0, 717],
+  ['Grasas y oleaginosas', 'Aceite de coco', 0.0, 100.0, 0.0, 0.0, 892],
+  ['Grasas y oleaginosas', 'Aceite de palma', 0.0, 100.0, 0.0, 0.0, 884],
+  ['Grasas y oleaginosas', 'Crema ácida', 2.4, 19.7, 4.6, 0.0, 198],
+  ['Origen animal', 'Chorizo de cerdo', 24.1, 38.3, 1.9, 0.0, 455],
+  ['Origen animal', 'Tocino frito', 37.0, 41.8, 1.4, 0.0, 541],
+  ['Origen animal', 'Carne molida de res regular', 25.7, 20.7, 0.0, 0.0, 291],
+  ['Origen animal', 'Chuleta de cordero cocida', 25.6, 20.9, 0.0, 0.0, 282],
+  ['Origen animal', 'Queso Oaxaca', 24.3, 21.5, 3.1, 0.0, 300],
+
+  /* Complementos de la Dieta de la Milpa que faltaban en el catálogo. */
+  ['Verduras', 'Quelites (quintoniles) cocidos', 3.2, 0.4, 4.3, 2.8, 27],
+  ['Verduras', 'Verdolagas cocidas', 1.5, 0.4, 3.0, 1.5, 18],
+  ['Verduras', 'Flor de calabaza', 2.7, 0.1, 3.3, 1.2, 15],
+  ['Verduras', 'Huauzontle cocido', 4.2, 0.5, 5.1, 3.0, 32],
+  ['Verduras', 'Chile jalapeño', 0.9, 0.4, 6.5, 2.8, 29],
+  ['Verduras', 'Tomate verde (tomatillo)', 0.9, 0.6, 5.8, 1.9, 32],
+  ['Leguminosas', 'Frijol ayocote cocido', 8.7, 0.5, 22.4, 8.5, 125],
+  ['Cereales y tubérculos', 'Masa de maíz nixtamalizado', 5.1, 1.6, 43.0, 4.4, 210],
+  ['Cereales y tubérculos', 'Atole de masa sin azúcar', 1.3, 0.4, 11.0, 1.1, 54],
+  ['Frutas', 'Tuna', 0.7, 0.5, 9.6, 3.6, 41],
+  ['Frutas', 'Zapote negro', 0.6, 0.1, 12.5, 2.3, 48],
+  ['Frutas', 'Ciruela', 0.7, 0.3, 11.4, 1.4, 46],
+  ['Frutas', 'Pera', 0.4, 0.1, 15.2, 3.1, 57],
+  ['Frutas', 'Durazno', 0.9, 0.3, 9.5, 1.5, 39],
+  ['Grasas y oleaginosas', 'Pepita de calabaza', 24.5, 45.8, 14.7, 6.5, 559],
+  ['Grasas y oleaginosas', 'Ajonjolí', 17.7, 49.7, 23.4, 11.8, 573],
+  ['Origen animal', 'Yogur natural sin azúcar', 3.5, 3.3, 4.7, 0.0, 61],
+  ['Origen animal', 'Sardina en agua drenada', 24.6, 11.5, 0.0, 0.0, 208],
+  ['Bebidas y libres', 'Agua de jamaica sin azúcar', 0.1, 0.0, 0.5, 0.0, 3],
+  ['Bebidas y libres', 'Chile en polvo', 13.5, 14.3, 49.7, 34.8, 282]
 ];
 
 /**
@@ -192,6 +233,20 @@ var EVIDENCIA_BASE = [
 ];
 
 /**
+ * Ilustración de cada tema. La guía pide apoyo visual amigable, y un emoji
+ * grande hace ese trabajo sin depender de imágenes que haya que alojar.
+ */
+var EMOJIS_EVIDENCIA = {
+  'Bebidas acalóricas': '🥤',
+  'Aceite vegetal insaturado': '🫒',
+  'Fibra dietética': '🌾',
+  'Soya texturizada': '🌱',
+  'Mito de la sobreproteína': '💪',
+  'Déficit calórico lento': '⏳',
+  'Actividad física': '🏃'
+};
+
+/**
  * Carga las fichas de evidencia sin duplicar las ya cargadas.
  * @return {number} Cuántas fichas quedaron.
  */
@@ -208,11 +263,16 @@ function sembrarEvidencia_() {
     if (yaCargadas[normalizarTexto_(e[1])]) {
       return;
     }
-    nuevas.push(['EVI-' + ('00' + (indice + 1)).slice(-2), e[0], e[1], e[2], e[3], e[4]]);
+      nuevas.push([
+      'EVI-' + ('00' + (indice + 1)).slice(-2),
+      e[0], e[1], e[2], e[3], e[4],
+      EMOJIS_EVIDENCIA[e[0]] || '🔬',
+      indice + 1
+    ]);
   });
 
   if (nuevas.length) {
-    hoja.getRange(hoja.getLastRow() + 1, 1, nuevas.length, 6).setValues(nuevas);
+    hoja.getRange(hoja.getLastRow() + 1, 1, nuevas.length, 8).setValues(nuevas);
   }
   return existentes.length + nuevas.length;
 }

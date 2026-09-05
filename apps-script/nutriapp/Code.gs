@@ -65,12 +65,16 @@ var ESQUEMA = {
     'ID', 'ID_Paciente', 'Fecha', 'TipoActividad', 'DuracionMinutos', 'CaloriasQuemadasEst'
   ],
   Chat_Soporte: ['ID', 'ID_Paciente', 'Mensaje', 'EnviadoPor', 'Fecha', 'Estado'],
+  /* Las tres últimas columnas se agregaron después de la primera versión. Van
+     al final a propósito: escribirEncabezados_ solo reescribe el renglón 1, así
+     que agregar columnas al final deja los datos existentes en su lugar. */
   Config_Paciente: [
     'ID_Paciente', 'CaloriasObjetivo', 'ProteinaObjetivo_g', 'FactorActividad',
-    'Estatura_cm', 'FechaNacimiento', 'Sexo', 'AjusteManual', 'FechaActualizacion', 'ActualizadoPor'
+    'Estatura_cm', 'FechaNacimiento', 'Sexo', 'AjusteManual', 'FechaActualizacion', 'ActualizadoPor',
+    'NivelActividad', 'TipoEjercicio', 'Patologias'
   ],
   Sesiones: ['Token', 'ID_Usuario', 'Rol', 'Tipo', 'Expira'],
-  Evidencia_Cientifica: ['ID', 'Tema', 'Titulo', 'Resumen', 'NivelEvidencia', 'Enlace']
+  Evidencia_Cientifica: ['ID', 'Tema', 'Titulo', 'Resumen', 'NivelEvidencia', 'Enlace', 'Emoji', 'Orden']
 };
 
 /* ===================================================================

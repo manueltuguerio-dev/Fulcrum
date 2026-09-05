@@ -22,7 +22,17 @@ var estado = {
   urlsOcr: {},
   pacientes: [],
   pacienteActivo: null,
-  graficas: {}
+  graficas: {},
+  milpa: null,
+  datosPerfil: null,
+  tendencia: null,
+  metricaActiva: 'peso',
+  chatAsistente: [],
+  iaDisponible: false,
+  tiposActividad: [],
+  subVista: 'registrar',
+  verTodosPlatillos: false,
+  analisisTexto: null
 };
 
 var CIRCUNFERENCIA_ANILLO = 2 * Math.PI * 52;
@@ -196,6 +206,11 @@ function cargarAplicacion() {
     estado.platillos = datos.platillos || {};
     estado.chat = datos.chat || [];
     estado.ultimaMetrica = datos.ultimaMetrica;
+    estado.milpa = datos.milpa;
+    estado.datosPerfil = datos.datosPerfil;
+    estado.tendencia = datos.tendencia;
+    estado.chatAsistente = datos.chatAsistente || [];
+    estado.iaDisponible = !!datos.iaDisponible;
 
     $('#paciente-nombre').textContent = datos.perfil.nombre || datos.perfil.email;
     mostrarPantalla('paciente');
@@ -230,6 +245,10 @@ function pintarTodoPaciente() {
   pintarActividades();
   pintarEvidencia();
   pintarChat();
+  pintarMilpa();
+  pintarPerfil();
+  pintarSelectorMetrica();
+  pintarChatAsistente();
   cargarTiposActividad();
 
   if (!$('#m-fecha').value) { $('#m-fecha').value = hoyISO(); }
@@ -282,6 +301,46 @@ function pintarResumen() {
   });
 
   pintarComidasHoy();
+  pintarReglas();
+  pintarActividades();
+}
+
+/**
+ * Pinta las cuatro metas del día: fibra, fruta, origen vegetal y grasas.
+ *
+ * El color y el ícono cargan el mensaje antes que el texto, así que "atencion"
+ * es ámbar y no rojo: registrar mantequilla no es una falta, es un dato.
+ */
+function pintarReglas() {
+  var caja = $('#reglas-hoy');
+  if (!caja) { return; }
+
+  var reglas = (estado.resumen && estado.resumen.reglas) || [];
+  if (!reglas.length) {
+    caja.innerHTML = '<p class="py-3 text-center text-sm text-slate-400">Registra tu comida para ver cómo vas.</p>';
+    return;
+  }
+
+  var estilos = {
+    logrado: { fondo: 'bg-verde-50 dark:bg-verde-900/20', marca: '✓', color: 'text-verde-700 dark:text-verde-300' },
+    pendiente: { fondo: 'bg-slate-50 dark:bg-slate-700/40', marca: '○', color: 'text-slate-500 dark:text-slate-400' },
+    atencion: { fondo: 'bg-amber-50 dark:bg-amber-900/20', marca: '!', color: 'text-amber-700 dark:text-amber-400' }
+  };
+
+  caja.innerHTML = reglas.map(function (r) {
+    var e = estilos[r.estado] || estilos.pendiente;
+    return '' +
+      '<div class="flex items-start gap-3 rounded-xl p-3 ' + e.fondo + '">' +
+        '<span class="text-xl leading-none">' + r.icono + '</span>' +
+        '<div class="min-w-0 flex-1">' +
+          '<div class="flex items-baseline justify-between gap-2">' +
+            '<span class="text-sm font-medium">' + esc(r.titulo) + '</span>' +
+            '<span class="shrink-0 text-xs font-semibold ' + e.color + '">' + e.marca + '</span>' +
+          '</div>' +
+          '<p class="mt-0.5 text-xs text-slate-600 dark:text-slate-300">' + esc(r.mensaje) + '</p>' +
+        '</div>' +
+      '</div>';
+  }).join('');
 }
 
 function pintarComidasHoy() {
@@ -360,22 +419,53 @@ function pintarPlan() {
 
 function pintarSelectorTiempo() {
   var tiempos = ['Desayuno', 'Comida', 'Cena', 'Colacion'];
-  $('#selector-tiempo').innerHTML = tiempos.map(function (t) {
+  var html = tiempos.map(function (t) {
     return '<button class="chip-tiempo" data-tiempo="' + t + '" data-activo="' +
       (t === estado.tiempoComida ? 'si' : 'no') + '">' + (t === 'Colacion' ? 'Colación' : t) + '</button>';
   }).join('');
+
+  /* El mismo selector aparece en el panel de registro y en el de menús: lo que
+     se elige en uno vale para el otro, porque es la misma decisión. */
+  ['#selector-tiempo', '#selector-tiempo-menus'].forEach(function (id) {
+    var caja = $(id);
+    if (caja) { caja.innerHTML = html; }
+  });
 }
 
 function pintarPlatillos() {
-  var lista = estado.platillos[estado.tiempoComida] || [];
+  var todos = estado.platillos[estado.tiempoComida] || [];
   var caja = $('#lista-platillos');
+  if (!caja) { return; }
 
-  if (!lista.length) {
+  if (!todos.length) {
     caja.innerHTML = '<p class="py-4 text-center text-sm text-slate-400">No hay platillos cargados para este tiempo.</p>';
     return;
   }
 
-  caja.innerHTML = lista.map(function (p, indice) {
+  var rotacion = estado.platillos._rotacion;
+  var aviso = $('#aviso-rotacion');
+  if (aviso && rotacion) {
+    aviso.textContent = 'Cambian el ' + rotacion.cambia;
+  }
+
+  var boton = $('#btn-ver-todos');
+  if (boton) {
+    boton.textContent = estado.verTodosPlatillos
+      ? 'Ver solo las sugerencias de hoy'
+      : 'Ver las ' + todos.length + ' opciones';
+    boton.classList.toggle('hidden', todos.length <= 3);
+  }
+
+  /* Los índices son los de la lista completa: los botones Elegir y Ver
+     ingredientes los usan para localizar el platillo, y filtrar sin
+     conservarlos haría que "Elegir" cargara otro platillo. */
+  var lista = estado.verTodosPlatillos
+    ? todos.map(function (p, i) { return { p: p, i: i }; })
+    : todos.map(function (p, i) { return { p: p, i: i }; }).filter(function (x) { return x.p.destacado; });
+
+  caja.innerHTML = lista.map(function (entrada) {
+    var p = entrada.p;
+    var indice = entrada.i;
     var t = p.totales;
     return '' +
       '<div class="rounded-xl border border-slate-100 p-4 dark:border-slate-700">' +
@@ -393,6 +483,80 @@ function pintarPlatillos() {
           '<button class="boton-secundario flex-1 py-2 text-sm" data-ver-platillo="' + indice + '">Ingredientes</button>' +
           '<button class="boton-primario flex-1 py-2 text-sm" data-usar-platillo="' + indice + '">Elegir</button>' +
         '</div>' +
+      '</div>';
+  }).join('');
+}
+
+/* ===================================================================
+   VISTA DEL PACIENTE · PLATO DE LA MILPA
+   =================================================================== */
+
+function pintarMilpa() {
+  var milpa = estado.milpa;
+  if (!milpa) { return; }
+
+  /* El plato se dibuja como una barra apilada y no como una gráfica de pastel:
+     en un teléfono angosto las rebanadas quedan ilegibles, y lo que importa es
+     la proporción entre grupos, que una barra transmite igual de bien. */
+  var barra = milpa.grupos.map(function (g) {
+    return '<div style="width:' + g.proporcion + '%;background:' + g.color + '" ' +
+      'class="flex items-center justify-center py-4 text-lg" title="' + esc(g.nombre) + '">' + g.icono + '</div>';
+  }).join('');
+
+  var leyenda = milpa.grupos.map(function (g) {
+    return '' +
+      '<div class="flex items-start gap-3 rounded-xl border border-slate-100 p-3 dark:border-slate-700">' +
+        '<span class="mt-0.5 h-3 w-3 shrink-0 rounded-full" style="background:' + g.color + '"></span>' +
+        '<div class="min-w-0">' +
+          '<p class="text-sm font-medium">' + g.icono + ' ' + esc(g.nombre) +
+            ' <span class="text-slate-400">· ' + g.proporcion + ' %</span></p>' +
+          '<p class="mt-0.5 text-xs text-slate-500 dark:text-slate-400">' + esc(g.descripcion) + '</p>' +
+        '</div>' +
+      '</div>';
+  }).join('');
+
+  $('#plato-milpa').innerHTML =
+    '<div class="mb-4 flex overflow-hidden rounded-xl">' + barra + '</div>' +
+    '<div class="space-y-2">' + leyenda + '</div>';
+
+  var tablas = milpa.grupos.map(function (g) {
+    var filas = g.alimentos.map(function (a) {
+      return '<tr class="border-b border-slate-100 last:border-0 dark:border-slate-700">' +
+        '<td class="py-1.5 pr-2">' + esc(a.alimento) + '</td>' +
+        '<td class="py-1.5 text-right tabular-nums">' + a.calorias + '</td>' +
+        '<td class="py-1.5 text-right tabular-nums">' + a.proteinas + '</td>' +
+        '<td class="py-1.5 text-right tabular-nums">' + a.grasas + '</td>' +
+        '<td class="py-1.5 text-right tabular-nums">' + a.carbohidratos + '</td>' +
+        '<td class="py-1.5 text-right tabular-nums">' + a.fibra + '</td>' +
+      '</tr>';
+    }).join('');
+
+    return '' +
+      '<details class="rounded-xl border border-slate-100 dark:border-slate-700" open>' +
+        '<summary class="cursor-pointer list-none p-3 text-sm font-medium">' + g.icono + ' ' + esc(g.nombre) + '</summary>' +
+        '<div class="overflow-x-auto px-3 pb-3">' +
+          '<table class="w-full min-w-[26rem] text-xs">' +
+            '<thead><tr class="border-b border-slate-200 text-left text-slate-400 dark:border-slate-600">' +
+              '<th class="pb-1.5 pr-2 font-medium">Alimento</th>' +
+              '<th class="pb-1.5 text-right font-medium">kcal</th>' +
+              '<th class="pb-1.5 text-right font-medium">Prot</th>' +
+              '<th class="pb-1.5 text-right font-medium">Gras</th>' +
+              '<th class="pb-1.5 text-right font-medium">Carb</th>' +
+              '<th class="pb-1.5 text-right font-medium">Fibra</th>' +
+            '</tr></thead>' +
+            '<tbody>' + filas + '</tbody>' +
+          '</table>' +
+        '</div>' +
+      '</details>';
+  }).join('');
+
+  $('#tabla-milpa').innerHTML = '<div class="space-y-2">' + tablas + '</div>';
+
+  $('#limitar-milpa').innerHTML = milpa.limitar.map(function (l) {
+    return '' +
+      '<div class="rounded-xl bg-amber-50 p-3 dark:bg-amber-900/20">' +
+        '<p class="text-sm font-medium text-amber-800 dark:text-amber-300">' + esc(l.alimento) + '</p>' +
+        '<p class="mt-0.5 text-xs text-amber-700 dark:text-amber-400/90">' + esc(l.motivo) + '</p>' +
       '</div>';
   }).join('');
 }
@@ -661,12 +825,30 @@ function aplicarDatosOcr(datos) {
    =================================================================== */
 
 function cargarTiposActividad() {
-  if ($('#a-tipo').options.length) { return; }
+  if (estado.tiposActividad.length) { return; }
   api('getTiposActividad', estado.token).then(function (tipos) {
-    $('#a-tipo').innerHTML = tipos.map(function (t) {
-      return '<option value="' + esc(t) + '">' + esc(t) + '</option>';
-    }).join('');
-  }).catch(function () { /* el selector queda vacío */ });
+    estado.tiposActividad = tipos;
+  }).catch(function () { /* el formulario se abre con la lista vacía */ });
+}
+
+/**
+ * Abre el formulario de actividad en el modal, con los tipos ya cargados.
+ */
+function abrirModalActividad() {
+  var opciones = estado.tiposActividad.map(function (t) {
+    return '<option value="' + esc(t) + '">' + esc(t) + '</option>';
+  }).join('');
+
+  abrirModal('Registrar actividad',
+    '<p class="mb-4 text-sm text-slate-500 dark:text-slate-400">' +
+      'Las calorías quemadas se estiman con tu peso más reciente y el gasto típico de cada actividad.</p>' +
+    '<form id="form-actividad" class="space-y-3">' +
+      '<div><label class="etiqueta" for="a-tipo">Tipo de actividad</label>' +
+      '<select id="a-tipo" class="campo">' + opciones + '</select></div>' +
+      '<div><label class="etiqueta" for="a-minutos">Duración (minutos)</label>' +
+      '<input id="a-minutos" type="number" min="1" step="1" class="campo" placeholder="20" required></div>' +
+      '<button type="submit" class="boton-primario w-full">Guardar actividad</button>' +
+    '</form>');
 }
 
 function pintarActividades() {
@@ -686,6 +868,289 @@ function pintarActividades() {
         '<p class="font-semibold text-verde-600 dark:text-verde-300">-' + Math.round(a.calorias) + ' kcal</p>' +
       '</div>';
   }).join('');
+}
+
+/**
+ * Cambia entre los paneles de la pestaña Comer.
+ * @param {string} panel "registrar", "menus" o "milpa".
+ */
+function irASubPanel(panel) {
+  estado.subVista = panel;
+  $$('.panel-comer').forEach(function (bloque) {
+    bloque.classList.toggle('hidden', bloque.getAttribute('data-panel') !== panel);
+  });
+  $$('.sub-tab').forEach(function (tab) {
+    tab.setAttribute('data-activo', tab.getAttribute('data-sub') === panel ? 'si' : 'no');
+  });
+}
+
+/**
+ * Pinta lo que la IA entendió de la descripción, para confirmar o corregir.
+ * @param {Object} analisis La respuesta del servidor.
+ */
+function pintarResultadoTexto(analisis) {
+  var caja = $('#resultado-texto');
+
+  if (!analisis.alimentos.length) {
+    caja.innerHTML = '<div class="rounded-xl bg-amber-50 p-4 text-sm text-amber-800 dark:bg-amber-900/20 dark:text-amber-300">' +
+      esc(analisis.comentario) + '</div>';
+    return;
+  }
+
+  var confianza = {
+    alta: { texto: 'Cantidades claras', color: 'bg-verde-50 text-verde-700 dark:bg-verde-900/30 dark:text-verde-300' },
+    media: { texto: 'Porciones estimadas', color: 'bg-amber-50 text-amber-700 dark:bg-amber-900/30 dark:text-amber-300' },
+    baja: { texto: 'Revisa las cantidades', color: 'bg-amber-50 text-amber-700 dark:bg-amber-900/30 dark:text-amber-300' }
+  }[analisis.confianza] || { texto: 'Revisa', color: 'bg-slate-100 text-slate-600' };
+
+  var filas = analisis.alimentos.map(function (a) {
+    return '<div class="flex items-center justify-between border-b border-slate-100 py-2 text-sm last:border-0 dark:border-slate-700">' +
+      '<span class="min-w-0 flex-1 truncate">' + esc(a.alimento) + ' <span class="text-slate-400">· ' + a.gramos + ' g</span></span>' +
+      '<span class="shrink-0 font-medium">' + Math.round(a.calorias) + ' kcal</span></div>';
+  }).join('');
+
+  caja.innerHTML = '' +
+    '<div class="rounded-xl border border-slate-100 p-4 dark:border-slate-700">' +
+      '<div class="mb-2 flex flex-wrap items-center justify-between gap-2">' +
+        '<span class="font-medium">Esto entendí</span>' +
+        '<span class="rounded-full px-2.5 py-1 text-xs font-medium ' + confianza.color + '">' + confianza.texto + '</span>' +
+      '</div>' +
+      filas +
+      '<div class="mt-3 flex items-baseline justify-between rounded-lg bg-verde-50 px-3 py-2 dark:bg-slate-700/50">' +
+        '<span class="text-sm font-medium">Total</span>' +
+        '<span class="font-bold text-verde-700 dark:text-verde-300">' + Math.round(analisis.totales.calorias) + ' kcal</span>' +
+      '</div>' +
+      '<p class="mt-1 text-xs text-slate-400">P ' + analisis.totales.proteinas + ' g · C ' +
+        analisis.totales.carbohidratos + ' g · G ' + analisis.totales.grasas + ' g · Fibra ' + analisis.totales.fibra + ' g</p>' +
+      (analisis.comentario ? '<p class="mt-3 rounded-lg bg-arena-50 px-3 py-2 text-xs text-slate-600 dark:bg-slate-700/50 dark:text-slate-300">💡 ' +
+        esc(analisis.comentario) + '</p>' : '') +
+      '<button id="btn-pasar-a-platillo" class="boton-primario mt-3 w-full">Pasarlo a mi platillo para ajustar</button>' +
+    '</div>';
+
+  /* Los alimentos que la IA estimó fuera del catálogo no tienen ID, y el
+     registro se guarda por ID. Se avisa en lugar de perderlos en silencio. */
+  estado.analisisTexto = analisis;
+}
+
+/* ===================================================================
+   VISTA DEL PACIENTE · PERFIL Y PROGRESO
+   =================================================================== */
+
+function pintarPerfil() {
+  var perfil = estado.datosPerfil;
+  if (!perfil) { return; }
+
+  var inicial = (perfil.nombre || '?').trim().charAt(0).toUpperCase();
+  $('#perfil-inicial').textContent = inicial;
+  $('#perfil-nombre').textContent = perfil.nombre || '';
+  $('#perfil-email').textContent = perfil.email || '';
+
+  var colores = {
+    verde: 'text-verde-700 dark:text-verde-300',
+    ambar: 'text-amber-600 dark:text-amber-400',
+    rojo: 'text-red-600 dark:text-red-400'
+  };
+
+  var tarjetas = [
+    { valor: perfil.edad, etiqueta: 'años', clase: '' },
+    { valor: perfil.peso_kg, etiqueta: 'kg', clase: '' },
+    {
+      valor: perfil.imc ? perfil.imc.valor : null,
+      etiqueta: perfil.imc ? perfil.imc.clasificacion : 'IMC',
+      clase: perfil.imc ? colores[perfil.imc.color] : ''
+    },
+    { valor: perfil.porcentajeGrasa, etiqueta: '% grasa', clase: '' }
+  ];
+
+  $('#tarjetas-perfil').innerHTML = tarjetas.map(function (t) {
+    return '<div class="rounded-xl border border-slate-100 p-3 text-center dark:border-slate-700">' +
+      '<p class="text-lg font-semibold ' + t.clase + '">' + (t.valor !== null && t.valor !== undefined && t.valor !== '' ? t.valor : '—') + '</p>' +
+      '<p class="text-xs text-slate-400">' + esc(t.etiqueta) + '</p></div>';
+  }).join('');
+
+  var aviso = $('#aviso-imc');
+  if (perfil.imc) {
+    aviso.textContent = 'ℹ️ ' + perfil.imc.advertencia;
+    aviso.classList.remove('hidden');
+  } else {
+    aviso.classList.add('hidden');
+  }
+
+  if (!$('#pf-estatura').value) { $('#pf-estatura').value = perfil.estatura_cm || ''; }
+  if (!$('#pf-nacimiento').value) { $('#pf-nacimiento').value = perfil.fechaNacimiento || ''; }
+  $('#pf-sexo').value = perfil.sexo || '';
+  $('#pf-nivel').value = perfil.nivelActividad || 'Moderada';
+  $('#pf-ejercicio').value = perfil.tipoEjercicio || '';
+  if (!$('#pf-patologias').value) { $('#pf-patologias').value = perfil.patologias || ''; }
+}
+
+function pintarSelectorMetrica() {
+  var tendencia = estado.tendencia;
+  if (!tendencia) { return; }
+
+  $('#selector-metrica').innerHTML = tendencia.disponibles.map(function (m) {
+    return '<option value="' + esc(m.clave) + '"' + (m.clave === estado.metricaActiva ? ' selected' : '') + '>' +
+      esc(m.etiqueta) + (m.unidad ? ' (' + esc(m.unidad) + ')' : '') + '</option>';
+  }).join('');
+
+  pintarTendencia();
+}
+
+/**
+ * Dibuja la gráfica de la métrica elegida y resume el cambio del periodo.
+ */
+function pintarTendencia() {
+  var tendencia = estado.tendencia;
+  var resumen = $('#resumen-tendencia');
+  if (!tendencia || !resumen) { return; }
+
+  if (!tendencia.puntos.length) {
+    resumen.innerHTML = '<p class="py-6 text-center text-sm text-slate-400">Todavía no hay mediciones de ' +
+      esc(tendencia.etiqueta.toLowerCase()) + '. Regístralas más abajo.</p>';
+    if (estado.graficas.tendencia) {
+      estado.graficas.tendencia.destroy();
+      estado.graficas.tendencia = null;
+    }
+    return;
+  }
+
+  /* Para el peso, la grasa y los marcadores de sangre, bajar es la mejora. La
+     app no debería felicitar por una subida de triglicéridos. */
+  var bajarEsBueno = ['peso', 'porcentajeGrasa', 'grasaVisceral', 'trigliceridos', 'colesterol', 'glucosa']
+    .indexOf(tendencia.metrica) >= 0;
+  var mejora = bajarEsBueno ? tendencia.cambio < 0 : tendencia.cambio > 0;
+  var signo = tendencia.cambio > 0 ? '+' : '';
+
+  resumen.innerHTML = '' +
+    '<div class="flex items-baseline justify-between rounded-xl bg-arena-50 px-4 py-3 dark:bg-slate-700/50">' +
+      '<div><p class="text-xs text-slate-500 dark:text-slate-400">Desde tu primera medición</p>' +
+      '<p class="text-sm">' + tendencia.puntos.length + ' registros</p></div>' +
+      '<p class="text-xl font-bold ' + (tendencia.cambio === 0 ? 'text-slate-500'
+        : mejora ? 'text-verde-700 dark:text-verde-300' : 'text-amber-600 dark:text-amber-400') + '">' +
+        signo + tendencia.cambio + ' ' + esc(tendencia.unidad) + '</p>' +
+    '</div>';
+
+  if (typeof Chart === 'undefined') { return; }
+
+  if (estado.graficas.tendencia) { estado.graficas.tendencia.destroy(); }
+
+  var oscuro = document.documentElement.classList.contains('dark');
+  var colorTexto = oscuro ? '#cbd5e1' : '#475569';
+  var colorRejilla = oscuro ? 'rgba(255,255,255,.08)' : 'rgba(15,23,42,.07)';
+
+  estado.graficas.tendencia = new Chart($('#grafica-tendencia'), {
+    type: 'line',
+    data: {
+      labels: tendencia.puntos.map(function (p) { return p.fecha; }),
+      datasets: [{
+        label: tendencia.etiqueta + (tendencia.unidad ? ' (' + tendencia.unidad + ')' : ''),
+        data: tendencia.puntos.map(function (p) { return p.valor; }),
+        borderColor: '#1f6f4f',
+        backgroundColor: 'rgba(31,111,79,.14)',
+        fill: true,
+        tension: .3,
+        pointRadius: 4
+      }]
+    },
+    options: {
+      responsive: true,
+      maintainAspectRatio: false,
+      plugins: { legend: { display: false } },
+      scales: {
+        x: { ticks: { color: colorTexto, maxRotation: 0, autoSkip: true }, grid: { color: colorRejilla } },
+        y: { ticks: { color: colorTexto }, grid: { color: colorRejilla } }
+      }
+    }
+  });
+}
+
+/**
+ * Cambia la métrica de la gráfica pidiendo su serie al servidor.
+ * @param {string} metrica La clave de la métrica.
+ */
+function cambiarMetrica(metrica) {
+  estado.metricaActiva = metrica;
+  api('getTendenciaMetrica', estado.token, metrica).then(function (tendencia) {
+    estado.tendencia = tendencia;
+    pintarTendencia();
+  }).catch(function (err) { avisar(err.message, 'error'); });
+}
+
+/* ===================================================================
+   VISTA DEL PACIENTE · ASISTENTE
+   =================================================================== */
+
+var SUGERENCIAS_ASISTENTE = [
+  '¿Cuánta fibra debo comer?',
+  '¿El aguacate engorda?',
+  '¿Con qué sustituyo la carne?',
+  '¿Cuánta proteína necesito?'
+];
+
+function pintarChatAsistente() {
+  var caja = $('#mensajes-asistente');
+  if (!caja) { return; }
+
+  var estadoTexto = $('#estado-asistente');
+  if (estadoTexto) {
+    estadoTexto.textContent = estado.iaDisponible
+      ? 'Disponible a cualquier hora'
+      : 'Respuestas básicas · sin conexión a la IA';
+  }
+
+  if (!estado.chatAsistente.length) {
+    caja.innerHTML = '' +
+      '<div class="py-6 text-center">' +
+        '<p class="text-3xl">🤖</p>' +
+        '<p class="mt-2 text-sm font-medium">Hola, soy tu asistente.</p>' +
+        '<p class="mt-1 text-sm text-slate-500 dark:text-slate-400">' +
+          'Pregúntame sobre alimentos, porciones o cómo usar la app. Para dudas clínicas, mejor tu nutriólogo.</p>' +
+      '</div>';
+  } else {
+    caja.innerHTML = estado.chatAsistente.map(function (m) {
+      var propio = m.enviadoPor === 'Paciente';
+      return '<div><div class="burbuja" data-lado="' + (propio ? 'propio' : 'ajeno') + '">' +
+        esc(m.mensaje) + '</div></div>';
+    }).join('');
+  }
+  caja.scrollTop = caja.scrollHeight;
+
+  var sugerencias = $('#sugerencias-asistente');
+  if (sugerencias) {
+    sugerencias.innerHTML = estado.chatAsistente.length ? '' : SUGERENCIAS_ASISTENTE.map(function (t) {
+      return '<button class="rounded-full border border-slate-300 px-3 py-1.5 text-xs transition hover:bg-slate-50 ' +
+        'dark:border-slate-600 dark:hover:bg-slate-700" data-sugerencia="' + esc(t) + '">' + esc(t) + '</button>';
+    }).join('');
+  }
+}
+
+/**
+ * Manda una pregunta al asistente y pinta la respuesta.
+ * @param {string} texto La pregunta.
+ */
+function enviarAlAsistente(texto) {
+  if (!texto) { return; }
+
+  /* Se pinta la pregunta antes de que llegue la respuesta: el modelo puede
+     tardar varios segundos y un chat que no reacciona parece descompuesto. */
+  estado.chatAsistente.push({ mensaje: texto, enviadoPor: 'Paciente' });
+  pintarChatAsistente();
+
+  var caja = $('#mensajes-asistente');
+  var pensando = document.createElement('div');
+  pensando.innerHTML = '<div class="burbuja" data-lado="ajeno"><span class="puntos-pensando">' +
+    '<span></span><span></span><span></span></span></div>';
+  caja.appendChild(pensando);
+  caja.scrollTop = caja.scrollHeight;
+
+  api('preguntarAsistente', estado.token, texto).then(function (res) {
+    estado.chatAsistente = res.chat;
+    pintarChatAsistente();
+    if (res.aviso) { avisar(res.aviso, 'info'); }
+  }).catch(function (err) {
+    pensando.remove();
+    avisar(err.message, 'error');
+  });
 }
 
 /* ===================================================================
@@ -717,9 +1182,12 @@ function pintarEvidencia() {
   caja.innerHTML = estado.evidencia.map(function (e) {
     return '' +
       '<details class="rounded-xl border border-slate-100 p-3 dark:border-slate-700">' +
-        '<summary class="cursor-pointer list-none">' +
-          '<span class="block text-xs font-semibold uppercase tracking-wide text-verde-600 dark:text-verde-300">' + esc(e.Tema) + '</span>' +
-          '<span class="mt-0.5 block text-sm font-medium">' + esc(e.Titulo) + '</span>' +
+        '<summary class="flex cursor-pointer list-none items-start gap-3">' +
+          '<span class="text-2xl leading-none">' + esc(e.Emoji || '🔬') + '</span>' +
+          '<span class="min-w-0">' +
+            '<span class="block text-xs font-semibold uppercase tracking-wide text-verde-600 dark:text-verde-300">' + esc(e.Tema) + '</span>' +
+            '<span class="mt-0.5 block text-sm font-medium">' + esc(e.Titulo) + '</span>' +
+          '</span>' +
         '</summary>' +
         '<p class="mt-2 text-sm text-slate-600 dark:text-slate-300">' + esc(e.Resumen) + '</p>' +
         '<p class="mt-2 text-xs text-slate-400">Nivel de evidencia: ' + esc(e.NivelEvidencia) + '</p>' +
@@ -1067,8 +1535,34 @@ document.addEventListener('DOMContentLoaded', function () {
   document.addEventListener('click', function (evento) {
     var objetivo = evento.target.closest('[data-ir], [data-tema], [data-accion], [data-tiempo], [data-usar-platillo], ' +
       '[data-ver-platillo], [data-agregar-alimento], [data-quitar], [data-borrar-registro], [data-paciente], ' +
-      '[data-cerrar-modal], [data-cerrar-chat]');
+      '[data-cerrar-modal], [data-cerrar-chat], [data-sub], [data-abrir], [data-sugerencia], #btn-ver-todos, ' +
+      '#btn-pasar-a-platillo');
     if (!objetivo) { return; }
+
+    if (objetivo.hasAttribute('data-sub')) { irASubPanel(objetivo.getAttribute('data-sub')); return; }
+
+    if (objetivo.hasAttribute('data-sugerencia')) {
+      enviarAlAsistente(objetivo.getAttribute('data-sugerencia'));
+      return;
+    }
+
+    if (objetivo.id === 'btn-ver-todos') {
+      estado.verTodosPlatillos = !estado.verTodosPlatillos;
+      pintarPlatillos();
+      return;
+    }
+
+    if (objetivo.id === 'btn-pasar-a-platillo') {
+      pasarAnalisisAPlatillo();
+      return;
+    }
+
+    if (objetivo.hasAttribute('data-abrir')) {
+      var que = objetivo.getAttribute('data-abrir');
+      if (que === 'actividad') { abrirModalActividad(); }
+      if (que === 'chat-nutriologo') { $('#panel-chat').classList.remove('hidden'); pintarChat(); }
+      return;
+    }
 
     if (objetivo.hasAttribute('data-ir')) { irA(objetivo.getAttribute('data-ir')); return; }
     if (objetivo.hasAttribute('data-tema')) { aplicarTema(true); if (estado.pacienteActivo) { abrirExpediente(estado.pacienteActivo); } return; }
@@ -1169,6 +1663,9 @@ document.addEventListener('DOMContentLoaded', function () {
     if (evento.target.hasAttribute && evento.target.hasAttribute('data-ocr')) {
       procesarOcr(evento.target.files[0], evento.target.getAttribute('data-ocr'));
     }
+    if (evento.target.id === 'selector-metrica') {
+      cambiarMetrica(evento.target.value);
+    }
   });
 
   $('#btn-guardar-comida').addEventListener('click', function () {
@@ -1235,26 +1732,6 @@ document.addEventListener('DOMContentLoaded', function () {
     });
   });
 
-  $('#form-actividad').addEventListener('submit', function (evento) {
-    evento.preventDefault();
-    api('guardarActividad', estado.token, {
-      tipo: $('#a-tipo').value,
-      minutos: $('#a-minutos').value,
-      fecha: hoyISO()
-    }).then(function (resumen) {
-      estado.resumen = resumen;
-      pintarResumen();
-      pintarActividades();
-      $('#a-minutos').value = '';
-      avisar('Actividad registrada.', 'ok');
-    }).catch(function (err) { avisar(err.message, 'error'); });
-  });
-
-  $('#btn-chat').addEventListener('click', function () {
-    $('#panel-chat').classList.remove('hidden');
-    pintarChat();
-  });
-
   $('#form-chat').addEventListener('submit', function (evento) {
     evento.preventDefault();
     var texto = $('#chat-mensaje').value.trim();
@@ -1269,6 +1746,67 @@ document.addEventListener('DOMContentLoaded', function () {
   });
 
   document.addEventListener('submit', function (evento) {
+    if (evento.target.id === 'form-actividad') {
+      evento.preventDefault();
+      api('guardarActividad', estado.token, {
+        tipo: $('#a-tipo').value,
+        minutos: $('#a-minutos').value,
+        fecha: hoyISO()
+      }).then(function (resumen) {
+        estado.resumen = resumen;
+        pintarResumen();
+        cerrarModal();
+        avisar('Actividad registrada.', 'ok');
+      }).catch(function (err) { avisar(err.message, 'error'); });
+    }
+
+    if (evento.target.id === 'form-comida-texto') {
+      evento.preventDefault();
+      var descripcion = $('#comida-texto').value.trim();
+      if (!descripcion) { return; }
+
+      var boton = evento.target.querySelector('button[type="submit"]');
+      boton.disabled = true;
+      boton.textContent = 'Analizando…';
+      $('#resultado-texto').innerHTML = '<div class="flex justify-center py-6"><div class="anillo-carga"></div></div>';
+
+      api('analizarComidaTexto', estado.token, descripcion).then(function (analisis) {
+        pintarResultadoTexto(analisis);
+        if (analisis.aviso) { avisar(analisis.aviso, 'info'); }
+      }).catch(function (err) {
+        $('#resultado-texto').innerHTML = '';
+        avisar(err.message, 'error');
+      }).then(function () {
+        boton.disabled = false;
+        boton.textContent = 'Analizar lo que comí';
+      });
+    }
+
+    if (evento.target.id === 'form-perfil') {
+      evento.preventDefault();
+      api('guardarPerfilPaciente', estado.token, {
+        estatura_cm: $('#pf-estatura').value,
+        fechaNacimiento: $('#pf-nacimiento').value,
+        sexo: $('#pf-sexo').value,
+        nivelActividad: $('#pf-nivel').value,
+        tipoEjercicio: $('#pf-ejercicio').value,
+        patologias: $('#pf-patologias').value
+      }).then(function (res) {
+        estado.datosPerfil = res.perfil;
+        estado.plan = res.plan;
+        pintarPerfil();
+        pintarPlan();
+        avisar('Datos guardados.', 'ok');
+      }).catch(function (err) { avisar(err.message, 'error'); });
+    }
+
+    if (evento.target.id === 'form-asistente') {
+      evento.preventDefault();
+      var pregunta = $('#asistente-pregunta').value.trim();
+      $('#asistente-pregunta').value = '';
+      enviarAlAsistente(pregunta);
+    }
+
     if (evento.target.id === 'form-meta') {
       evento.preventDefault();
       /* Mandar calorías equivale a fijar la meta. Si la casilla está
@@ -1346,6 +1884,39 @@ function avisarSiFaltaCDN() {
   setTimeout(function () {
     avisar('Tu red bloqueó ' + faltantes.join(' y ') + '. Lo demás funciona; captura los datos a mano.', 'info');
   }, 1200);
+}
+
+/**
+ * Lleva lo que la IA entendió al armador de platillos, para ajustar y guardar.
+ *
+ * Solo pasan los alimentos que quedaron ligados al catálogo: el registro se
+ * guarda por ID, y uno estimado a ojo no tiene. Si alguno se queda fuera, se
+ * dice cuál en lugar de perderlo sin avisar.
+ */
+function pasarAnalisisAPlatillo() {
+  var analisis = estado.analisisTexto;
+  if (!analisis) { return; }
+
+  var conCatalogo = analisis.alimentos.filter(function (a) { return a.idAlimento; });
+  var sinCatalogo = analisis.alimentos.filter(function (a) { return !a.idAlimento; });
+
+  if (!conCatalogo.length) {
+    avisar('Ninguno de esos alimentos está en el catálogo. Búscalos abajo y captúralos a mano.', 'info');
+    return;
+  }
+
+  estado.platilloActual = conCatalogo.map(function (a) {
+    return { idAlimento: a.idAlimento, alimento: a.alimento, gramos: a.gramos };
+  });
+  pintarPlatilloActual();
+
+  if (sinCatalogo.length) {
+    avisar('No pasaron al platillo: ' + sinCatalogo.map(function (a) { return a.alimento; }).join(', ') +
+      '. No están en el catálogo.', 'info');
+  } else {
+    avisar('Listo. Ajusta los gramos y guarda.', 'ok');
+  }
+  $('#platillo-actual').scrollIntoView({ behavior: 'smooth', block: 'center' });
 }
 
 function abrirCambioPassword() {
